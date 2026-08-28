@@ -1,0 +1,111 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../constants.dart';
+import '../database.dart';
+import '../models.dart';
+import '../state/ticker.dart';
+
+/// 弹出「登记收款」对话框（项目详情页与项目列表页共用）。
+///
+/// 智能默认：
+/// - 已收总额为零、尚未收过款 -> 默认类型「定金」，金额留空
+/// - 已收过定金、仍有剩余    -> 默认类型「尾款」，金额预填剩余待收
+/// - 已收满 / 未约定总额      -> 默认类型「全额」，金额预填剩余待收
+///
+/// 返回 true 表示成功新增了一笔收款。
+Future<bool> showPaymentDialog(
+  BuildContext context, {
+  required int projectId,
+  required double amountTotal,
+  required double paidTotal,
+}) async {
+  final amountCtrl = TextEditingController();
+  final noteCtrl = TextEditingController();
+  final remaining = (amountTotal - paidTotal).clamp(0, double.infinity);
+
+  // 根据收款阶段挑选默认类型
+  late PayType defaultType;
+  String amountHint = '';
+  if (amountTotal <= 0) {
+    // 未约定总额，只能收全额
+    defaultType = PayType.full;
+  } else if (paidTotal <= 0) {
+    defaultType = PayType.deposit;
+    amountHint = paidTotal <= 0 && remaining > 0
+        ? '可收定金，剩余待收 ¥${remaining.toStringAsFixed(2)}'
+        : '';
+  } else if (remaining > 0) {
+    defaultType = PayType.balance;
+    amountHint = '剩余待收 ¥${remaining.toStringAsFixed(2)}';
+  } else {
+    defaultType = PayType.full;
+  }
+
+  // 有剩余时预填剩余金额，一键保存
+  if (remaining > 0 && amountTotal > 0) {
+    amountCtrl.text = remaining.toStringAsFixed(2);
+  }
+
+  var type = defaultType;
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setDlg) => AlertDialog(
+        title: const Text('登记收款'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: amountCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: '金额（元） *',
+                hintText: amountHint,
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<PayType>(
+              initialValue: type,
+              decoration: const InputDecoration(labelText: '类型'),
+              items: PayType.values
+                  .map((e) => DropdownMenuItem(value: e, child: Text(e.label)))
+                  .toList(),
+              onChanged: (v) => setDlg(() => type = v!),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: noteCtrl,
+              decoration: const InputDecoration(labelText: '备注', hintText: '如：首期款到账'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              final v = double.tryParse(amountCtrl.text.trim());
+              Navigator.pop(ctx, v != null && v > 0);
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  if (ok == true) {
+    await AppDb.instance.insertPayment(Payment(
+      projectId: projectId,
+      amount: double.parse(amountCtrl.text.trim()),
+      type: type,
+      paidAt: DateTime.now().millisecondsSinceEpoch,
+      note: noteCtrl.text.trim(),
+    ));
+    Ticker.ping();
+    return true;
+  }
+  return false;
+}
