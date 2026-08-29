@@ -12,7 +12,7 @@ import 'login_page.dart';
 ///
 /// 规则：
 /// - 好友注册时填写你的邀请码，自动绑定邀请关系
-/// - 好友真实付款开通 VIP → 返现 50%，上不封顶
+/// - 好友真实付款开通 VIP → 返现 50%
 /// - 每 2 位有效好友 → 免费送 VIP 1 个月（云端自动发放）
 class InvitePage extends StatefulWidget {
   const InvitePage({super.key});
@@ -202,7 +202,7 @@ class _InvitePageState extends State<InvitePage> {
                 child: Text(
                   '活动规则（云端自动核验）：\n'
                   '1. 好友注册时填写你的邀请码，系统自动绑定邀请关系；\n'
-                  '2. 好友付款开通专业版后自动返现其付款金额的 50%，上不封顶；\n'
+                  '2. 好友付款开通专业版后自动返现其付款金额的 50%；\n'
                   '3. 每 2 位有效好友自动免费赠送 VIP 1 个月；\n'
                   '4. 邀请关系与返现均由云端自动结算，无需手动登记与标记。',
                   style: TextStyle(fontSize: 12, color: AppTheme.textSub),
@@ -315,7 +315,7 @@ class _NotLoggedIn extends StatelessWidget {
                 style:
                     TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
-            const Text('推荐好友得 VIP，返现 50% 上不封顶',
+            const Text('推荐好友得 VIP，返现 50%',
                 style: TextStyle(color: AppTheme.textSub)),
             const SizedBox(height: 20),
             FilledButton(onPressed: onLogin, child: const Text('去登录')),

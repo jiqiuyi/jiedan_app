@@ -204,7 +204,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   leading: const Icon(Icons.card_giftcard,
                       color: AppTheme.primary),
                   title: const Text('推广活动'),
-                  subtitle: const Text('推荐好友送 VIP，新人付款返现 50% 上不封顶'),
+                  subtitle: const Text('推荐好友送 VIP，新人付款返现 50%'),
                   trailing: const Icon(Icons.chevron_right,
                       color: AppTheme.textSub),
                   onTap: () => Navigator.push(
