@@ -6,6 +6,10 @@ import '../theme.dart';
 import 'login_page.dart';
 import 'paywall_page.dart';
 import 'feedback_page.dart';
+import 'invite_page.dart';
+import 'payment_code_settings_page.dart';
+import 'data_management_page.dart';
+import 'wallet_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -163,6 +167,52 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
               ),
+              // ---- 钱包入口 ----
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.account_balance_wallet_outlined,
+                      color: AppTheme.primary),
+                  title: const Text('钱包'),
+                  subtitle: const Text('收款余额、提现到账'),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: AppTheme.textSub),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const WalletPage()),
+                  ),
+                ),
+              ),
+              // ---- 收款设置入口 ----
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.qr_code_2,
+                      color: AppTheme.primary),
+                  title: const Text('收款设置'),
+                  subtitle: const Text('配置微信 / 支付宝收款码，收款时一键出示'),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: AppTheme.textSub),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const PaymentCodeSettingsPage()),
+                  ),
+                ),
+              ),
+              // ---- 推广活动入口 ----
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.card_giftcard,
+                      color: AppTheme.primary),
+                  title: const Text('推广活动'),
+                  subtitle: const Text('推荐好友送 VIP，新人付款返现 50% 上不封顶'),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: AppTheme.textSub),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const InvitePage()),
+                  ),
+                ),
+              ),
               // ---- 意见反馈入口 ----
               Card(
                 child: ListTile(
@@ -175,6 +225,22 @@ class _SettingsPageState extends State<SettingsPage> {
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const FeedbackPage()),
+                  ),
+                ),
+              ),
+              // ---- 数据管理入口 ----
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.manage_search_outlined,
+                      color: AppTheme.primary),
+                  title: const Text('数据管理'),
+                  subtitle: const Text('导出备份 / 导入恢复，数据只保存在手机里'),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: AppTheme.textSub),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const DataManagementPage()),
                   ),
                 ),
               ),

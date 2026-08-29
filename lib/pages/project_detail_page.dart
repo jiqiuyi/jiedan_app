@@ -7,6 +7,7 @@ import '../constants.dart';
 import '../theme.dart';
 import '../state/ticker.dart';
 import '../widgets/payment_dialog.dart';
+import '../widgets/show_payment_code.dart';
 
 class ProjectDetailPage extends StatefulWidget {
   final Project project;
@@ -169,6 +170,11 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                   child: Row(
                     children: [
                       const Expanded(child: Text('收款记录', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+                      TextButton.icon(
+                        onPressed: () => showPaymentCodeSheet(context),
+                        icon: const Icon(Icons.qr_code, size: 18),
+                        label: const Text('出示收款码'),
+                      ),
                       TextButton.icon(onPressed: _addPayment, icon: const Icon(Icons.add, size: 18), label: const Text('登记收款')),
                     ],
                   ),
