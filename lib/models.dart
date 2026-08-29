@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'constants.dart';
 
 class Customer {
@@ -133,6 +135,239 @@ class Payment {
       );
 }
 
+/// 提现方式
+enum WithdrawMethod {
+  wechat, // 微信
+  alipay, // 支付宝
+  bank; // 银行卡
+
+  String get label {
+    switch (this) {
+      case WithdrawMethod.wechat:
+        return '微信';
+      case WithdrawMethod.alipay:
+        return '支付宝';
+      case WithdrawMethod.bank:
+        return '银行卡';
+    }
+  }
+
+  String get noHint {
+    switch (this) {
+      case WithdrawMethod.wechat:
+        return '收款微信号';
+      case WithdrawMethod.alipay:
+        return '收款支付宝账号';
+      case WithdrawMethod.bank:
+        return '收款银行卡号';
+    }
+  }
+}
+
+/// 提现状态
+enum WithdrawStatus {
+  pending, // 待处理（已提交申请，等待打款）
+  processing, // 处理中（打款进行中）
+  done; // 已提现（到账完成）
+
+  String get label {
+    switch (this) {
+      case WithdrawStatus.pending:
+        return '待处理';
+      case WithdrawStatus.processing:
+        return '处理中';
+      case WithdrawStatus.done:
+        return '已提现';
+    }
+  }
+}
+
+/// 提现账户（收款人姓名 + 账号），存 settings（JSON）
+class WithdrawAccount {
+  final WithdrawMethod method;
+  final String name; // 收款人姓名
+  final String no; // 账号
+
+  const WithdrawAccount({
+    this.method = WithdrawMethod.wechat,
+    this.name = '',
+    this.no = '',
+  });
+
+  bool get filled => name.trim().isNotEmpty && no.trim().isNotEmpty;
+
+  String toJson() =>
+      '{"method":${method.index},"name":"${name.replaceAll('"', '\\"')}","no":"${no.replaceAll('"', '\\"')}"}';
+
+  factory WithdrawAccount.fromJson(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return const WithdrawAccount();
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final m = (map['method'] as int?) ?? 0;
+      return WithdrawAccount(
+        method: m >= 0 && m < WithdrawMethod.values.length
+            ? WithdrawMethod.values[m]
+            : WithdrawMethod.wechat,
+        name: (map['name'] as String?) ?? '',
+        no: (map['no'] as String?) ?? '',
+      );
+    } catch (_) {
+      return const WithdrawAccount();
+    }
+  }
+}
+
+/// 提现记录（v5 新增）
+class Withdrawal {
+  final int? id;
+  final double amount;
+  final WithdrawMethod method;
+  final String accountName; // 提现时的收款人姓名（快照）
+  final String accountNo; // 提现时的收款账号（快照）
+  final WithdrawStatus status;
+  final int createdAt;
+  final String note;
+
+  const Withdrawal({
+    this.id,
+    required this.amount,
+    required this.method,
+    this.accountName = '',
+    this.accountNo = '',
+    this.status = WithdrawStatus.pending,
+    required this.createdAt,
+    this.note = '',
+  });
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'amount': amount,
+        'method': method.index,
+        'account_name': accountName,
+        'account_no': accountNo,
+        'status': status.index,
+        'created_at': createdAt,
+        'note': note,
+      };
+
+  factory Withdrawal.fromMap(Map<String, Object?> m) => Withdrawal(
+        id: m['id'] as int?,
+        amount: ((m['amount'] as num?) ?? 0).toDouble(),
+        method: WithdrawMethod.values[m['method'] as int],
+        accountName: (m['account_name'] as String?) ?? '',
+        accountNo: (m['account_no'] as String?) ?? '',
+        status: WithdrawStatus.values[(m['status'] as int?) ?? 0],
+        createdAt: (m['created_at'] as int?) ?? 0,
+        note: (m['note'] as String?) ?? '',
+      );
+
+  Withdrawal copyWith({
+    int? id,
+    double? amount,
+    WithdrawMethod? method,
+    String? accountName,
+    String? accountNo,
+    WithdrawStatus? status,
+    int? createdAt,
+    String? note,
+  }) =>
+      Withdrawal(
+        id: id ?? this.id,
+        amount: amount ?? this.amount,
+        method: method ?? this.method,
+        accountName: accountName ?? this.accountName,
+        accountNo: accountNo ?? this.accountNo,
+        status: status ?? this.status,
+        createdAt: createdAt ?? this.createdAt,
+        note: note ?? this.note,
+      );
+}
+
+/// 充值方式（v6 新增）
+enum RechargeMethod {
+  wechat, // 微信
+  alipay; // 支付宝
+
+  String get label {
+    switch (this) {
+      case RechargeMethod.wechat:
+        return '微信';
+      case RechargeMethod.alipay:
+        return '支付宝';
+    }
+  }
+}
+
+/// 充值状态（v6 新增）
+enum RechargeStatus {
+  pending, // 待确认到账（已出示收款码，等待用户确认）
+  done; // 已到账（余额已入账）
+
+  String get label {
+    switch (this) {
+      case RechargeStatus.pending:
+        return '待确认';
+      case RechargeStatus.done:
+        return '已到账';
+    }
+  }
+}
+
+/// 充值记录（v6 新增）。
+/// MVP：出示收款码 + 手动确认到账；真实通道接入后由支付回调自动标记 done。
+class Recharge {
+  final int? id;
+  final double amount; // 充值金额（元）
+  final RechargeMethod method; // 充值方式
+  final RechargeStatus status;
+  final int createdAt;
+  final String note;
+
+  const Recharge({
+    this.id,
+    required this.amount,
+    this.method = RechargeMethod.wechat,
+    this.status = RechargeStatus.pending,
+    required this.createdAt,
+    this.note = '',
+  });
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'amount': amount,
+        'method': method.index,
+        'status': status.index,
+        'created_at': createdAt,
+        'note': note,
+      };
+
+  factory Recharge.fromMap(Map<String, Object?> m) => Recharge(
+        id: m['id'] as int?,
+        amount: ((m['amount'] as num?) ?? 0).toDouble(),
+        method: RechargeMethod.values[(m['method'] as int?) ?? 0],
+        status: RechargeStatus.values[(m['status'] as int?) ?? 0],
+        createdAt: (m['created_at'] as int?) ?? 0,
+        note: (m['note'] as String?) ?? '',
+      );
+
+  Recharge copyWith({
+    int? id,
+    double? amount,
+    RechargeMethod? method,
+    RechargeStatus? status,
+    int? createdAt,
+    String? note,
+  }) =>
+      Recharge(
+        id: id ?? this.id,
+        amount: amount ?? this.amount,
+        method: method ?? this.method,
+        status: status ?? this.status,
+        createdAt: createdAt ?? this.createdAt,
+        note: note ?? this.note,
+      );
+}
+
 // 报价单行（用于计算展示，不入库）
 class QuoteLine {
   final String itemName;
@@ -161,7 +396,7 @@ class UserAccount {
   final String nickname;
   final int createdAt;
   final bool isPro; // 是否解锁专业版
-  final int? proExpireAt; // 订阅到期时间戳(ms)，null 表示永久（体验模式）
+  final int? proExpireAt; // 订阅到期时间戳(ms)，null 表示永久（一次买断）
 
   const UserAccount({
     this.id,
@@ -215,5 +450,78 @@ class UserAccount {
         createdAt: createdAt,
         isPro: isPro ?? this.isPro,
         proExpireAt: proExpireAt ?? this.proExpireAt,
+      );
+}
+
+/// 被邀请人（推广活动，本地 MVP 版）。
+/// 邀请人端手动登记：推荐了谁、谁已真实付款开通 VIP（触发 50% 返现）。
+class Invitee {
+  final int? id;
+  final int inviterUserId; // 邀请人（本机账号）
+  final String name; // 被邀请人昵称/称呼
+  final String phone; // 被邀请人手机号（选填）
+  final int invitedAt;
+  final bool paid; // 是否真实付款开通 VIP
+  final double payAmount; // 真实付款金额（未付为 0）
+  final double rebate; // 对应返现金额 = payAmount * rebateRate
+  final int? paidAt;
+
+  const Invitee({
+    this.id,
+    required this.inviterUserId,
+    required this.name,
+    this.phone = '',
+    required this.invitedAt,
+    this.paid = false,
+    this.payAmount = 0,
+    this.rebate = 0,
+    this.paidAt,
+  });
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'inviter_user_id': inviterUserId,
+        'name': name,
+        'phone': phone,
+        'invited_at': invitedAt,
+        'paid': paid ? 1 : 0,
+        'pay_amount': payAmount,
+        'rebate': rebate,
+        'paid_at': paidAt,
+      };
+
+  factory Invitee.fromMap(Map<String, Object?> m) => Invitee(
+        id: m['id'] as int?,
+        inviterUserId: m['inviter_user_id'] as int,
+        name: m['name'] as String,
+        phone: (m['phone'] as String?) ?? '',
+        invitedAt: (m['invited_at'] as int?) ?? 0,
+        paid: (m['paid'] as int?) == 1,
+        payAmount: ((m['pay_amount'] as num?) ?? 0).toDouble(),
+        rebate: ((m['rebate'] as num?) ?? 0).toDouble(),
+        paidAt: m['paid_at'] as int?,
+      );
+
+  Invitee copyWith({
+    int? id,
+    int? inviterUserId,
+    String? name,
+    String? phone,
+    int? invitedAt,
+    bool? paid,
+    double? payAmount,
+    double? rebate,
+    int? paidAt,
+  }) =>
+      Invitee(
+        id: id ?? this.id,
+        inviterUserId: inviterUserId ?? this.inviterUserId,
+        name: name ?? this.name,
+        phone: phone ?? this.phone,
+        invitedAt: invitedAt ?? this.invitedAt,
+        paid: paid ?? this.paid,
+        payAmount: payAmount ?? this.payAmount,
+        rebate: rebate ?? this.rebate,
+        paidAt: paidAt ?? this.paidAt,
       );
 }

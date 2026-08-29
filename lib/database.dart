@@ -68,6 +68,9 @@ class AppDb {
         ''');
         await _createUsers(db);
         await _createFeedbacks(db);
+        await _createInvitees(db);
+        await _createWithdrawals(db);
+        await _createRecharges(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -75,6 +78,15 @@ class AppDb {
         }
         if (oldVersion < 3) {
           await _createFeedbacks(db);
+        }
+        if (oldVersion < 4) {
+          await _createInvitees(db);
+        }
+        if (oldVersion < 5) {
+          await _createWithdrawals(db);
+        }
+        if (oldVersion < 6) {
+          await _createRecharges(db);
         }
       },
     );
@@ -104,6 +116,53 @@ class AppDb {
         content TEXT,
         contact TEXT,
         created_at INTEGER
+      )
+    ''');
+  }
+
+  /// v4 新增：推广活动 - 被邀请人表（本地记账，手动确认）
+  Future<void> _createInvitees(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS invitees(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        inviter_user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT,
+        invited_at INTEGER,
+        paid INTEGER DEFAULT 0,
+        pay_amount REAL DEFAULT 0,
+        rebate REAL DEFAULT 0,
+        paid_at INTEGER
+      )
+    ''');
+  }
+
+  /// v5 新增：钱包提现记录表（申请登记 + 人工/自动打款）
+  Future<void> _createWithdrawals(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS withdrawals(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount REAL NOT NULL,
+        method INTEGER NOT NULL,
+        account_name TEXT,
+        account_no TEXT,
+        status INTEGER DEFAULT 0,
+        created_at INTEGER,
+        note TEXT
+      )
+    ''');
+  }
+
+  /// v6 新增：钱包充值记录表（出示收款码 + 手动确认到账 / 自动回调）
+  Future<void> _createRecharges(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS recharges(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount REAL NOT NULL,
+        method INTEGER NOT NULL,
+        status INTEGER DEFAULT 0,
+        created_at INTEGER,
+        note TEXT
       )
     ''');
   }
@@ -309,4 +368,136 @@ class AppDb {
     final d = await db;
     return d.query('feedbacks', orderBy: 'created_at DESC');
   }
+
+  // ---------- invitees（推广活动 - 被邀请人）----------
+  Future<List<Invitee>> getInvitees(int inviterUserId) async {
+    final d = await db;
+    final rows = await d.query('invitees',
+        where: 'inviter_user_id=?', whereArgs: [inviterUserId], orderBy: 'invited_at DESC');
+    return rows.map(Invitee.fromMap).toList();
+  }
+
+  Future<int> insertInvitee(Invitee inv) async {
+    final d = await db;
+    return d.insert('invitees', inv.toMap()..remove('id'));
+  }
+
+  Future<void> updateInvitee(Invitee inv) async {
+    final d = await db;
+    await d.update('invitees', inv.toMap(), where: 'id=?', whereArgs: [inv.id]);
+  }
+
+  Future<void> deleteInvitee(int id) async {
+    final d = await db;
+    await d.delete('invitees', where: 'id=?', whereArgs: [id]);
+  }
+
+  // ---------- 推广活动 - 邀请码（本地生成，存 settings）----------
+  /// 读取我的邀请码；不存在则生成并落库。
+  Future<String> getOrCreateInviteCode(int userId) async {
+    final key = 'invite_code_$userId';
+    final exist = await getSetting(key);
+    if (exist != null && exist.isNotEmpty) return exist;
+    // 生成规则：JD + 4 位（1000+userId），稳定可读；userId 通常很小
+    final code = 'JD${1000 + userId}';
+    await setSetting(key, code);
+    return code;
+  }
+
+  /// 我注册时填写的邀请码（来自哪位邀请人），存 settings。
+  Future<String?> getMyInviterCode() => getSetting('my_inviter_code');
+  Future<void> setMyInviterCode(String code) =>
+      setSetting('my_inviter_code', code);
+
+  // ---------- 收款码（微信 / 支付宝二维码图片路径）----------
+  Future<String?> getWxQrPath() => getSetting('wx_qr_path');
+  Future<void> setWxQrPath(String path) => setSetting('wx_qr_path', path);
+  Future<String?> getAliQrPath() => getSetting('ali_qr_path');
+  Future<void> setAliQrPath(String path) => setSetting('ali_qr_path', path);
+
+  // ---------- 推广赠送 VIP 状态（避免重复赠送）----------
+  Future<bool> inviteBonusGranted(int userId) async {
+    final v = await getSetting('invite_bonus_granted_$userId');
+    return v == '1';
+  }
+
+  Future<void> markInviteBonusGranted(int userId) =>
+      setSetting('invite_bonus_granted_$userId', '1');
+
+  // ---------- 钱包 / 提现（v5）----------
+
+  /// 全部已收总额（所有 payments 合计）
+  Future<double> allPaidTotal() async {
+    final d = await db;
+    final rows = await d
+        .rawQuery('SELECT COALESCE(SUM(amount),0) AS t FROM payments');
+    return ((rows.first['t'] as num?) ?? 0).toDouble();
+  }
+
+  /// 已提交提现总额（含待处理 / 处理中 / 已提现，均占用可提现额度）
+  Future<double> totalWithdrawn() async {
+    final d = await db;
+    final rows = await d
+        .rawQuery('SELECT COALESCE(SUM(amount),0) AS t FROM withdrawals');
+    return ((rows.first['t'] as num?) ?? 0).toDouble();
+  }
+
+  /// 已确认到账的充值总额（仅 status=done）
+  Future<double> totalRecharged() async {
+    final d = await db;
+    final rows = await d.rawQuery(
+        'SELECT COALESCE(SUM(amount),0) AS t FROM recharges WHERE status=?',
+        [RechargeStatus.done.index]);
+    return ((rows.first['t'] as num?) ?? 0).toDouble();
+  }
+
+  /// 可提现余额 = 累计收款 + 累计充值到账 - 已提交提现
+  Future<double> withdrawableBalance() async {
+    final paid = await allPaidTotal();
+    final recharged = await totalRecharged();
+    final withdrawn = await totalWithdrawn();
+    return (paid + recharged - withdrawn).clamp(0, double.infinity);
+  }
+
+  Future<int> insertRecharge(Recharge r) async {
+    final d = await db;
+    return d.insert('recharges', r.toMap()..remove('id'));
+  }
+
+  Future<List<Recharge>> getRecharges() async {
+    final d = await db;
+    final rows = await d.query('recharges', orderBy: 'created_at DESC');
+    return rows.map(Recharge.fromMap).toList();
+  }
+
+  Future<void> updateRecharge(Recharge r) async {
+    final d = await db;
+    await d.update('recharges', r.toMap(), where: 'id=?', whereArgs: [r.id]);
+  }
+
+  Future<int> insertWithdrawal(Withdrawal w) async {
+    final d = await db;
+    return d.insert('withdrawals', w.toMap()..remove('id'));
+  }
+
+  Future<List<Withdrawal>> getWithdrawals() async {
+    final d = await db;
+    final rows =
+        await d.query('withdrawals', orderBy: 'created_at DESC');
+    return rows.map(Withdrawal.fromMap).toList();
+  }
+
+  Future<void> updateWithdrawal(Withdrawal w) async {
+    final d = await db;
+    await d.update('withdrawals', w.toMap(), where: 'id=?', whereArgs: [w.id]);
+  }
+
+  /// 读取已保存的提现账户
+  Future<WithdrawAccount> getWithdrawAccount() async {
+    final raw = await getSetting(AppConfig.withdrawAccountKey);
+    return WithdrawAccount.fromJson(raw);
+  }
+
+  Future<void> setWithdrawAccount(WithdrawAccount acc) =>
+      setSetting(AppConfig.withdrawAccountKey, acc.toJson());
 }

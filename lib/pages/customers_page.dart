@@ -136,14 +136,12 @@ class _CustomersPageState extends State<CustomersPage> {
   Widget build(BuildContext context) {
     final customers = _filtered;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('客户'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: _addOrEdit,
-          ),
-        ],
+      appBar: AppBar(title: const Text('客户')),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: AppTheme.primary,
+        foregroundColor: Colors.white,
+        onPressed: _addOrEdit,
+        child: const Icon(Icons.add),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

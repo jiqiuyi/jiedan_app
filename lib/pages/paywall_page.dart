@@ -15,10 +15,65 @@ class PaywallPage extends StatefulWidget {
 }
 
 class _PaywallPageState extends State<PaywallPage> {
-  bool _yearly = true; // 默认推荐年付
   bool _paying = false;
+  bool _firstMonthUsed = false; // 当前账号是否已用过首月特惠
+  int _selected = 1; // 默认选中档位（年付）
+
+  /// 订阅档位（按展示顺序）
+  List<_Plan> get _plans => [
+        if (!_firstMonthUsed)
+          const _Plan(
+            name: '首月特惠',
+            price: '¥${AppConfig.firstMonthPrice}',
+            desc: '仅限首次开通，每人一次',
+            months: 1,
+            isFirstMonth: true,
+            highlight: true,
+          ),
+        const _Plan(
+          name: '月付',
+          price: '¥${AppConfig.monthlyPrice}/月',
+          desc: '按月订阅，随时可续',
+          months: 1,
+        ),
+        const _Plan(
+          name: '年付',
+          price: '¥${AppConfig.yearlyPrice}/年',
+          desc: '相当于每月不到 ¥6',
+          months: 12,
+        ),
+        const _Plan(
+          name: '两年',
+          price: '¥${AppConfig.twoYearPrice}',
+          desc: '两年畅用，更划算',
+          months: 24,
+        ),
+        const _Plan(
+          name: '永久',
+          price: '¥${AppConfig.foreverPrice}',
+          desc: '一次买断，永久使用',
+          months: -1,
+          lifetime: true,
+        ),
+      ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFirstMonthState();
+  }
+
+  Future<void> _loadFirstMonthState() async {
+    final used = await AppState.instance.firstMonthOfferUsed();
+    if (!mounted) return;
+    setState(() => _firstMonthUsed = used);
+  }
 
   Future<void> _buy() async {
+    final plans = _plans;
+    if (_selected >= plans.length) return;
+    final plan = plans[_selected];
+
     // 未登录：先引导登录，登录成功后自动完成解锁
     if (!AppState.instance.loggedIn) {
       final ok = await showDialog<bool>(
@@ -46,16 +101,44 @@ class _PaywallPageState extends State<PaywallPage> {
       if (logged != true || !mounted) return;
     }
 
+    // 确认下单
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认开通专业版'),
+        content: Text(
+          '${plan.name} · ${plan.price}\n'
+          '${plan.desc}\n\n'
+          'MVP 阶段为模拟支付，点击确认即完成开通。',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认开通'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
     setState(() => _paying = true);
-    await AppState.instance.activatePro(months: _yearly ? 12 : 1);
+    if (plan.lifetime) {
+      await AppState.instance.activatePro(lifetime: true);
+    } else {
+      await AppState.instance.activatePro(months: plan.months);
+    }
+    if (plan.isFirstMonth) {
+      await AppState.instance.markFirstMonthOfferUsed();
+    }
     if (!mounted) return;
     setState(() => _paying = false);
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(_yearly
-            ? '已订阅专业版（年付·365天）'
-            : '已订阅专业版（月付·30天）'),
+        content: Text(plan.successText),
       ),
     );
   }
@@ -68,6 +151,8 @@ class _PaywallPageState extends State<PaywallPage> {
         listenable: AppState.instance,
         builder: (context, _) {
           final isPro = AppState.instance.isPro;
+          final plans = _plans;
+          if (_selected >= plans.length) _selected = plans.length - 1;
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [
@@ -84,33 +169,17 @@ class _PaywallPageState extends State<PaywallPage> {
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: AppTheme.textSub)),
               const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _yearly = false),
-                      child: _PlanCard(
-                        name: '月付',
-                        price: '¥${AppConfig.monthlyPrice}/月',
-                        selected: !_yearly,
-                        highlight: false,
-                      ),
-                    ),
+              ...List.generate(plans.length, (i) {
+                final p = plans[i];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _PlanCard(
+                    plan: p,
+                    selected: _selected == i,
+                    onTap: () => setState(() => _selected = i),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _yearly = true),
-                      child: _PlanCard(
-                        name: '年付',
-                        price: '¥${AppConfig.yearlyPrice}/年',
-                        selected: _yearly,
-                        highlight: true,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                );
+              }),
               const SizedBox(height: 20),
               FilledButton(
                 onPressed: (isPro || _paying) ? null : _buy,
@@ -123,12 +192,12 @@ class _PaywallPageState extends State<PaywallPage> {
                             child: CircularProgressIndicator(
                                 strokeWidth: 2.5, color: Colors.white),
                           )
-                        : const Text('立即解锁')),
+                        : Text(plans[_selected].buyText)),
               ),
               const SizedBox(height: 12),
               const Center(
                 child: Text(
-                  'MVP 演示阶段：支付网关未接入，点击即解锁。\n正式版上线后将接入支付宝/微信支付。',
+                  'MVP 演示阶段：支付网关未接入，点击即模拟开通。\n正式版上线后将接入支付宝/微信支付。',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppTheme.textSub, fontSize: 12),
                 ),
@@ -141,63 +210,151 @@ class _PaywallPageState extends State<PaywallPage> {
   }
 }
 
-class _PlanCard extends StatelessWidget {
+/// 订阅档位定义
+class _Plan {
   final String name;
   final String price;
-  final bool selected;
-  final bool highlight;
-  const _PlanCard({
+  final String desc;
+  final int months; // 订阅月数（lifetime 时忽略）
+  final bool isFirstMonth; // 是否首月特惠档
+  final bool lifetime; // 是否永久买断
+  final bool highlight; // 是否高亮推荐
+
+  const _Plan({
     required this.name,
     required this.price,
+    required this.desc,
+    required this.months,
+    this.isFirstMonth = false,
+    this.lifetime = false,
+    this.highlight = false,
+  });
+
+  String get buyText => isFirstMonth ? '¥${AppConfig.firstMonthPrice} 开通首月' : '立即解锁';
+
+  String get successText {
+    if (isFirstMonth) return '已开通专业版（首月特惠 · 30天）';
+    if (lifetime) return '已开通专业版（永久买断）';
+    if (months >= 24) return '已开通专业版（两年 · 730天）';
+    if (months >= 12) return '已开通专业版（年付 · 365天）';
+    return '已开通专业版（月付 · 30天）';
+  }
+}
+
+class _PlanCard extends StatelessWidget {
+  final _Plan plan;
+  final bool selected;
+  final VoidCallback onTap;
+  const _PlanCard({
+    required this.plan,
     required this.selected,
-    required this.highlight,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: highlight ? AppTheme.primary : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
+    final isHighlight = plan.highlight;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
           color: selected
-              ? (highlight ? AppTheme.primary : AppTheme.primary)
-              : const Color(0xFFE4E7EF),
-          width: selected ? 1.8 : 1,
+              ? (isHighlight
+                  ? AppTheme.primary
+                  : AppTheme.primary.withValues(alpha: 0.08))
+              : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected
+                ? AppTheme.primary
+                : const Color(0xFFE4E7EF),
+            width: selected ? 1.8 : 1,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: AppTheme.primary.withValues(alpha: 0.12),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
-        boxShadow: selected
-            ? [
-                BoxShadow(
-                  color: AppTheme.primary.withValues(alpha: 0.15),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : null,
-      ),
-      child: Column(
-        children: [
-          Text(highlight ? '推荐' : name,
-              style: TextStyle(
-                fontSize: 13,
-                color: highlight ? Colors.white70 : AppTheme.textSub,
-              )),
-          const SizedBox(height: 8),
-          Text(price,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: highlight ? Colors.white : AppTheme.textMain,
-              )),
-          const SizedBox(height: 4),
-          Text('无限全部功能',
-              style: TextStyle(
-                fontSize: 12,
-                color: highlight ? Colors.white70 : AppTheme.textSub,
-              )),
-        ],
+        child: Row(
+          children: [
+            Icon(
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_off,
+              size: 22,
+              color: selected
+                  ? (isHighlight ? Colors.white : AppTheme.primary)
+                  : AppTheme.textSub,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(plan.name,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: selected && isHighlight
+                                ? Colors.white
+                                : AppTheme.textMain,
+                          )),
+                      if (isHighlight) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? Colors.white.withValues(alpha: 0.2)
+                                : AppTheme.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '限时',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: selected
+                                  ? Colors.white
+                                  : AppTheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(plan.desc,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: selected && isHighlight
+                            ? Colors.white70
+                            : AppTheme.textSub,
+                      )),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(plan.price,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: selected && isHighlight
+                      ? Colors.white
+                      : AppTheme.textMain,
+                )),
+          ],
+        ),
       ),
     );
   }
