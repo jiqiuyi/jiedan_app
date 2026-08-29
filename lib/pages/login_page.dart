@@ -18,6 +18,7 @@ class _LoginPageState extends State<LoginPage> {
   final _pwdCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
+  final _inviteCtrl = TextEditingController();
 
   bool _isRegister = false; // 登录 / 注册切换
   bool _obscurePwd = true;
@@ -32,6 +33,7 @@ class _LoginPageState extends State<LoginPage> {
     _pwdCtrl.dispose();
     _nameCtrl.dispose();
     _confirmCtrl.dispose();
+    _inviteCtrl.dispose();
     super.dispose();
   }
 
@@ -69,12 +71,9 @@ class _LoginPageState extends State<LoginPage> {
         _phoneCtrl.text.trim(),
         _pwdCtrl.text,
         _nameCtrl.text.trim(),
+        inviteCode: _inviteCtrl.text.trim(),
       );
-      // 注册成功自动登录
-      result ??= await AppState.instance.login(
-        _phoneCtrl.text.trim(),
-        _pwdCtrl.text,
-      );
+      // 注册成功即已自动登录（云端返回 token 与用户信息）
     } else {
       result = await AppState.instance.login(
         _phoneCtrl.text.trim(),
@@ -231,6 +230,19 @@ class _LoginPageState extends State<LoginPage> {
                   ],
                   if (_isRegister) ...[
                     const SizedBox(height: 14),
+                    TextField(
+                      controller: _inviteCtrl,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _submit(),
+                      decoration: const InputDecoration(
+                        labelText: '邀请码（选填）',
+                        prefixIcon: Icon(Icons.redeem_outlined),
+                        hintText: '填写好友邀请码，自动绑定推广关系',
+                      ),
+                    ),
+                  ],
+                  if (_isRegister) ...[
+                    const SizedBox(height: 14),
                     Row(
                       children: [
                         Checkbox(
@@ -243,9 +255,9 @@ class _LoginPageState extends State<LoginPage> {
                             onTap: () => showDialog(
                               context: context,
                               builder: (ctx) => AlertDialog(
-                                title: const Text('本地账号说明'),
+                                title: const Text('账号与数据说明'),
                                 content: const Text(
-                                  '当前版本为 MVP 阶段：账号与数据仅保存在本机，不传输到任何服务器。\n\n注意：卸载应用或清除数据后账号无法找回。正式版将接入云账号，支持跨设备同步。',
+                                  '账号、订阅与推广数据保存在云端服务器，支持跨设备登录同步。\n\n客户、项目、收款等业务数据仍只保存在本机，不上传服务器。\n\n注册即表示同意《用户协议》与《隐私政策》。',
                                   style: TextStyle(fontSize: 13),
                                 ),
                                 actions: [
@@ -257,7 +269,7 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             ),
                             child: const Text(
-                              '我已阅读并同意《用户协议》与《本地数据说明》',
+                              '我已阅读并同意《用户协议》与《隐私政策》',
                               style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                             ),
                           ),
@@ -308,7 +320,7 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 16),
                   const Center(
                     child: Text(
-                      '本地版：无需服务器，数据只存本机',
+                      '账号云端同步 · 业务数据仅存本机',
                       style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                     ),
                   ),

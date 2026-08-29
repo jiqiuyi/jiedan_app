@@ -4,16 +4,16 @@ import 'package:intl/intl.dart';
 
 import '../app_state.dart';
 import '../constants.dart';
-import '../database.dart';
 import '../models.dart';
 import '../theme.dart';
 import 'login_page.dart';
 
-/// 推广活动页（本地 MVP 版）
+/// 推广活动页（云端自动核验版）
 ///
 /// 规则：
-/// - 每推荐 2 位真实好友 → 免费送 VIP 1 个月
-/// - 拉来的新人真实付款开通 VIP → 返现 50%，上不封顶
+/// - 好友注册时填写你的邀请码，自动绑定邀请关系
+/// - 好友真实付款开通 VIP → 返现 50%，上不封顶
+/// - 每 2 位有效好友 → 免费送 VIP 1 个月（云端自动发放）
 class InvitePage extends StatefulWidget {
   const InvitePage({super.key});
 
@@ -37,13 +37,11 @@ class _InvitePageState extends State<InvitePage> {
 
   Future<void> _load() async {
     final st = AppState.instance;
-    // 检查是否触发"推荐送 VIP"
+    // 云端模式下 VIP 赠送由后端自动发放，本地兜底逻辑直接返回 false
     final granted = await st.grantInviteVipIfEligible();
     final code = await st.myInviteCode();
     final stats = await st.inviteStats();
-    final uid = st.currentUser?.id;
-    final list =
-        uid == null ? <Invitee>[] : await AppDb.instance.getInvitees(uid);
+    final list = await st.cloudInvitees();
     if (!mounted) return;
     setState(() {
       _inviteCode = code;
@@ -58,124 +56,6 @@ class _InvitePageState extends State<InvitePage> {
               '恭喜！已推荐 ${AppConfig.inviteFreeVipFriends} 位好友，免费获赠 VIP ${AppConfig.inviteRewardMonths.toStringAsFixed(0)} 个月'),
         ),
       );
-    }
-  }
-
-  Future<void> _addInvitee() async {
-    final nameCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('推荐了好友'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: '好友昵称/称呼 *',
-                hintText: '如：老张',
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: phoneCtrl,
-              keyboardType: TextInputType.phone,
-              maxLength: 11,
-              decoration: const InputDecoration(
-                labelText: '好友手机号（选填）',
-                counterText: '',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
-          FilledButton(
-            onPressed: () {
-              if (nameCtrl.text.trim().isEmpty) return;
-              Navigator.pop(ctx, true);
-            },
-            child: const Text('添加'),
-          ),
-        ],
-      ),
-    );
-    if (ok == true) {
-      await AppState.instance.addInvitee(
-          nameCtrl.text.trim(), phoneCtrl.text.trim());
-      await _load();
-    }
-  }
-
-  Future<void> _markPaid(Invitee e) async {
-    // 选择付款方案（月付 / 年付 / 两年 / 永久）
-    final plans = <({String label, double amount})>[
-      (
-        label:
-            '月付 ¥${AppConfig.monthlyPrice.toStringAsFixed(0)} · 返现 ¥${(AppConfig.monthlyPrice * AppConfig.rebateRate).toStringAsFixed(2)}',
-        amount: AppConfig.monthlyPrice,
-      ),
-      (
-        label:
-            '年付 ¥${AppConfig.yearlyPrice.toStringAsFixed(0)} · 返现 ¥${(AppConfig.yearlyPrice * AppConfig.rebateRate).toStringAsFixed(2)}',
-        amount: AppConfig.yearlyPrice,
-      ),
-      (
-        label:
-            '两年 ¥${AppConfig.twoYearPrice.toStringAsFixed(0)} · 返现 ¥${(AppConfig.twoYearPrice * AppConfig.rebateRate).toStringAsFixed(2)}',
-        amount: AppConfig.twoYearPrice,
-      ),
-      (
-        label:
-            '永久 ¥${AppConfig.foreverPrice.toStringAsFixed(0)} · 返现 ¥${(AppConfig.foreverPrice * AppConfig.rebateRate).toStringAsFixed(2)}',
-        amount: AppConfig.foreverPrice,
-      ),
-    ];
-    final planIndex = await showDialog<int>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text('${e.name} 真实付款开通 VIP'),
-        children: [
-          for (var i = 0; i < plans.length; i++)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, i),
-              child: Text(plans[i].label),
-            ),
-        ],
-      ),
-    );
-    if (planIndex == null) return;
-    final amount = plans[planIndex].amount;
-    await AppState.instance.markInviteePaid(e.id!, amount);
-    await _load();
-  }
-
-  Future<void> _remove(Invitee e) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除这条推荐记录'),
-        content: const Text('删除后该好友不再计入推荐进度。确定吗？'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-    if (ok == true) {
-      await AppState.instance.removeInvitee(e.id!);
-      await _load();
     }
   }
 
@@ -244,7 +124,7 @@ class _InvitePageState extends State<InvitePage> {
                       ),
                       const SizedBox(height: 12),
                       const Text(
-                        '把邀请码发给朋友，朋友注册时填入即可完成邀请。',
+                        '把邀请码发给朋友，朋友注册时填入即可自动完成邀请，无需手动登记。',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                       ),
@@ -283,7 +163,7 @@ class _InvitePageState extends State<InvitePage> {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        '推荐 ${_list.length}/$need 位好友，即可免费获得 VIP '
+                        '推荐 ${_list.length}/$need 位有效好友，即可免费获得 VIP '
                         '${AppConfig.inviteRewardMonths.toStringAsFixed(0)} 个月'
                         '${_stats.bonusGranted ? '（已领取）' : ''}',
                         style: const TextStyle(
@@ -304,39 +184,27 @@ class _InvitePageState extends State<InvitePage> {
                   ),
                 ),
               ),
-              // ---- 添加好友 ----
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                child: FilledButton.icon(
-                  onPressed: _addInvitee,
-                  icon: const Icon(Icons.person_add_alt_1),
-                  label: const Text('推荐了好友'),
-                ),
-              ),
               // ---- 好友列表 ----
               if (_list.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(28),
                   child: Center(
-                    child: Text('还没有推荐记录\n点击上方按钮登记推荐的好友',
+                    child: Text('还没有好友通过你的邀请码注册\n把邀请码发给朋友，注册后自动出现在这里',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: AppTheme.textSub)),
                   ),
                 )
               else
-                ..._list.map((e) => _InviteeTile(
-                      e: e,
-                      onMarkPaid: () => _markPaid(e),
-                      onDelete: () => _remove(e),
-                    )),
+                ..._list.map((e) => _InviteeTile(e: e)),
               const SizedBox(height: 12),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
                 child: Text(
-                  '活动规则（本地版说明）：\n'
-                  '1. 每推荐 2 位真实好友，免费赠送 VIP 1 个月；\n'
-                  '2. 好友真实付款开通 VIP，您获得其付款金额 50% 的返现，上不封顶；\n'
-                  '3. 当前为 MVP 本地版，好友与付款需手动登记，接入云端后将自动核验。',
+                  '活动规则（云端自动核验）：\n'
+                  '1. 好友注册时填写你的邀请码，系统自动绑定邀请关系；\n'
+                  '2. 好友付款开通专业版后自动返现其付款金额的 50%，上不封顶；\n'
+                  '3. 每 2 位有效好友自动免费赠送 VIP 1 个月；\n'
+                  '4. 邀请关系与返现均由云端自动结算，无需手动登记与标记。',
                   style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                 ),
               ),
@@ -372,38 +240,57 @@ class _Stat extends StatelessWidget {
 
 class _InviteeTile extends StatelessWidget {
   final Invitee e;
-  final VoidCallback onMarkPaid;
-  final VoidCallback onDelete;
-  const _InviteeTile(
-      {required this.e, required this.onMarkPaid, required this.onDelete});
+  const _InviteeTile({required this.e});
 
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat('#,##0.00');
+    final name = e.name.trim().isEmpty ? '好友${e.id ?? ''}' : e.name;
     return Card(
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
           foregroundColor: AppTheme.primary,
           child: Text(
-            e.name.characters.first,
+            name.characters.first,
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
-        title: Text(e.name,
+        title: Text(name,
             style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(e.paid
-            ? '已付款 ¥${fmt.format(e.payAmount)} · 返现 ¥${fmt.format(e.rebate)}'
-            : (e.phone.isNotEmpty ? e.phone : '待付款')),
+        subtitle: Text(
+          e.paid
+              ? '已付款 ¥${fmt.format(e.payAmount)} · 返现 ¥${fmt.format(e.rebate)}'
+              : (e.phone.isNotEmpty ? e.phone : '已注册 · 待付款'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         trailing: e.paid
-            ? IconButton(
-                icon: const Icon(Icons.delete_outline,
-                    size: 20, color: AppTheme.textSub),
-                onPressed: onDelete,
+            ? Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppTheme.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text('已返现',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.accent,
+                        fontWeight: FontWeight.w600)),
               )
-            : TextButton(
-                onPressed: onMarkPaid,
-                child: const Text('标记付款'),
+            : Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppTheme.textSub.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text('待付款',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textSub,
+                        fontWeight: FontWeight.w600)),
               ),
       ),
     );
