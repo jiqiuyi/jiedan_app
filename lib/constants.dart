@@ -7,6 +7,10 @@ class AppConfig {
   static const String appName = '接单管家';
   static const String version = '1.6.0';
 
+  // ---- 云端后端 ----
+  // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）仍存本地。
+  static const String apiBaseUrl = 'http://121.41.97.109:8090';
+
   // ---- 免费版额度（达到上限后触发付费引导）----
   static const int freeCustomerLimit = 1; // 免费版客户上限
   static const int freeProjectLimit = 3; // 免费版活跃项目上限
