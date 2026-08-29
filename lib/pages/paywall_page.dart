@@ -44,12 +44,6 @@ class _PaywallPageState extends State<PaywallPage> {
           months: 12,
         ),
         const _Plan(
-          name: '两年',
-          price: '¥${AppConfig.twoYearPrice}',
-          desc: '两年畅用，更划算',
-          months: 24,
-        ),
-        const _Plan(
           name: '永久',
           price: '¥${AppConfig.foreverPrice}',
           desc: '一次买断，永久使用',
@@ -136,9 +130,7 @@ class _PaywallPageState extends State<PaywallPage> {
           ? 'firstMonth'
           : (plan.lifetime
               ? 'forever'
-              : (plan.months >= 24
-                  ? 'twoYear'
-                  : (plan.months >= 12 ? 'year' : 'month')));
+              : (plan.months >= 12 ? 'year' : 'month'));
       final order = await AppState.instance.createOrder(planKey);
       if (!mounted) return;
       // 展示模拟收银台（MVP：显示订单信息，模拟支付）

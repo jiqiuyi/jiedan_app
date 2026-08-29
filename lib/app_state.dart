@@ -226,7 +226,7 @@ class AppState extends ChangeNotifier {
   // ==================== 订阅 / 支付（云端订单） ====================
 
   /// 创建云端订单。
-  /// [plan] 取值：firstMonth / month / year / twoYear / forever
+  /// [plan] 取值：firstMonth / month / year / forever
   /// 返回订单信息 { orderId, orderNo, amount, plan, qrPayload }；失败抛异常。
   Future<Map<String, dynamic>> createOrder(String plan) {
     return ApiClient.instance.createOrder(plan);

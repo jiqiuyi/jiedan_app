@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.6.0';
+  static const String version = '1.7.1';
 
   // ---- 云端后端 ----
   // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）仍存本地。
@@ -20,8 +20,7 @@ class AppConfig {
   static const double firstMonthPrice = 1; // 首月特惠价（元，仅一次）
   static const double monthlyPrice = 10; // 月订阅价（元，首月之后）
   static const double yearlyPrice = 68; // 年订阅价（元）
-  static const double twoYearPrice = 98; // 两年订阅价（元）
-  static const double foreverPrice = 128; // 永久订阅价（元，一次买断）
+  static const double foreverPrice = 98; // 永久订阅价（元，一次买断）
 
   // ---- 报价默认参数 ----
   static const double defaultHourRate = 150; // 默认工时单价（元/小时）
@@ -42,7 +41,7 @@ class AppConfig {
   // ---- 推广活动规则（本地 MVP 版，手动确认）----
   static const int inviteFreeVipFriends = 2; // 推荐好友数达到该值 → 送 1 个月 VIP
   static const double inviteRewardMonths = 1; // 达成推荐目标赠送的 VIP 月数
-  static const double rebateRate = 0.50; // 新人真实付款开通 VIP → 返现比例（上不封顶）
+  static const double rebateRate = 0.50; // 新人真实付款开通 VIP → 按比例返现
 }
 
 // 项目状态

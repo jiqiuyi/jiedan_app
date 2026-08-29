@@ -114,7 +114,7 @@ class ApiClient {
   // ---------------- 订阅 / 支付 ----------------
 
   /// 创建订单，返回 { orderId, orderNo, amount, plan, qrPayload }
-  /// [plan] 取值：firstMonth / month / year / twoYear / forever
+  /// [plan] 取值：firstMonth / month / year / forever
   Future<Map<String, dynamic>> createOrder(String plan) async {
     final json = await _call('POST', '/api/order', {
       'token': _token,
