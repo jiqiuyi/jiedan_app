@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -25,6 +26,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
   Map<int, double> _paidTotals = {};
   int _tab = 0; // 0=全部, 1..4=状态+1
   String _query = '';
+  Timer? _debounce;
   bool _loading = true;
 
   final _tabs = ['全部', '接单', '制作中', '待收尾款', '完结'];
@@ -33,6 +35,12 @@ class _ProjectsPageState extends State<ProjectsPage> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -165,7 +173,13 @@ class _ProjectsPageState extends State<ProjectsPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
             child: TextField(
-              onChanged: (v) => setState(() => _query = v),
+              onChanged: (v) {
+                // 200ms 防抖
+                _debounce?.cancel();
+                _debounce = Timer(const Duration(milliseconds: 200), () {
+                  if (mounted) setState(() => _query = v);
+                });
+              },
               textInputAction: TextInputAction.search,
               style: const TextStyle(fontSize: 14),
               decoration: InputDecoration(
@@ -219,6 +233,8 @@ class _ProjectsPageState extends State<ProjectsPage> {
                     : ListView.builder(
                         padding: const EdgeInsets.only(top: 4, bottom: 90),
                         itemCount: items.length,
+                        // 大列表优化：固定行高减少 layout 开销
+                        itemExtent: 104,
                         itemBuilder: (ctx, i) {
                           final pr = items[i];
                           final paid = _paidTotals[pr.id] ?? 0;

@@ -46,7 +46,12 @@ class ApiClient {
     Map<String, dynamic>? body,
   ) async {
     final uri = Uri.parse('${AppConfig.apiBaseUrl}$path');
-    final headers = <String, String>{'Content-Type': 'application/json'};
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      // 鉴权统一走 Authorization 头；真实支付接入后此处不变，仅替换 pay 接口
+      if (_token != null && _token!.isNotEmpty)
+        'Authorization': 'Bearer $_token',
+    };
     late http.Response resp;
     try {
       if (method == 'GET') {
@@ -108,16 +113,16 @@ class ApiClient {
   Future<Map<String, dynamic>> me() async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('GET', '/api/me?token=$t', null);
+    return _call('GET', '/api/me', null);
   }
 
   // ---------------- 订阅 / 支付 ----------------
 
   /// 创建订单，返回 { orderId, orderNo, amount, plan, qrPayload }
   /// [plan] 取值：firstMonth / month / year / forever
+  /// 【真实支付接入点】拿到商户号后，此处改为调用真实下单接口。
   Future<Map<String, dynamic>> createOrder(String plan) async {
     final json = await _call('POST', '/api/order', {
-      'token': _token,
       'plan': plan,
     });
     return json;
@@ -127,7 +132,6 @@ class ApiClient {
   /// 开通专业版 + 邀请人返现 + 满员送 VIP 的结算。
   Future<Map<String, dynamic>> mockPay(int orderId) async {
     return _call('POST', '/api/pay/simulate', {
-      'token': _token,
       'orderId': orderId,
     });
   }

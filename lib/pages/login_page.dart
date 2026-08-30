@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_state.dart';
 import '../constants.dart';
 import '../theme.dart';
+import 'privacy_policy_page.dart';
 
 /// 登录 / 注册页
 /// MVP 阶段为本地账号体系：账号仅保存在本机 SQLite，无云端。
@@ -23,7 +24,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _isRegister = false; // 登录 / 注册切换
   bool _obscurePwd = true;
   bool _obscureConfirm = true;
-  bool _agree = true;
+  bool _agree = false;
   bool _loading = false;
   String? _error;
 
@@ -45,10 +46,12 @@ class _LoginPageState extends State<LoginPage> {
     if (_pwdCtrl.text.length < 6) {
       return '密码至少 6 位';
     }
+    if (!_agree) {
+      return '请先阅读并同意《用户协议》与《隐私政策》';
+    }
     if (_isRegister) {
       if (_pwdCtrl.text.length > 20) return '密码最多 20 位';
       if (_pwdCtrl.text != _confirmCtrl.text) return '两次输入的密码不一致';
-      if (!_agree) return '请先阅读并同意服务条款';
     }
     return null;
   }
@@ -241,42 +244,30 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ],
-                  if (_isRegister) ...[
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Checkbox(
-                          value: _agree,
-                          activeColor: AppTheme.primary,
-                          onChanged: (v) => setState(() => _agree = v ?? false),
-                        ),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => showDialog(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text('账号与数据说明'),
-                                content: const Text(
-                                  '账号、订阅与推广数据保存在云端服务器，支持跨设备登录同步。\n\n客户、项目、收款等业务数据仍只保存在本机，不上传服务器。\n\n注册即表示同意《用户协议》与《隐私政策》。',
-                                  style: TextStyle(fontSize: 13),
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(ctx),
-                                    child: const Text('知道了'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            child: const Text(
-                              '我已阅读并同意《用户协议》与《隐私政策》',
-                              style: TextStyle(fontSize: 12, color: AppTheme.textSub),
-                            ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: _agree,
+                        activeColor: AppTheme.primary,
+                        onChanged: (v) => setState(() => _agree = v ?? false),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const PrivacyPolicyPage()),
+                          ),
+                          child: const Text(
+                            '我已阅读并同意《用户协议》与《隐私政策》',
+                            style: TextStyle(
+                                fontSize: 12, color: AppTheme.textSub),
                           ),
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     Container(

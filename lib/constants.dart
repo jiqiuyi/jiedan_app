@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.7.1';
+  static const String version = '1.8.0';
 
   // ---- 云端后端 ----
   // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）仍存本地。
@@ -28,7 +28,7 @@ class AppConfig {
 
   // ---- 数据库 ----
   static const String dbName = 'jiedan_guanjia.db';
-  static const int dbVersion = 6; // v6：新增钱包充值（recharges 表）
+  static const int dbVersion = 7; // v7：收款类型扩展（payments.type_label）+ 报价单落库（quotes 表）
 
   // ---- 钱包 / 提现 ----
   // 提现账户保存键（settings）：值为 JSON {"method":0,"name":"","no":""}
@@ -69,7 +69,8 @@ enum ProjectStatus {
 enum PayType {
   deposit, // 定金
   balance, // 尾款
-  full; // 全额
+  full, // 全额
+  custom; // 自定义（名称存 payments.type_label）
 
   String get label {
     switch (this) {
@@ -79,6 +80,8 @@ enum PayType {
         return '尾款';
       case PayType.full:
         return '全额';
+      case PayType.custom:
+        return '自定义';
     }
   }
 }

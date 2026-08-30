@@ -104,6 +104,7 @@ class Payment {
   final int projectId;
   final double amount;
   final PayType type;
+  final String typeLabel; // 自定义类型名称（type==custom 时有效）
   final int paidAt;
   final String note;
 
@@ -112,15 +113,21 @@ class Payment {
     required this.projectId,
     required this.amount,
     required this.type,
+    this.typeLabel = '',
     required this.paidAt,
     this.note = '',
   });
+
+  /// 展示用收款类型名：自定义类型显示自定义名称，否则显示枚举 label。
+  String get displayType =>
+      type == PayType.custom ? (typeLabel.trim().isEmpty ? '自定义' : typeLabel.trim()) : type.label;
 
   Map<String, Object?> toMap() => {
         'id': id,
         'project_id': projectId,
         'amount': amount,
         'type': type.index,
+        'type_label': typeLabel,
         'paid_at': paidAt,
         'note': note,
       };
@@ -130,6 +137,7 @@ class Payment {
         projectId: m['project_id'] as int,
         amount: ((m['amount'] as num?) ?? 0).toDouble(),
         type: PayType.values[m['type'] as int],
+        typeLabel: (m['type_label'] as String?) ?? '',
         paidAt: m['paid_at'] as int,
         note: (m['note'] as String?) ?? '',
       );
@@ -196,8 +204,11 @@ class WithdrawAccount {
 
   bool get filled => name.trim().isNotEmpty && no.trim().isNotEmpty;
 
-  String toJson() =>
-      '{"method":${method.index},"name":"${name.replaceAll('"', '\\"')}","no":"${no.replaceAll('"', '\\"')}"}';
+  String toJson() => jsonEncode({
+        'method': method.index,
+        'name': name,
+        'no': no,
+      });
 
   factory WithdrawAccount.fromJson(String? raw) {
     if (raw == null || raw.trim().isEmpty) return const WithdrawAccount();
@@ -368,7 +379,7 @@ class Recharge {
       );
 }
 
-// 报价单行（用于计算展示，不入库）
+// 报价单行（可序列化入库：quotes.lines_json）
 class QuoteLine {
   final String itemName;
   final double hours;
@@ -384,6 +395,72 @@ class QuoteLine {
 
   double get laborCost => hours * hourRate;
   double get subtotal => laborCost + materialFee;
+
+  Map<String, Object?> toMap() => {
+        'itemName': itemName,
+        'hours': hours,
+        'hourRate': hourRate,
+        'materialFee': materialFee,
+      };
+
+  factory QuoteLine.fromMap(Map<String, Object?> m) => QuoteLine(
+        itemName: (m['itemName'] as String?) ?? '',
+        hours: ((m['hours'] as num?) ?? 0).toDouble(),
+        hourRate: ((m['hourRate'] as num?) ?? 0).toDouble(),
+        materialFee: ((m['materialFee'] as num?) ?? 0).toDouble(),
+      );
+}
+
+/// 报价单（v7 新增，落库历史）。
+/// 保存后可查看历史、重新打开编辑、复制文本；可关联到项目。
+class Quote {
+  final int? id;
+  final int? projectId; // 可空：不关联项目
+  final String title; // 报价单标题（客户/项目名）
+  final double taxRate; // 税率（%）
+  final List<QuoteLine> lines;
+  final double total; // 报价总额（含税）
+  final int createdAt;
+
+  const Quote({
+    this.id,
+    this.projectId,
+    required this.title,
+    this.taxRate = 0,
+    this.lines = const [],
+    this.total = 0,
+    required this.createdAt,
+  });
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'project_id': projectId,
+        'title': title,
+        'tax_rate': taxRate,
+        'lines_json': jsonEncode(lines.map((e) => e.toMap()).toList()),
+        'total': total,
+        'created_at': createdAt,
+      };
+
+  factory Quote.fromMap(Map<String, Object?> m) {
+    final linesRaw = (m['lines_json'] as String?) ?? '[]';
+    List<QuoteLine> lines = [];
+    try {
+      final list = jsonDecode(linesRaw) as List;
+      lines = list
+          .map((e) => QuoteLine.fromMap((e as Map).cast<String, Object?>()))
+          .toList();
+    } catch (_) {/* 解析失败按空行处理 */}
+    return Quote(
+      id: m['id'] as int?,
+      projectId: m['project_id'] as int?,
+      title: (m['title'] as String?) ?? '',
+      taxRate: ((m['tax_rate'] as num?) ?? 0).toDouble(),
+      lines: lines,
+      total: ((m['total'] as num?) ?? 0).toDouble(),
+      createdAt: (m['created_at'] as int?) ?? 0,
+    );
+  }
 }
 
 /// 本地账号：手机号 + 密码哈希 + 订阅状态。

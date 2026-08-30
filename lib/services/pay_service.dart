@@ -66,6 +66,9 @@ abstract class PayChannel {
   Future<PaymentResult> createPayment(PaymentRequest req);
 
   /// 查询订单状态（真实通道接入后轮询/回调使用）。
+  /// 调用方：手动确认到账流程（项目收款 show_payment_code.dart 的 _confirm、
+  /// 钱包充值到账确认）会先调用本方法查询订单状态；MVP 手动模式直接返回
+  /// "无需查询"，真实通道接入后此处返回平台查单结果，页面据此提示用户。
   Future<PaymentResult> query(PaymentRequest req);
 }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models.dart';
@@ -18,11 +19,18 @@ class _CustomersPageState extends State<CustomersPage> {
   List<Customer> _customers = [];
   bool _loading = true;
   String _query = '';
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -110,7 +118,8 @@ class _CustomersPageState extends State<CustomersPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除客户'),
-        content: Text('确定删除客户「${c.name}」吗？其下的项目记录不会删除。'),
+        content: Text(
+            '确定删除客户「${c.name}」吗？\n其名下全部项目及收款记录将被一并删除，不可恢复。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           FilledButton(
@@ -150,7 +159,13 @@ class _CustomersPageState extends State<CustomersPage> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
                   child: TextField(
-                    onChanged: (v) => setState(() => _query = v),
+                    onChanged: (v) {
+                      // 200ms 防抖
+                      _debounce?.cancel();
+                      _debounce = Timer(const Duration(milliseconds: 200), () {
+                        if (mounted) setState(() => _query = v);
+                      });
+                    },
                     textInputAction: TextInputAction.search,
                     style: const TextStyle(fontSize: 14),
                     decoration: InputDecoration(
@@ -175,6 +190,8 @@ class _CustomersPageState extends State<CustomersPage> {
                           : ListView.builder(
                               padding: const EdgeInsets.only(top: 8, bottom: 80),
                               itemCount: customers.length,
+                              // 大列表优化：固定行高减少 layout 开销
+                              itemExtent: 72,
                               itemBuilder: (ctx, i) {
                                 final c = customers[i];
                                 return Card(
