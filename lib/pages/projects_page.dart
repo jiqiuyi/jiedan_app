@@ -257,28 +257,36 @@ class _ProjectsPageState extends State<ProjectsPage> {
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(color: AppTheme.textSub)),
                                   const SizedBox(height: 4),
-                                  Text.rich(
-                                    TextSpan(
-                                      children: [
-                                        const TextSpan(text: '已收 ', style: TextStyle(color: AppTheme.textSub)),
-                                        TextSpan(
-                                          text: '¥${NumberFormat('#,##0.00').format(paid)}',
-                                          style: TextStyle(
-                                              color: AppTheme.accent,
-                                              fontWeight: FontWeight.w700),
-                                        ),
-                                        const TextSpan(text: '　待收 ', style: TextStyle(color: AppTheme.textSub)),
-                                        TextSpan(
-                                          text: remaining <= 0
-                                              ? '已结清'
-                                              : '¥${NumberFormat('#,##0.00').format(remaining)}',
-                                          style: TextStyle(
-                                              color: remaining <= 0 ? AppTheme.accent : AppTheme.warn,
-                                              fontWeight: FontWeight.w700),
-                                        ),
-                                      ],
+                                  // 金额行：FittedBox 自动缩放适应宽度，永不换行、不截断
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Text.rich(
+                                      TextSpan(
+                                        children: [
+                                          const TextSpan(text: '已收 ', style: TextStyle(color: AppTheme.textSub)),
+                                          TextSpan(
+                                            text: '¥${NumberFormat('#,##0.00').format(paid)}',
+                                            style: TextStyle(
+                                                color: AppTheme.accent,
+                                                fontWeight: FontWeight.w700),
+                                          ),
+                                          const TextSpan(text: '　待收 ', style: TextStyle(color: AppTheme.textSub)),
+                                          TextSpan(
+                                            text: remaining <= 0
+                                                ? '已结清'
+                                                : '¥${NumberFormat('#,##0.00').format(remaining)}',
+                                            style: TextStyle(
+                                                color: remaining <= 0 ? AppTheme.accent : AppTheme.warn,
+                                                fontWeight: FontWeight.w700),
+                                          ),
+                                        ],
+                                      ),
+                                      style: const TextStyle(fontSize: 13),
+                                      maxLines: 1,
+                                      softWrap: false,
+                                      overflow: TextOverflow.visible,
                                     ),
-                                    style: const TextStyle(fontSize: 13),
                                   ),
                                 ],
                               ),
