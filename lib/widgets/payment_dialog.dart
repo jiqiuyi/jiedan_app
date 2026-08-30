@@ -22,6 +22,7 @@ Future<bool> showPaymentDialog(
 }) async {
   final amountCtrl = TextEditingController();
   final noteCtrl = TextEditingController();
+  final customTypeCtrl = TextEditingController();
   final remaining = (amountTotal - paidTotal).clamp(0, double.infinity);
 
   // 根据收款阶段挑选默认类型
@@ -48,6 +49,7 @@ Future<bool> showPaymentDialog(
   }
 
   var type = defaultType;
+  var customTypeError = false;
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => StatefulBuilder(
@@ -75,6 +77,18 @@ Future<bool> showPaymentDialog(
                   .toList(),
               onChanged: (v) => setDlg(() => type = v!),
             ),
+            if (type == PayType.custom) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: customTypeCtrl,
+                decoration: InputDecoration(
+                  labelText: '自定义类型名称 *',
+                  hintText: '如：首期款 / 二期款 / 质保金',
+                  errorText: customTypeError ? '请输入自定义类型名称' : null,
+                ),
+                onChanged: (_) => setDlg(() => customTypeError = false),
+              ),
+            ],
             const SizedBox(height: 12),
             TextField(
               controller: noteCtrl,
@@ -87,7 +101,16 @@ Future<bool> showPaymentDialog(
           FilledButton(
             onPressed: () {
               final v = double.tryParse(amountCtrl.text.trim());
-              Navigator.pop(ctx, v != null && v > 0);
+              if (v == null || v <= 0) {
+                Navigator.pop(ctx, false);
+                return;
+              }
+              if (type == PayType.custom &&
+                  customTypeCtrl.text.trim().isEmpty) {
+                setDlg(() => customTypeError = true);
+                return;
+              }
+              Navigator.pop(ctx, true);
             },
             child: const Text('保存'),
           ),
@@ -101,6 +124,7 @@ Future<bool> showPaymentDialog(
       projectId: projectId,
       amount: double.parse(amountCtrl.text.trim()),
       type: type,
+      typeLabel: type == PayType.custom ? customTypeCtrl.text.trim() : '',
       paidAt: DateTime.now().millisecondsSinceEpoch,
       note: noteCtrl.text.trim(),
     ));

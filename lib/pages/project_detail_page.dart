@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../state/ticker.dart';
 import '../widgets/payment_dialog.dart';
 import '../widgets/show_payment_code.dart';
+import 'quote_page.dart';
 
 class ProjectDetailPage extends StatefulWidget {
   final Project project;
@@ -78,9 +79,38 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
   }
 
   Future<void> _deletePayment(Payment p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除收款记录'),
+        content: Text(
+            '确定删除这笔 ¥${_fmt.format(p.amount)} 的收款记录吗？\n删除后项目已收金额会相应减少。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
     await AppDb.instance.deletePayment(p.id!);
     Ticker.ping();
     await _load();
+  }
+
+  /// 项目详情收款入口：选渠道 → 展示收款码 → 手动确认到账
+  Future<void> _collectPayment() async {
+    final ok = await showProjectCollectSheet(
+      context,
+      projectId: _project.id!,
+      projectTitle: _project.title,
+      amountTotal: _project.amountTotal,
+      paidTotal: _paidTotal,
+    );
+    if (ok) await _load();
   }
 
   Future<void> _deleteProject() async {
@@ -111,7 +141,26 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     final remaining = (_project.amountTotal - _paidTotal).clamp(0, double.infinity);
     final progress = _project.amountTotal <= 0 ? 0.0 : (_paidTotal / _project.amountTotal);
     return Scaffold(
-      appBar: AppBar(title: Text(_project.title)),
+      appBar: AppBar(
+        title: Text(_project.title),
+        actions: [
+          IconButton(
+            tooltip: '报价单',
+            icon: const Icon(Icons.receipt_long_outlined),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => QuotePage(
+                    initialProjectId: _project.id,
+                    initialTitle: _project.title,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -171,9 +220,9 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                     children: [
                       const Expanded(child: Text('收款记录', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
                       TextButton.icon(
-                        onPressed: () => showPaymentCodeSheet(context),
-                        icon: const Icon(Icons.qr_code, size: 18),
-                        label: const Text('出示收款码'),
+                        onPressed: _collectPayment,
+                        icon: const Icon(Icons.payments_outlined, size: 18),
+                        label: const Text('收款'),
                       ),
                       TextButton.icon(onPressed: _addPayment, icon: const Icon(Icons.add, size: 18), label: const Text('登记收款')),
                     ],
@@ -189,7 +238,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                         child: ListTile(
                           leading: Icon(Icons.account_balance_wallet_outlined, color: AppTheme.accent),
                           title: Text('¥${_fmt.format(p.amount)}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                          subtitle: Text('${p.type.label} · ${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(p.paidAt))}${p.note.isEmpty ? '' : ' · ${p.note}'}'),
+                          subtitle: Text('${p.displayType} · ${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(p.paidAt))}${p.note.isEmpty ? '' : ' · ${p.note}'}'),
                           trailing: IconButton(
                             icon: const Icon(Icons.delete_outline, size: 20, color: AppTheme.textSub),
                             onPressed: () => _deletePayment(p),

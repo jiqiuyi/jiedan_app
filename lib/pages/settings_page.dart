@@ -10,6 +10,7 @@ import 'invite_page.dart';
 import 'payment_code_settings_page.dart';
 import 'data_management_page.dart';
 import 'wallet_page.dart';
+import 'privacy_policy_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -241,6 +242,22 @@ class _SettingsPageState extends State<SettingsPage> {
                     context,
                     MaterialPageRoute(
                         builder: (_) => const DataManagementPage()),
+                  ),
+                ),
+              ),
+              // ---- 隐私政策入口 ----
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.privacy_tip_outlined,
+                      color: AppTheme.primary),
+                  title: const Text('隐私政策'),
+                  subtitle: const Text('数据存储说明 · 业务数据仅存本机'),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: AppTheme.textSub),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const PrivacyPolicyPage()),
                   ),
                 ),
               ),
