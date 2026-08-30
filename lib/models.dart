@@ -411,8 +411,10 @@ class QuoteLine {
       );
 }
 
-/// 报价单（v7 新增，落库历史）。
+/// 报价单（v7 新增，落库历史；v8 扩展简单/详细两种类型）。
 /// 保存后可查看历史、重新打开编辑、复制文本；可关联到项目。
+/// - type='simple'：简单报价（一口价含税，无明细/税率，有备注）
+/// - type='full'：详细报价（明细 + 税率自动计算）
 class Quote {
   final int? id;
   final int? projectId; // 可空：不关联项目
@@ -421,6 +423,9 @@ class Quote {
   final List<QuoteLine> lines;
   final double total; // 报价总额（含税）
   final int createdAt;
+  final String type; // 'simple' 简单报价 / 'full' 详细报价
+  final String note; // 备注（简单报价常用，详细报价可选）
+  final bool taxInclude; // 总额是否含税（简单报价恒 true）
 
   const Quote({
     this.id,
@@ -430,7 +435,12 @@ class Quote {
     this.lines = const [],
     this.total = 0,
     required this.createdAt,
+    this.type = 'full',
+    this.note = '',
+    this.taxInclude = true,
   });
+
+  bool get isSimple => type == 'simple';
 
   Map<String, Object?> toMap() => {
         'id': id,
@@ -440,6 +450,9 @@ class Quote {
         'lines_json': jsonEncode(lines.map((e) => e.toMap()).toList()),
         'total': total,
         'created_at': createdAt,
+        'quote_type': type,
+        'note': note,
+        'tax_include': taxInclude ? 1 : 0,
       };
 
   factory Quote.fromMap(Map<String, Object?> m) {
@@ -459,6 +472,10 @@ class Quote {
       lines: lines,
       total: ((m['total'] as num?) ?? 0).toDouble(),
       createdAt: (m['created_at'] as int?) ?? 0,
+      type: (m['quote_type'] as String?) ?? 'full',
+      note: (m['note'] as String?) ?? '',
+      taxInclude:
+          (m['tax_include'] as int?) == null ? true : (m['tax_include'] as int) == 1,
     );
   }
 }

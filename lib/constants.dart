@@ -24,11 +24,12 @@ class AppConfig {
 
   // ---- 报价默认参数 ----
   static const double defaultHourRate = 150; // 默认工时单价（元/小时）
-  static const double defaultTaxRate = 0.06; // 默认综合税率
+  // 默认综合税率：未填写税率时按 0 计算，不自动计税（用户可自行填写）
+  static const double defaultTaxRate = 0;
 
   // ---- 数据库 ----
   static const String dbName = 'jiedan_guanjia.db';
-  static const int dbVersion = 7; // v7：收款类型扩展（payments.type_label）+ 报价单落库（quotes 表）
+  static const int dbVersion = 8; // v8：报价单支持简单/详细类型（quotes 增 quote_type/note/tax_include）
 
   // ---- 钱包 / 提现 ----
   // 提现账户保存键（settings）：值为 JSON {"method":0,"name":"","no":""}

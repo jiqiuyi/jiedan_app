@@ -93,6 +93,9 @@ class AppDb {
         if (oldVersion < 7) {
           await _migrateToV7(db);
         }
+        if (oldVersion < 8) {
+          await _migrateToV8(db);
+        }
       },
     );
   }
@@ -172,7 +175,7 @@ class AppDb {
     ''');
   }
 
-  /// v7 新增：报价单历史表
+  /// v7 新增：报价单历史表；v8 扩展简单/详细类型三列。
   Future<void> _createQuotes(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS quotes(
@@ -182,7 +185,10 @@ class AppDb {
         tax_rate REAL DEFAULT 0,
         lines_json TEXT,
         total REAL DEFAULT 0,
-        created_at INTEGER
+        created_at INTEGER,
+        quote_type TEXT DEFAULT 'full',
+        note TEXT,
+        tax_include INTEGER DEFAULT 1
       )
     ''');
   }
@@ -197,6 +203,22 @@ class AppDb {
       await db.execute('ALTER TABLE payments ADD COLUMN type_label TEXT');
     }
     await _createQuotes(db);
+  }
+
+  /// v8 迁移：quotes 表新增 quote_type / note / tax_include 三列。
+  /// 存量报价单统一标记为 'full'（详细报价），tax_include 默认 1，note 置空。
+  Future<void> _migrateToV8(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(quotes)');
+    if (!cols.any((c) => c['name'] == 'quote_type')) {
+      await db
+          .execute("ALTER TABLE quotes ADD COLUMN quote_type TEXT DEFAULT 'full'");
+    }
+    if (!cols.any((c) => c['name'] == 'note')) {
+      await db.execute('ALTER TABLE quotes ADD COLUMN note TEXT');
+    }
+    if (!cols.any((c) => c['name'] == 'tax_include')) {
+      await db.execute('ALTER TABLE quotes ADD COLUMN tax_include INTEGER DEFAULT 1');
+    }
   }
 
   // ---------- settings ----------
