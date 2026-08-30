@@ -7,9 +7,11 @@ import '../theme.dart';
 import '../models.dart';
 import '../database.dart';
 
-/// 报价计算与报价单管理（v7 起支持落库历史）：
-/// - 计算报价 → 复制文本发给客户；
-/// - 保存报价单（可关联项目）→ 历史列表可重新打开编辑、复制、删除。
+/// 报价单双 Tab 管理（v8 起支持 简单报价 / 详细报价）：
+/// - 简单报价 Tab：一口价快速报价（客户/项目二选一 + 大号金额 + 备注），一屏内完成；
+/// - 详细报价 Tab：保留原明细计税能力（工时/单价/物料费/税率/合计）；
+/// - 两 Tab 表单数据完全隔离，切换不互相覆盖；
+/// - 历史记录按类型标记，简单报价可一键转为详细报价。
 class QuotePage extends StatefulWidget {
   /// 从项目详情进入时预选关联项目
   final int? initialProjectId;
@@ -21,7 +23,20 @@ class QuotePage extends StatefulWidget {
   State<QuotePage> createState() => _QuotePageState();
 }
 
-class _QuotePageState extends State<QuotePage> {
+class _QuotePageState extends State<QuotePage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  // ================= 简单报价状态（与详细报价完全隔离） =================
+  int _simpleTargetMode = 0; // 0=客户名称手动输入, 1=关联项目
+  final _simpleNameCtrl = TextEditingController(); // 客户名称
+  int? _simpleProjectId; // 关联项目
+  final _simpleAmountCtrl = TextEditingController(); // 报价总额
+  final _simpleNoteCtrl = TextEditingController(); // 备注（可选）
+  int? _simpleQuoteId; // 正在编辑的简单报价历史 id（null=新建）
+  int? _simpleCreatedAt; // 编辑历史时保留原时间戳
+
+  // ================= 详细报价状态（保留原有能力） =================
   final _lines = <QuoteLine>[
     const QuoteLine(itemName: '设计服务', hours: 8, hourRate: AppConfig.defaultHourRate),
   ];
@@ -29,18 +44,53 @@ class _QuotePageState extends State<QuotePage> {
   final _fmt = NumberFormat('#,##0.00');
   final _clientCtrl = TextEditingController();
   final _titleCtrl = TextEditingController();
+  final _taxCtrl = TextEditingController(); // 税率输入框（留空 = 按 0 计税）
+  final _detailNoteCtrl = TextEditingController(); // 详细报价备注（可选）
   int? _quoteId; // 当前编辑的历史报价单 id（null=新建）
+  int? _quoteCreatedAt; // 编辑历史时保留原时间戳
   int? _projectId; // 关联项目
   List<Project> _projects = [];
+  List<Customer> _customers = []; // 关联项目回填客户名
 
   double get _subtotal =>
       _lines.fold(0, (sum, l) => sum + l.laborCost + l.materialFee);
   double get _tax => _subtotal * _taxRate;
   double get _total => _subtotal + _tax;
 
+  /// 简单报价对象名：客户名称 / 关联项目标题 二选一
+  String get _simpleObjectName {
+    if (_simpleTargetMode == 1 && _simpleProjectId != null) {
+      for (final pr in _projects) {
+        if (pr.id == _simpleProjectId) return pr.title;
+      }
+      return '';
+    }
+    return _simpleNameCtrl.text.trim();
+  }
+
+  /// 简单报价选中关联项目时，回填该项目所属客户名
+  String get _simpleLinkedCustomerName {
+    if (_simpleProjectId == null) return '';
+    for (final pr in _projects) {
+      if (pr.id == _simpleProjectId) {
+        for (final c in _customers) {
+          if (c.id == pr.customerId) return c.name;
+        }
+        return '';
+      }
+    }
+    return '';
+  }
+
   @override
   void initState() {
     super.initState();
+    // 默认打开简单报价 Tab；从项目详情进入时仍优先打开详细报价并预填项目
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialProjectId != null ? 1 : 0,
+    );
     _titleCtrl.text = widget.initialTitle ?? '';
     _projectId = widget.initialProjectId;
     _loadProjects();
@@ -48,16 +98,102 @@ class _QuotePageState extends State<QuotePage> {
 
   Future<void> _loadProjects() async {
     final list = await AppDb.instance.getProjects();
-    if (mounted) setState(() => _projects = list);
+    final customers = await AppDb.instance.getCustomers();
+    if (mounted) {
+      setState(() {
+        _projects = list;
+        _customers = customers;
+      });
+    }
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
+    _simpleNameCtrl.dispose();
+    _simpleAmountCtrl.dispose();
+    _simpleNoteCtrl.dispose();
     _clientCtrl.dispose();
     _titleCtrl.dispose();
+    _taxCtrl.dispose();
+    _detailNoteCtrl.dispose();
     super.dispose();
   }
 
+  // ================= 简单报价：文本生成 / 复制 =================
+  String buildSimpleQuoteText() {
+    final objectName = _simpleObjectName;
+    final amount = double.tryParse(_simpleAmountCtrl.text.trim()) ?? 0;
+    final note = _simpleNoteCtrl.text.trim();
+    final b = StringBuffer()
+      ..writeln('【报价】')
+      ..writeln('客户：$objectName')
+      ..writeln('报价金额：¥${_fmt.format(amount)}');
+    if (note.isNotEmpty) {
+      b.writeln('备注：$note');
+    }
+    return b.toString();
+  }
+
+  Future<void> _copySimpleToClipboard() async {
+    await Clipboard.setData(ClipboardData(text: buildSimpleQuoteText()));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('报价单已复制，去微信/邮件里粘贴给客户吧')),
+    );
+  }
+
+  // ================= 简单报价：保存 =================
+  Future<void> _saveSimpleQuote() async {
+    final objectName = _simpleObjectName;
+    if (objectName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写报价对象（客户名称或选择关联项目）')),
+      );
+      return;
+    }
+    final amount = double.tryParse(_simpleAmountCtrl.text.trim()) ?? 0;
+    if (amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写报价金额')),
+      );
+      return;
+    }
+    final note = _simpleNoteCtrl.text.trim();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final q = Quote(
+      id: _simpleQuoteId,
+      projectId: _simpleTargetMode == 1 ? _simpleProjectId : null,
+      title: objectName,
+      taxRate: 0,
+      lines: const [],
+      total: double.parse(amount.toStringAsFixed(2)),
+      createdAt: _simpleCreatedAt ?? now,
+      type: 'simple',
+      note: note,
+      taxInclude: true,
+    );
+    if (_simpleQuoteId == null) {
+      await AppDb.instance.insertQuote(q);
+    } else {
+      await AppDb.instance.updateQuote(q);
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_simpleQuoteId == null ? '报价单已保存到历史' : '报价单已更新')),
+    );
+    // 保存成功后重置为初始新建状态
+    setState(() {
+      _simpleQuoteId = null;
+      _simpleCreatedAt = null;
+      _simpleProjectId = null;
+      _simpleNameCtrl.clear();
+      _simpleAmountCtrl.clear();
+      _simpleNoteCtrl.clear();
+    });
+  }
+
+  // ================= 详细报价：文本生成 / 复制（保留原逻辑） =================
   String buildQuoteText() {
     final b = StringBuffer()
       ..writeln('【报价单】')
@@ -89,7 +225,7 @@ class _QuotePageState extends State<QuotePage> {
     );
   }
 
-  /// 落库保存（新建 / 更新当前编辑的历史报价单）
+  // ================= 详细报价：保存（保留原逻辑 + 备注/类型） =================
   Future<void> _saveQuote() async {
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) {
@@ -98,33 +234,68 @@ class _QuotePageState extends State<QuotePage> {
       );
       return;
     }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final q = Quote(
+      id: _quoteId,
+      projectId: _projectId,
+      title: title,
+      taxRate: _taxRate * 100, // 模型存百分比
+      lines: List.of(_lines),
+      total: double.parse(_total.toStringAsFixed(2)),
+      createdAt: _quoteCreatedAt ?? now,
+      type: 'full',
+      note: _detailNoteCtrl.text.trim(),
+      taxInclude: true,
+    );
     if (_quoteId == null) {
-      await AppDb.instance.insertQuote(Quote(
-        projectId: _projectId,
-        title: title,
-        taxRate: _taxRate * 100, // 模型存百分比
-        lines: List.of(_lines),
-        total: double.parse(_total.toStringAsFixed(2)),
-        createdAt: DateTime.now().millisecondsSinceEpoch,
-      ));
+      await AppDb.instance.insertQuote(q);
     } else {
-      await AppDb.instance.updateQuote(Quote(
-        id: _quoteId,
-        projectId: _projectId,
-        title: title,
-        taxRate: _taxRate * 100,
-        lines: List.of(_lines),
-        total: double.parse(_total.toStringAsFixed(2)),
-        createdAt: DateTime.now().millisecondsSinceEpoch,
-      ));
+      await AppDb.instance.updateQuote(q);
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(_quoteId == null ? '报价单已保存到历史' : '报价单已更新')),
     );
+    // 保存成功后重置为初始新建状态，方便直接开始填下一份报价
+    setState(() {
+      _quoteId = null;
+      _quoteCreatedAt = null;
+      _projectId = null;
+      _titleCtrl.clear();
+      _clientCtrl.clear();
+      _taxCtrl.clear();
+      _detailNoteCtrl.clear();
+      _taxRate = AppConfig.defaultTaxRate;
+      _lines
+        ..clear()
+        ..add(const QuoteLine(
+            itemName: '设计服务', hours: 8, hourRate: AppConfig.defaultHourRate));
+    });
   }
 
-  /// 报价历史弹层：查看 / 重新打开编辑 / 复制 / 删除
+  // ================= 简单报价 → 详细报价 =================
+  void _convertToFull(Quote q) {
+    setState(() {
+      _tabController.index = 1; // 切到详细 Tab
+      _quoteId = null; // 作为新报价重新出单
+      _quoteCreatedAt = null;
+      _titleCtrl.text = q.title;
+      _projectId = q.projectId;
+      _clientCtrl.text = q.title; // 客户名称沿用报价对象名
+      _taxRate = AppConfig.defaultTaxRate;
+      _taxCtrl.clear();
+      _detailNoteCtrl.text = q.note;
+      // 金额自动生成一行明细：项目名=报价对象名、工时=1、单价=报价金额
+      _lines
+        ..clear()
+        ..add(QuoteLine(itemName: q.title, hours: 1, hourRate: q.total));
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已转为详细报价，可继续调整明细')),
+    );
+  }
+
+  // ================= 历史弹层 =================
   Future<void> _openHistory() async {
     final quotes = await AppDb.instance.getQuotes();
     if (!mounted) return;
@@ -158,10 +329,44 @@ class _QuotePageState extends State<QuotePage> {
                 itemBuilder: (ctx, i) {
                   final q = quotes[i];
                   return ListTile(
-                    leading: const Icon(Icons.description_outlined,
-                        color: AppTheme.primary),
-                    title: Text(q.title,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    onTap: () {
+                      if (q.isSimple) {
+                        _loadSimpleQuote(q);
+                      } else {
+                        _loadQuote(q);
+                      }
+                      Navigator.pop(ctx);
+                    },
+                    leading: Icon(
+                      q.isSimple ? Icons.bolt_outlined : Icons.description_outlined,
+                      color: AppTheme.primary,
+                    ),
+                    title: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: (q.isSimple ? AppTheme.primary : AppTheme.accent)
+                                .withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            q.isSimple ? '简单报价' : '详细报价',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: q.isSimple ? AppTheme.primary : AppTheme.accent,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(q.title,
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ),
+                      ],
+                    ),
                     subtitle: Text(
                         '¥${_fmt.format(q.total)} · ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(q.createdAt))}'),
                     trailing: Row(
@@ -188,10 +393,24 @@ class _QuotePageState extends State<QuotePage> {
                               size: 20, color: AppTheme.primary),
                           tooltip: '重新打开编辑',
                           onPressed: () {
-                            _loadQuote(q);
+                            if (q.isSimple) {
+                              _loadSimpleQuote(q);
+                            } else {
+                              _loadQuote(q);
+                            }
                             Navigator.pop(ctx);
                           },
                         ),
+                        if (q.isSimple)
+                          IconButton(
+                            icon: const Icon(Icons.unfold_more,
+                                size: 20, color: AppTheme.primary),
+                            tooltip: '转为详细报价',
+                            onPressed: () {
+                              _convertToFull(q);
+                              Navigator.pop(ctx);
+                            },
+                          ),
                         IconButton(
                           icon: const Icon(Icons.delete_outline,
                               size: 20, color: AppTheme.danger),
@@ -240,8 +459,18 @@ class _QuotePageState extends State<QuotePage> {
     );
   }
 
-  /// 按历史报价单生成文本（不依赖当前编辑态）
+  /// 按历史报价单生成文本（不依赖当前编辑态），简单/详细分别处理
   String _quoteTextFor(Quote q) {
+    if (q.isSimple) {
+      final b = StringBuffer()
+        ..writeln('【报价】')
+        ..writeln('客户：${q.title}');
+      b.writeln('报价金额：¥${_fmt.format(q.total)}');
+      if (q.note.trim().isNotEmpty) {
+        b.writeln('备注：${q.note.trim()}');
+      }
+      return b.toString();
+    }
     final sub = q.lines.fold<double>(
         0, (s, l) => s + l.laborCost + l.materialFee);
     final tax = sub * (q.taxRate / 100);
@@ -267,13 +496,39 @@ class _QuotePageState extends State<QuotePage> {
     return b.toString();
   }
 
-  /// 把历史报价单载入编辑态
+  // ================= 历史载入 =================
+  /// 载入简单报价历史到简单 Tab 编辑态
+  void _loadSimpleQuote(Quote q) {
+    setState(() {
+      _tabController.index = 0; // 跳转简单 Tab
+      _simpleQuoteId = q.id;
+      _simpleCreatedAt = q.createdAt;
+      _simpleAmountCtrl.text = _numText(q.total);
+      _simpleNoteCtrl.text = q.note;
+      if (q.projectId != null) {
+        _simpleTargetMode = 1;
+        _simpleProjectId = q.projectId;
+        _simpleNameCtrl.clear();
+      } else {
+        _simpleTargetMode = 0;
+        _simpleProjectId = null;
+        _simpleNameCtrl.text = q.title;
+      }
+    });
+  }
+
+  /// 把详细报价历史载入编辑态（保留原逻辑 + 备注）
   void _loadQuote(Quote q) {
     setState(() {
+      _tabController.index = 1; // 跳转详细 Tab
       _quoteId = q.id;
+      _quoteCreatedAt = q.createdAt;
       _titleCtrl.text = q.title;
       _projectId = q.projectId;
+      _clientCtrl.text = q.title;
       _taxRate = q.taxRate / 100;
+      _taxCtrl.text = q.taxRate.toStringAsFixed(0); // 同步税率输入框（历史存百分比）
+      _detailNoteCtrl.text = q.note;
       _lines
         ..clear()
         ..addAll(q.lines.isEmpty
@@ -282,11 +537,293 @@ class _QuotePageState extends State<QuotePage> {
     });
   }
 
+  String _numText(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
+
+  // ================= 简单报价 Tab（一屏内不滚动） =================
+  Widget _buildSimpleTab() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('报价对象',
+              style: TextStyle(
+                  fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 8),
+          SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(
+                  value: 0,
+                  label: Text('客户名称'),
+                  icon: Icon(Icons.person_outline, size: 18)),
+              ButtonSegment(
+                  value: 1,
+                  label: Text('关联项目'),
+                  icon: Icon(Icons.folder_outlined, size: 18)),
+            ],
+            selected: {_simpleTargetMode},
+            onSelectionChanged: (s) {
+              setState(() {
+                _simpleTargetMode = s.first;
+                // 互斥：切换时清空另一侧输入，保证"客户名称/关联项目"二选一
+                if (s.first == 0) {
+                  _simpleProjectId = null;
+                } else {
+                  _simpleNameCtrl.clear();
+                }
+              });
+            },
+          ),
+          const SizedBox(height: 12),
+          if (_simpleTargetMode == 0)
+            TextField(
+              controller: _simpleNameCtrl,
+              decoration: const InputDecoration(
+                isDense: true,
+                border: OutlineInputBorder(),
+                hintText: '输入客户名称',
+              ),
+            )
+          else
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButtonFormField<int?>(
+                  initialValue: _simpleProjectId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(isDense: true),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                        value: null, child: Text('请选择关联项目')),
+                    ..._projects.map((pr) => DropdownMenuItem<int?>(
+                        value: pr.id, child: Text(pr.title))),
+                  ],
+                  onChanged: (v) => setState(() => _simpleProjectId = v),
+                ),
+                if (_simpleProjectId != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      '客户：$_simpleLinkedCustomerName',
+                      style: const TextStyle(
+                          fontSize: 12, color: AppTheme.textSub),
+                    ),
+                  ),
+              ],
+            ),
+          const Spacer(),
+          // 大号报价总额输入框（C 位）
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 280),
+              child: TextField(
+                controller: _simpleAmountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                ],
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 40,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.primary),
+                decoration: const InputDecoration(
+                  hintText: '0.00',
+                  prefixText: '¥ ',
+                  prefixStyle: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.primary),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Center(
+            child: Text('报价总额（一口价含税）',
+                style: TextStyle(
+                    fontSize: 12, color: AppTheme.textSub)),
+          ),
+          const Spacer(),
+          // 备注：固定小高度，超出内部滚动
+          const Text('备注（可选）',
+              style: TextStyle(
+                  fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 72,
+            child: TextField(
+              controller: _simpleNoteCtrl,
+              maxLines: null,
+              expands: true,
+              keyboardType: TextInputType.multiline,
+              textAlignVertical: TextAlignVertical.top,
+              decoration: const InputDecoration(
+                hintText: '补充说明，如交付时间、付款方式等',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ================= 详细报价 Tab（保留原有逻辑） =================
+  Widget _buildDetailTab() {
+    return ListView(
+      padding: const EdgeInsets.only(top: 8, bottom: 24),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('报价单标题',
+                    style: TextStyle(
+                        fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _titleCtrl,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                    hintText: '如：品牌官网改版报价',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text('客户名称',
+                    style: TextStyle(
+                        fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _clientCtrl,
+                  decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 12),
+                const Text('关联项目（可选）',
+                    style: TextStyle(
+                        fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<int?>(
+                  initialValue: _projectId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(isDense: true),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                        value: null, child: Text('不关联项目')),
+                    ..._projects.map((pr) => DropdownMenuItem<int?>(
+                        value: pr.id, child: Text(pr.title))),
+                  ],
+                  onChanged: (v) => setState(() => _projectId = v),
+                ),
+                const SizedBox(height: 12),
+                const Text('备注（可选）',
+                    style: TextStyle(
+                        fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _detailNoteCtrl,
+                  maxLines: 3,
+                  minLines: 1,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                    hintText: '补充说明（随报价单保存到历史）',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
+          child: Row(
+            children: [
+              const Expanded(child: Text('费用项目', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+              TextButton.icon(
+                onPressed: () => setState(() => _lines.add(const QuoteLine(itemName: ''))),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('加一行'),
+              ),
+            ],
+          ),
+        ),
+        ..._lines.asMap().entries.map((entry) => _LineCard(
+              index: entry.key,
+              line: entry.value,
+              onChanged: (l) => setState(() => _lines[entry.key] = l),
+              onRemove: _lines.length > 1
+                  ? () => setState(() => _lines.removeAt(entry.key))
+                  : null,
+            )),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                const Text('税率'),
+                const Spacer(),
+                SizedBox(
+                  width: 120,
+                  child: TextField(
+                    controller: _taxCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                    textAlign: TextAlign.right,
+                    decoration: const InputDecoration(
+                      suffixText: '%',
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    ),
+                    onChanged: (v) {
+                      final n = double.tryParse(v);
+                      setState(() => _taxRate = (n ?? 0) / 100);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Card(
+          color: AppTheme.primary,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _row('费用小计', '¥${_fmt.format(_subtotal)}', Colors.white70),
+                _row('税费', '¥${_fmt.format(_tax)}', Colors.white70),
+                const Divider(color: Colors.white24),
+                _row('本次报价合计', '¥${_fmt.format(_total)}', Colors.white, bold: true, big: true),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('报价单'),
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: AppTheme.primary,
+          unselectedLabelColor: AppTheme.textSub,
+          indicatorColor: AppTheme.primary,
+          tabs: const [
+            Tab(text: '简单报价'),
+            Tab(text: '详细报价'),
+          ],
+        ),
         actions: [
           TextButton.icon(
             onPressed: _openHistory,
@@ -295,144 +832,47 @@ class _QuotePageState extends State<QuotePage> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.only(top: 8, bottom: 32),
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('报价单标题',
-                      style: TextStyle(
-                          fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: _titleCtrl,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                      hintText: '如：品牌官网改版报价',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text('客户名称',
-                      style: TextStyle(
-                          fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: _clientCtrl,
-                    decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text('关联项目（可选）',
-                      style: TextStyle(
-                          fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 6),
-                  DropdownButtonFormField<int?>(
-                    initialValue: _projectId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(isDense: true),
-                    items: [
-                      const DropdownMenuItem<int?>(
-                          value: null, child: Text('不关联项目')),
-                      ..._projects.map((pr) => DropdownMenuItem<int?>(
-                          value: pr.id, child: Text(pr.title))),
-                    ],
-                    onChanged: (v) => setState(() => _projectId = v),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
-            child: Row(
-              children: [
-                const Expanded(child: Text('费用项目', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
-                TextButton.icon(
-                  onPressed: () => setState(() => _lines.add(const QuoteLine(itemName: ''))),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('加一行'),
-                ),
-              ],
-            ),
-          ),
-          ..._lines.asMap().entries.map((entry) => _LineCard(
-                index: entry.key,
-                line: entry.value,
-                onChanged: (l) => setState(() => _lines[entry.key] = l),
-                onRemove: _lines.length > 1
-                    ? () => setState(() => _lines.removeAt(entry.key))
-                    : null,
-              )),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+          _buildSimpleTab(),
+          _buildDetailTab(),
+        ],
+      ),
+      // 底部常驻操作区：随当前 Tab 切换回调，不随内容滚走
+      bottomNavigationBar: SafeArea(
+        child: AnimatedBuilder(
+          animation: _tabController,
+          builder: (context, _) {
+            final isSimple = _tabController.index == 0;
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: Row(
                 children: [
-                  const Text('税率'),
-                  const Spacer(),
-                  SizedBox(
-                    width: 120,
-                    child: TextField(
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-                      textAlign: TextAlign.right,
-                      decoration: const InputDecoration(
-                        suffixText: '%',
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: isSimple ? _copySimpleToClipboard : _copyToClipboard,
+                      icon: const Icon(Icons.content_copy),
+                      label: const Text('生成并复制'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: isSimple ? _saveSimpleQuote : _saveQuote,
+                      icon: const Icon(Icons.save_outlined),
+                      label: Text(
+                        isSimple
+                            ? (_simpleQuoteId == null ? '保存到历史' : '更新保存')
+                            : (_quoteId == null ? '保存到历史' : '更新保存'),
                       ),
-                      onChanged: (v) {
-                        final n = double.tryParse(v);
-                        setState(() => _taxRate = (n ?? 0) / 100);
-                      },
                     ),
                   ),
                 ],
               ),
-            ),
-          ),
-          Card(
-            color: AppTheme.primary,
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _row('费用小计', '¥${_fmt.format(_subtotal)}', Colors.white70),
-                  _row('税费', '¥${_fmt.format(_tax)}', Colors.white70),
-                  const Divider(color: Colors.white24),
-                  _row('本次报价合计', '¥${_fmt.format(_total)}', Colors.white, bold: true, big: true),
-                ],
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _copyToClipboard,
-                    icon: const Icon(Icons.content_copy),
-                    label: const Text('生成并复制'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: _saveQuote,
-                    icon: const Icon(Icons.save_outlined),
-                    label: Text(_quoteId == null ? '保存到历史' : '更新保存'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+            );
+          },
+        ),
       ),
     );
   }

@@ -53,3 +53,6 @@ android/app/*.jks
 
 # 鏈湴鏋勫缓涓存椂鏃ュ織
 temp_build_log.txt
+
+# 真机验证截图（临时产物）
+verify/
