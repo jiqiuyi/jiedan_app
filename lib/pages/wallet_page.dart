@@ -9,6 +9,7 @@ import '../state/ticker.dart';
 import '../theme.dart';
 import '../services/pay_service.dart';
 import '../widgets/show_payment_code.dart';
+import 'payment_code_settings_page.dart';
 
 /// 钱包页：余额（收款 + 充值 - 提现）、充值、提现、往来记录。
 /// MVP：收款码手动确认入账，真实通道接入后由回调自动处理。
@@ -29,6 +30,7 @@ class _WalletPageState extends State<WalletPage> {
   List<Withdrawal> _withdrawals = [];
   List<Recharge> _recharges = [];
   WithdrawAccount _account = const WithdrawAccount();
+  bool _busy = false; // 充值/提现执行中禁用，防重复提交
 
   @override
   void initState() {
@@ -62,6 +64,46 @@ class _WalletPageState extends State<WalletPage> {
   // ---------- 充值 ----------
 
   Future<void> _startRecharge() async {
+    if (_busy) return;
+    // 预检：未配置收款码先引导去设置，不直接进充值流程
+    final db = AppDb.instance;
+    final wxPath = await db.getWxQrPath();
+    final aliPath = await db.getAliQrPath();
+    if ((wxPath == null || wxPath.isEmpty) &&
+        (aliPath == null || aliPath.isEmpty)) {
+      if (!mounted) return;
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('尚未配置收款码'),
+          content: const Text('充值需向您的微信 / 支付宝收款码付款，请先到「我的 → 收款设置」上传收款码。'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('暂不')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('去设置')),
+          ],
+        ),
+      );
+      if (go == true && mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const PaymentCodeSettingsPage()),
+        );
+      }
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await _startRechargeFlow();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _startRechargeFlow() async {
     final amountCtrl = TextEditingController();
     final method = ValueNotifier<RechargeMethod>(RechargeMethod.wechat);
     const quickAmounts = <double>[10, 50, 100, 500];
@@ -206,6 +248,7 @@ class _WalletPageState extends State<WalletPage> {
   // ---------- 提现 ----------
 
   Future<void> _startWithdraw() async {
+    if (_busy) return;
     if (!_account.filled) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先设置提现账户')),
@@ -270,29 +313,34 @@ class _WalletPageState extends State<WalletPage> {
       return;
     }
     // 走当前提现通道（真实通道接入后此处自动切换到自动打款）
-    final result = await Channels.withdraw.withdraw(WithdrawRequest(
-      amount: ok,
-      method: _account.method,
-      accountName: _account.name,
-      accountNo: _account.no,
-    ));
-    if (!mounted) return;
-    if (result.ok) {
-      await AppDb.instance.insertWithdrawal(Withdrawal(
+    setState(() => _busy = true);
+    try {
+      final result = await Channels.withdraw.withdraw(WithdrawRequest(
         amount: ok,
         method: _account.method,
         accountName: _account.name,
         accountNo: _account.no,
-        createdAt: DateTime.now().millisecondsSinceEpoch,
-        note: result.message,
       ));
-      Ticker.ping();
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(result.message)));
-    } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('提现失败：${result.message}')));
+      if (result.ok) {
+        await AppDb.instance.insertWithdrawal(Withdrawal(
+          amount: ok,
+          method: _account.method,
+          accountName: _account.name,
+          accountNo: _account.no,
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+          note: result.message,
+        ));
+        Ticker.ping();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(result.message)));
+      } else {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('提现失败：${result.message}')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
     await _load();
   }
@@ -408,7 +456,7 @@ class _WalletPageState extends State<WalletPage> {
               children: [
                 Expanded(
                   child: FilledButton.tonalIcon(
-                    onPressed: _startRecharge,
+                    onPressed: _busy ? null : _startRecharge,
                     icon: const Icon(Icons.add_card),
                     label: const Text('充值'),
                   ),
@@ -416,7 +464,7 @@ class _WalletPageState extends State<WalletPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: _balance > 0 ? _startWithdraw : null,
+                    onPressed: (_busy || _balance <= 0) ? null : _startWithdraw,
                     icon: const Icon(Icons.account_balance_wallet_outlined),
                     label: const Text('申请提现'),
                   ),

@@ -56,6 +56,7 @@ class AppDb {
             project_id INTEGER,
             amount REAL,
             type INTEGER,
+            type_label TEXT,
             paid_at INTEGER,
             note TEXT
           )
@@ -71,6 +72,7 @@ class AppDb {
         await _createInvitees(db);
         await _createWithdrawals(db);
         await _createRecharges(db);
+        await _createQuotes(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -87,6 +89,9 @@ class AppDb {
         }
         if (oldVersion < 6) {
           await _createRecharges(db);
+        }
+        if (oldVersion < 7) {
+          await _migrateToV7(db);
         }
       },
     );
@@ -167,6 +172,33 @@ class AppDb {
     ''');
   }
 
+  /// v7 新增：报价单历史表
+  Future<void> _createQuotes(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS quotes(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER,
+        title TEXT,
+        tax_rate REAL DEFAULT 0,
+        lines_json TEXT,
+        total REAL DEFAULT 0,
+        created_at INTEGER
+      )
+    ''');
+  }
+
+  /// v7 迁移：
+  /// 1. payments 表新增 type_label 列（自定义收款类型名称，存量行置空）；
+  /// 2. 新增 quotes 报价单表。
+  Future<void> _migrateToV7(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(payments)');
+    final hasTypeLabel = cols.any((c) => c['name'] == 'type_label');
+    if (!hasTypeLabel) {
+      await db.execute('ALTER TABLE payments ADD COLUMN type_label TEXT');
+    }
+    await _createQuotes(db);
+  }
+
   // ---------- settings ----------
   Future<String?> getSetting(String key) async {
     final d = await db;
@@ -203,6 +235,12 @@ class AppDb {
 
   Future<void> deleteCustomer(int id) async {
     final d = await db;
+    // 级联删除：先删该客户全部项目（deleteProject 已级联删 payments），再删客户
+    final projects = await d
+        .query('projects', where: 'customer_id=?', whereArgs: [id]);
+    for (final pr in projects) {
+      await deleteProject(pr['id'] as int);
+    }
     await d.delete('customers', where: 'id=?', whereArgs: [id]);
   }
 
@@ -347,6 +385,28 @@ class AppDb {
     } else {
       await setSetting('current_user_id', '$id');
     }
+  }
+
+  // ---------- quotes（报价单历史，v7）----------
+  Future<List<Quote>> getQuotes() async {
+    final d = await db;
+    final rows = await d.query('quotes', orderBy: 'created_at DESC');
+    return rows.map(Quote.fromMap).toList();
+  }
+
+  Future<int> insertQuote(Quote q) async {
+    final d = await db;
+    return d.insert('quotes', q.toMap()..remove('id'));
+  }
+
+  Future<void> updateQuote(Quote q) async {
+    final d = await db;
+    await d.update('quotes', q.toMap(), where: 'id=?', whereArgs: [q.id]);
+  }
+
+  Future<void> deleteQuote(int id) async {
+    final d = await db;
+    await d.delete('quotes', where: 'id=?', whereArgs: [id]);
   }
 
   // ---------- feedbacks（意见反馈）----------

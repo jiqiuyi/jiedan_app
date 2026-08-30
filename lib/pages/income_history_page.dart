@@ -418,6 +418,7 @@ class _IncomeRow {
   final String projectTitle;
   final double amount;
   final PayType type;
+  final String typeLabel;
   final int paidAt;
   final String note;
 
@@ -426,6 +427,7 @@ class _IncomeRow {
     required this.projectTitle,
     required this.amount,
     required this.type,
+    required this.typeLabel,
     required this.paidAt,
     required this.note,
   });
@@ -435,9 +437,19 @@ class _IncomeRow {
         projectTitle: m['project_title'] as String,
         amount: ((m['amount'] as num?) ?? 0).toDouble(),
         type: PayType.values[m['type'] as int],
+        typeLabel: (m['type_label'] as String?) ?? '',
         paidAt: m['paid_at'] as int,
         note: (m['note'] as String?) ?? '',
       );
+
+  /// 展示用的类型名（自定义类型回退到 type_label，再回退到枚举 label）
+  String get displayType {
+    if (type == PayType.custom) {
+      final l = typeLabel.trim();
+      return l.isEmpty ? '自定义' : l;
+    }
+    return type.label;
+  }
 }
 
 class _IncomeRowTile extends StatelessWidget {
@@ -473,7 +485,7 @@ class _IncomeRowTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(
-          row.note.isEmpty ? row.type.label : '${row.type.label} · ${row.note}',
+          row.note.isEmpty ? row.displayType : '${row.displayType} · ${row.note}',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(color: AppTheme.textSub, fontSize: 12),

@@ -7,6 +7,7 @@ import '../models.dart';
 import '../constants.dart';
 import '../theme.dart';
 import '../state/ticker.dart';
+import '../widgets/show_payment_code.dart';
 import 'income_history_page.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -22,6 +23,7 @@ class _DashboardPageState extends State<DashboardPage> {
   int _projectCount = 0;
   int _customerCount = 0;
   double _awaitingAmount = 0;
+  int _doneCount = 0;
   List<Project> _recent = [];
   StreamSubscription<int>? _sub;
 
@@ -44,10 +46,12 @@ class _DashboardPageState extends State<DashboardPage> {
     final month = await db.monthPaidTotal(now.year, now.month);
     final projects = await db.getProjects();
     final customers = await db.getCustomers();
+    // N+1 修复：一次批量查询所有项目已收总额，避免逐项目查询
+    final paidTotals = await db.projectPaidTotals();
     double awaiting = 0;
     for (final pr in projects) {
       if (pr.status == ProjectStatus.awaiting) {
-        final paid = await db.projectPaidTotal(pr.id!);
+        final paid = paidTotals[pr.id] ?? 0;
         awaiting += (pr.amountTotal - paid).clamp(0, double.infinity);
       }
     }
@@ -57,14 +61,79 @@ class _DashboardPageState extends State<DashboardPage> {
       _projectCount = projects.length;
       _customerCount = customers.length;
       _awaitingAmount = awaiting;
+      _doneCount = projects.where((e) => e.status == ProjectStatus.done).length;
       _recent = projects.take(5).toList();
     });
+  }
+
+  /// 看板收款入口：选择项目 → 选择渠道 → 展示收款码 → 手动确认到账
+  Future<void> _collectPayment() async {
+    final db = AppDb.instance;
+    final projects = await db.getProjects();
+    if (!mounted) return;
+    if (projects.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('还没有项目，请先到「项目」页新建')),
+      );
+      return;
+    }
+    final selected = await showModalBottomSheet<Project>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(14),
+              child: Text('选择要收款的项目',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: projects
+                    .map((pr) => ListTile(
+                          title: Text(pr.title,
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle: Text(pr.status.label,
+                              style: const TextStyle(
+                                  fontSize: 12, color: AppTheme.textSub)),
+                          onTap: () => Navigator.pop(ctx, pr),
+                        ))
+                    .toList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    final paid = await db.projectPaidTotal(selected.id!);
+    if (!mounted) return;
+    final ok = await showProjectCollectSheet(
+      context,
+      projectId: selected.id!,
+      projectTitle: selected.title,
+      amountTotal: selected.amountTotal,
+      paidTotal: paid,
+    );
+    if (ok) _refesh();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('看板')),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: AppTheme.primary,
+        foregroundColor: Colors.white,
+        onPressed: _collectPayment,
+        icon: const Icon(Icons.payments_outlined),
+        label: const Text('收款'),
+      ),
       body: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         children: [
@@ -79,7 +148,7 @@ class _DashboardPageState extends State<DashboardPage> {
             children: [
               _StatCard(
                 label: '进行中项目',
-                value: '${_projectCount - _doneCount()}',
+                value: '${_projectCount - _doneCount}',
                 color: AppTheme.primary,
               ),
               _StatCard(
@@ -119,8 +188,6 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
     );
   }
-
-  int _doneCount() => _recent.where((e) => e.status == ProjectStatus.done).length;
 }
 
 class _IncomeCard extends StatelessWidget {
