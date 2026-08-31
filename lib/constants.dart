@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.10.0';
+  static const String version = '1.11.0';
 
   // ---- 云端后端 ----
   // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）仍存本地。
@@ -30,9 +30,8 @@ class AppConfig {
 
   // ---- 数据库 ----
   static const String dbName = 'jiedan_guanjia.db';
-  // v9：金额统一改分（int）、quotes 增 customer_id、projects 增 due_date/remind_at、
-  //      新增 pending_collections（待收款）/ milestones（里程碑）/ invoices（发票）
-  static const int dbVersion = 9;
+  // v10：invoices（发票）表废弃，替换为 contracts（合同/协议）表
+  static const int dbVersion = 10;
 
   // ---- 钱包 / 提现 ----
   // 提现账户保存键（settings）：值为 JSON {"method":0,"name":"","no":""}
@@ -123,20 +122,20 @@ enum PendingStatus {
   }
 }
 
-/// 发票状态（v9）
-enum InvoiceStatus {
-  draft, // 待开票
-  issued, // 已开票
-  voided; // 已作废
+/// 合同/协议状态（v10 替代发票）
+enum ContractStatus {
+  draft, // 草稿
+  signed, // 已签
+  done; // 完成
 
   String get label {
     switch (this) {
-      case InvoiceStatus.draft:
-        return '待开票';
-      case InvoiceStatus.issued:
-        return '已开票';
-      case InvoiceStatus.voided:
-        return '已作废';
+      case ContractStatus.draft:
+        return '草稿';
+      case ContractStatus.signed:
+        return '已签';
+      case ContractStatus.done:
+        return '完成';
     }
   }
 }

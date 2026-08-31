@@ -715,6 +715,28 @@ class _QuotePageState extends State<QuotePage>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
 
   // ================= 简单报价 Tab（一屏内不滚动） =================
+
+  /// 关联客户档案：底部弹层选择器（替代原 Dropdown，v1.11.0 改）
+  Future<void> _pickSimpleCustomer() async {
+    final selected = await showModalBottomSheet<int?>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _CustomerPickerSheet(
+        customers: _customers,
+        selectedId: _simpleCustomerId,
+      ),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _simpleCustomerId = selected == -1 ? null : selected;
+      // 选中客户档案时自动回填客户名称
+      if (_simpleCustomerId != null) {
+        final c = _customers.firstWhere((x) => x.id == _simpleCustomerId);
+        _simpleNameCtrl.text = c.name;
+      }
+    });
+  }
+
   Widget _buildSimpleTab() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -725,23 +747,13 @@ class _QuotePageState extends State<QuotePage>
               style: TextStyle(
                   fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
-          SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(
-                  value: 0,
-                  label: Text('客户名称'),
-                  icon: Icon(Icons.person_outline, size: 18)),
-              ButtonSegment(
-                  value: 1,
-                  label: Text('关联项目'),
-                  icon: Icon(Icons.folder_outlined, size: 18)),
-            ],
-            selected: {_simpleTargetMode},
-            onSelectionChanged: (s) {
+          _SimpleModeSwitch(
+            mode: _simpleTargetMode,
+            onChanged: (m) {
               setState(() {
-                _simpleTargetMode = s.first;
+                _simpleTargetMode = m;
                 // 互斥：切换时清空另一侧输入，保证"客户名称/关联项目"二选一
-                if (s.first == 0) {
+                if (m == 0) {
                   _simpleProjectId = null;
                 } else {
                   _simpleNameCtrl.clear();
@@ -763,27 +775,51 @@ class _QuotePageState extends State<QuotePage>
                   ),
                 ),
                 const SizedBox(height: 8),
-                DropdownButtonFormField<int?>(
-                  initialValue: _simpleCustomerId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    labelText: '关联客户档案（可选）',
+                // 关联客户档案：轻量入口 + 底部弹层选择
+                InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: _pickSimpleCustomer,
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.badge_outlined,
+                            size: 18,
+                            color: _simpleCustomerId == null
+                                ? AppTheme.textSub
+                                : AppTheme.primary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _simpleCustomerId == null
+                                ? '关联客户档案（可选）'
+                                : _customers
+                                        .firstWhere((c) => c.id == _simpleCustomerId)
+                                        .name,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: _simpleCustomerId == null
+                                  ? AppTheme.textSub
+                                  : AppTheme.textMain,
+                            ),
+                          ),
+                        ),
+                        if (_simpleCustomerId != null)
+                          GestureDetector(
+                            onTap: () => setState(() => _simpleCustomerId = null),
+                            child: const Icon(Icons.close,
+                                size: 16, color: AppTheme.textSub),
+                          )
+                        else
+                          const Icon(Icons.chevron_right,
+                              size: 18, color: AppTheme.textSub),
+                      ],
+                    ),
                   ),
-                  items: [
-                    const DropdownMenuItem<int?>(
-                        value: null, child: Text('不关联')),
-                    ..._customers.map((c) => DropdownMenuItem<int?>(
-                        value: c.id, child: Text(c.name))),
-                  ],
-                  onChanged: (v) => setState(() {
-                    _simpleCustomerId = v;
-                    // 选中客户档案时自动回填客户名称
-                    if (v != null) {
-                      final c = _customers.firstWhere((x) => x.id == v);
-                      _simpleNameCtrl.text = c.name;
-                    }
-                  }),
                 ),
               ],
             )
@@ -1279,6 +1315,177 @@ class _LineCardState extends State<_LineCard> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 轻量分段切换（替代 SegmentedButton，v1.11.0 改）：
+/// 浅色底 + 选中态白色胶囊 + 主色文字，整体更克制。
+class _SimpleModeSwitch extends StatelessWidget {
+  final int mode;
+  final ValueChanged<int> onChanged;
+  const _SimpleModeSwitch({required this.mode, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF1F7),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          _item(0, Icons.person_outline, '客户名称'),
+          _item(1, Icons.folder_outlined, '关联项目'),
+        ],
+      ),
+    );
+  }
+
+  Widget _item(int value, IconData icon, String label) {
+    final selected = mode == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onChanged(value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon,
+                  size: 16,
+                  color: selected ? AppTheme.primary : AppTheme.textSub),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  color: selected ? AppTheme.primary : AppTheme.textSub,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 关联客户档案：底部弹层选择器（v1.11.0 改）
+class _CustomerPickerSheet extends StatelessWidget {
+  final List<Customer> customers;
+  final int? selectedId;
+  const _CustomerPickerSheet({required this.customers, required this.selectedId});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasCustomers = customers.isNotEmpty;
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: const EdgeInsets.only(top: 12, bottom: 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE4E7EF),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 14, 20, 4),
+            child: Text('关联客户档案',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textMain)),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 2, 20, 6),
+            child: Text('选中后自动回填客户名称',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
+          ),
+          const Divider(height: 1),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.block,
+                      size: 20, color: AppTheme.textSub),
+                  title: const Text('不关联',
+                      style: TextStyle(color: AppTheme.textSub)),
+                  trailing: selectedId == null
+                      ? const Icon(Icons.check,
+                          size: 18, color: AppTheme.primary)
+                      : null,
+                  onTap: () => Navigator.pop(context, -1),
+                ),
+                if (!hasCustomers)
+                  const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Text('还没有客户档案，可在客户页先添加',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 13, color: AppTheme.textSub)),
+                  ),
+                ...customers.map((c) => ListTile(
+                      leading: CircleAvatar(
+                        radius: 16,
+                        backgroundColor:
+                            AppTheme.primary.withValues(alpha: 0.1),
+                        child: Text(
+                          c.name.characters.first,
+                          style: const TextStyle(
+                              fontSize: 13,
+                              color: AppTheme.primary,
+                              fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      title: Text(c.name,
+                          style: const TextStyle(fontSize: 14)),
+                      subtitle: c.contact.isNotEmpty
+                          ? Text(c.contact,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12))
+                          : null,
+                      trailing: selectedId == c.id
+                          ? const Icon(Icons.check,
+                              size: 18, color: AppTheme.primary)
+                          : null,
+                      onTap: () => Navigator.pop(context, c.id),
+                    )),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

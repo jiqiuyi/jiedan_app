@@ -12,7 +12,7 @@ import 'data_management_page.dart';
 import 'wallet_page.dart';
 import 'privacy_policy_page.dart';
 import 'income_stats_page.dart';
-import 'invoice_page.dart';
+import 'contract_page.dart';
 import 'reconciliation_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -66,6 +66,8 @@ class _SettingsPageState extends State<SettingsPage> {
           return ListView(
             padding: const EdgeInsets.only(top: 8, bottom: 32),
             children: [
+              // ---- 账户与订阅 ----
+              const _SectionHeader(title: '账户与订阅'),
               // ---- 账号卡片 ----
               Card(
                 child: user == null
@@ -114,79 +116,101 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ),
               ),
-              // ---- 订阅状态卡片 ----
+              // ---- 订阅状态 + 升级 ----
               Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      Icon(isPro ? Icons.verified : Icons.lock_outline,
-                          color: isPro ? AppTheme.accent : AppTheme.warn,
-                          size: 32),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              isPro ? '专业版 · 已解锁全部功能' : '免费版',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: isPro
-                                    ? AppTheme.accent
-                                    : AppTheme.textMain,
-                              ),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Icon(isPro ? Icons.verified : Icons.lock_outline,
+                              color: isPro ? AppTheme.accent : AppTheme.warn,
+                              size: 32),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  isPro ? '专业版 · 已解锁全部功能' : '免费版',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: isPro
+                                        ? AppTheme.accent
+                                        : AppTheme.textMain,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _subText(st, isPro),
+                                  style: const TextStyle(
+                                      color: AppTheme.textSub, fontSize: 13),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _subText(st, isPro),
-                              style: const TextStyle(
-                                  color: AppTheme.textSub, fontSize: 13),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              // ---- 升级入口 ----
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.workspace_premium_outlined,
-                      color: AppTheme.primary),
-                  title: const Text('升级专业版'),
-                  subtitle: const Text('无限客户 / 无限项目 / 全部功能'),
-                  trailing: const Icon(Icons.chevron_right,
-                      color: AppTheme.textSub),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => PaywallPage(
-                        title: '解锁接单管家的全部能力',
-                        desc: '从此不限客户数、不限项目数，专心接单不再被工具卡住。',
+                          ),
+                        ],
                       ),
                     ),
-                  ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    ListTile(
+                      leading: const Icon(Icons.workspace_premium_outlined,
+                          color: AppTheme.primary),
+                      title: const Text('升级专业版'),
+                      subtitle: const Text('无限客户 / 无限项目 / 全部功能'),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => PaywallPage(
+                            title: '解锁接单管家的全部能力',
+                            desc: '从此不限客户数、不限项目数，专心接单不再被工具卡住。',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              // ---- 钱包入口 ----
+              // ---- 资金 ----
+              const _SectionHeader(title: '资金'),
               Card(
-                child: ListTile(
-                  leading: const Icon(Icons.account_balance_wallet_outlined,
-                      color: AppTheme.primary),
-                  title: const Text('钱包'),
-                  subtitle: const Text('收款余额、提现到账'),
-                  trailing: const Icon(Icons.chevron_right,
-                      color: AppTheme.textSub),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const WalletPage()),
-                  ),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.account_balance_wallet_outlined,
+                          color: AppTheme.primary),
+                      title: const Text('钱包'),
+                      subtitle: const Text('收款余额、提现到账'),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const WalletPage()),
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: const Icon(Icons.qr_code_2,
+                          color: AppTheme.primary),
+                      title: const Text('收款设置'),
+                      subtitle: const Text('配置微信 / 支付宝收款码，收款时一键出示'),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const PaymentCodeSettingsPage()),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              // ---- 经营报表：收入统计 / 发票管理 / 对账汇总（v1.10.0） ----
+              // ---- 经营分析 ----
+              const _SectionHeader(title: '经营分析'),
               Card(
                 child: Column(
                   children: [
@@ -205,16 +229,16 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     const Divider(height: 1, indent: 56),
                     ListTile(
-                      leading: const Icon(Icons.receipt_long_outlined,
+                      leading: const Icon(Icons.description_outlined,
                           color: AppTheme.primary),
-                      title: const Text('发票管理'),
-                      subtitle: const Text('记录开票对象、金额、状态，支持导出'),
+                      title: const Text('合同管理'),
+                      subtitle: const Text('记录签约对象、金额、状态，支持导出'),
                       trailing: const Icon(Icons.chevron_right,
                           color: AppTheme.textSub),
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                            builder: (_) => const InvoicePage()),
+                            builder: (_) => const ContractPage()),
                       ),
                     ),
                     const Divider(height: 1, indent: 56),
@@ -234,82 +258,65 @@ class _SettingsPageState extends State<SettingsPage> {
                   ],
                 ),
               ),
-              // ---- 收款设置入口 ----
+              // ---- 服务与支持 ----
+              const _SectionHeader(title: '服务与支持'),
               Card(
-                child: ListTile(
-                  leading: const Icon(Icons.qr_code_2,
-                      color: AppTheme.primary),
-                  title: const Text('收款设置'),
-                  subtitle: const Text('配置微信 / 支付宝收款码，收款时一键出示'),
-                  trailing: const Icon(Icons.chevron_right,
-                      color: AppTheme.textSub),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const PaymentCodeSettingsPage()),
-                  ),
-                ),
-              ),
-              // ---- 推广活动入口 ----
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.card_giftcard,
-                      color: AppTheme.primary),
-                  title: const Text('推广活动'),
-                  subtitle: const Text('推荐好友送 VIP，新人付款返现 50%'),
-                  trailing: const Icon(Icons.chevron_right,
-                      color: AppTheme.textSub),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const InvitePage()),
-                  ),
-                ),
-              ),
-              // ---- 意见反馈入口 ----
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.feedback_outlined,
-                      color: AppTheme.primary),
-                  title: const Text('意见反馈'),
-                  subtitle: const Text('提交 Bug 或更新建议'),
-                  trailing: const Icon(Icons.chevron_right,
-                      color: AppTheme.textSub),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const FeedbackPage()),
-                  ),
-                ),
-              ),
-              // ---- 数据管理入口 ----
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.manage_search_outlined,
-                      color: AppTheme.primary),
-                  title: const Text('数据管理'),
-                  subtitle: const Text('导出备份 / 导入恢复，数据只保存在手机里'),
-                  trailing: const Icon(Icons.chevron_right,
-                      color: AppTheme.textSub),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const DataManagementPage()),
-                  ),
-                ),
-              ),
-              // ---- 隐私政策入口 ----
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.privacy_tip_outlined,
-                      color: AppTheme.primary),
-                  title: const Text('隐私政策'),
-                  subtitle: const Text('数据存储说明 · 业务数据仅存本机'),
-                  trailing: const Icon(Icons.chevron_right,
-                      color: AppTheme.textSub),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const PrivacyPolicyPage()),
-                  ),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.card_giftcard,
+                          color: AppTheme.primary),
+                      title: const Text('推广活动'),
+                      subtitle: const Text('推荐好友送 VIP，新人付款返现 50%'),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const InvitePage()),
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: const Icon(Icons.feedback_outlined,
+                          color: AppTheme.primary),
+                      title: const Text('意见反馈'),
+                      subtitle: const Text('提交 Bug 或更新建议'),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const FeedbackPage()),
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: const Icon(Icons.manage_search_outlined,
+                          color: AppTheme.primary),
+                      title: const Text('数据管理'),
+                      subtitle: const Text('导出备份 / 导入恢复，数据只保存在手机里'),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const DataManagementPage()),
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: const Icon(Icons.privacy_tip_outlined,
+                          color: AppTheme.primary),
+                      title: const Text('隐私政策'),
+                      subtitle: const Text('数据存储说明 · 业务数据仅存本机'),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const PrivacyPolicyPage()),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 16),
@@ -339,5 +346,26 @@ class _SettingsPageState extends State<SettingsPage> {
       return '登录后购买订阅，账号内长期有效';
     }
     return '免费版可管理 ${AppConfig.freeCustomerLimit} 个客户、${AppConfig.freeProjectLimit} 个进行中项目';
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  const _SectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.textSub,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
   }
 }

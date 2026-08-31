@@ -12,17 +12,17 @@ import '../models.dart';
 import '../theme.dart';
 import '../constants.dart';
 
-/// 发票管理页（v1.10.0 新增）：
-/// 记录开票对象 / 金额 / 日期 / 状态（待开票/已开票/已作废），支持查看与导出。
-class InvoicePage extends StatefulWidget {
-  const InvoicePage({super.key});
+/// 合同/协议管理页（v1.11.0，替代 v1.10.0 的发票管理）：
+/// 记录签约对象 / 金额 / 签订日期 / 状态（草稿/已签/完成），支持查看与导出。
+class ContractPage extends StatefulWidget {
+  const ContractPage({super.key});
 
   @override
-  State<InvoicePage> createState() => _InvoicePageState();
+  State<ContractPage> createState() => _ContractPageState();
 }
 
-class _InvoicePageState extends State<InvoicePage> {
-  List<Invoice> _invoices = [];
+class _ContractPageState extends State<ContractPage> {
+  List<Contract> _contracts = [];
   bool _loading = true;
   final _fmt = NumberFormat('#,##0.00');
 
@@ -33,50 +33,50 @@ class _InvoicePageState extends State<InvoicePage> {
   }
 
   Future<void> _load() async {
-    final list = await AppDb.instance.getInvoices();
+    final list = await AppDb.instance.getContracts();
     if (!mounted) return;
     setState(() {
-      _invoices = list;
+      _contracts = list;
       _loading = false;
     });
   }
 
-  // 新增 / 编辑发票
-  Future<void> _editInvoice({Invoice? inv}) async {
+  // 新增 / 编辑合同
+  Future<void> _editContract({Contract? c}) async {
     final result = await showDialog<_EditResult>(
       context: context,
-      builder: (_) => _InvoiceEditDialog(invoice: inv),
+      builder: (_) => _ContractEditDialog(contract: c),
     );
     if (result == null || !mounted) return;
     final db = AppDb.instance;
-    if (inv == null) {
-      await db.insertInvoice(Invoice(
+    if (c == null) {
+      await db.insertContract(Contract(
         target: result.target,
         amount: result.amount,
         status: result.status,
-        issuedAt: result.date.millisecondsSinceEpoch,
-        invoiceNo: result.invoiceNo,
+        signedAt: result.date.millisecondsSinceEpoch,
+        contractNo: result.contractNo,
         note: result.note,
       ));
     } else {
-      await db.updateInvoice(inv.copyWith(
+      await db.updateContract(c.copyWith(
         target: result.target,
         amount: result.amount,
         status: result.status,
-        issuedAt: result.date.millisecondsSinceEpoch,
-        invoiceNo: result.invoiceNo,
+        signedAt: result.date.millisecondsSinceEpoch,
+        contractNo: result.contractNo,
         note: result.note,
       ));
     }
     await _load();
   }
 
-  Future<void> _deleteInvoice(Invoice inv) async {
+  Future<void> _deleteContract(Contract c) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除发票记录'),
-        content: Text('确定删除「${inv.target}」的发票记录吗？'),
+        title: const Text('删除合同记录'),
+        content: Text('确定删除「${c.target}」的合同记录吗？'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -90,26 +90,26 @@ class _InvoicePageState extends State<InvoicePage> {
       ),
     );
     if (ok != true) return;
-    await AppDb.instance.deleteInvoice(inv.id!);
+    await AppDb.instance.deleteContract(c.id!);
     await _load();
   }
 
-  // 状态流转：待开票 -> 已开票 -> 作废 -> 待开票
-  Future<void> _cycleStatus(Invoice inv) async {
-    final next = switch (inv.status) {
-      InvoiceStatus.draft => InvoiceStatus.issued,
-      InvoiceStatus.issued => InvoiceStatus.voided,
-      InvoiceStatus.voided => InvoiceStatus.draft,
+  // 状态流转：草稿 -> 已签 -> 完成 -> 草稿
+  Future<void> _cycleStatus(Contract c) async {
+    final next = switch (c.status) {
+      ContractStatus.draft => ContractStatus.signed,
+      ContractStatus.signed => ContractStatus.done,
+      ContractStatus.done => ContractStatus.draft,
     };
-    await AppDb.instance.updateInvoice(inv.copyWith(status: next));
+    await AppDb.instance.updateContract(c.copyWith(status: next));
     await _load();
   }
 
   // 导出 CSV
   Future<void> _export() async {
-    if (_invoices.isEmpty) {
+    if (_contracts.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('还没有发票记录，暂无可导出')),
+        const SnackBar(content: Text('还没有合同记录，暂无可导出')),
       );
       return;
     }
@@ -117,20 +117,20 @@ class _InvoicePageState extends State<InvoicePage> {
     final outDir = Directory(p.join(dir.path, 'exports'));
     if (!outDir.existsSync()) outDir.createSync(recursive: true);
     final stamp = DateTime.now().millisecondsSinceEpoch;
-    final file = File(p.join(outDir.path, 'invoices-$stamp.csv'));
+    final file = File(p.join(outDir.path, 'contracts-$stamp.csv'));
 
-    final b = StringBuffer('开票对象,金额(元),开票日期,发票号码,状态,备注\n');
-    for (final inv in _invoices) {
+    final b = StringBuffer('签约对象,金额(元),签订日期,合同编号,状态,备注\n');
+    for (final c in _contracts) {
       final date = DateFormat('yyyy-MM-dd')
-          .format(DateTime.fromMillisecondsSinceEpoch(inv.issuedAt));
-      b.writeln('${inv.target},${_fmt.format(inv.amount / 100)},$date,${inv.invoiceNo},${inv.status.label},${inv.note.replaceAll(',', '，')}');
+          .format(DateTime.fromMillisecondsSinceEpoch(c.signedAt));
+      b.writeln('${c.target},${_fmt.format(c.amount / 100)},$date,${c.contractNo},${c.status.label},${c.note.replaceAll(',', '，')}');
     }
     // 带 UTF-8 BOM，保证 Excel 打开中文不乱码
     final bytes = [0xEF, 0xBB, 0xBF, ...utf8.encode(b.toString())];
     file.writeAsBytesSync(bytes);
     await Share.shareXFiles(
       [XFile(file.path, mimeType: 'text/csv')],
-      text: '接单管家 发票记录导出（共 ${_invoices.length} 条）',
+      text: '接单管家 合同记录导出（共 ${_contracts.length} 条）',
     );
   }
 
@@ -138,7 +138,7 @@ class _InvoicePageState extends State<InvoicePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('发票记录'),
+        title: const Text('合同管理'),
         actions: [
           IconButton(
             tooltip: '导出 CSV',
@@ -150,53 +150,53 @@ class _InvoicePageState extends State<InvoicePage> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.white,
-        onPressed: () => _editInvoice(),
+        onPressed: () => _editContract(),
         child: const Icon(Icons.add),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _invoices.isEmpty
+          : _contracts.isEmpty
               ? const Center(
-                  child: Text('还没有发票记录，点右下角添加',
+                  child: Text('还没有合同记录，点右下角添加',
                       style: TextStyle(color: AppTheme.textSub)),
                 )
               : ListView.builder(
                   padding: const EdgeInsets.only(top: 4, bottom: 88),
-                  itemCount: _invoices.length,
+                  itemCount: _contracts.length,
                   itemBuilder: (ctx, i) {
-                    final inv = _invoices[i];
+                    final c = _contracts[i];
                     return Card(
                       child: ListTile(
-                        onTap: () => _editInvoice(inv: inv),
+                        onTap: () => _editContract(c: c),
                         leading: Icon(
-                          _statusIcon(inv.status),
-                          color: _statusColor(inv.status),
+                          _statusIcon(c.status),
+                          color: _statusColor(c.status),
                         ),
                         title: Text(
-                          inv.target,
+                          c.target,
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                         subtitle: Text(
-                          '¥${_fmt.format(inv.amount / 100)} · ${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(inv.issuedAt))}'
-                          '${inv.invoiceNo.isEmpty ? '' : ' · 票号 ${inv.invoiceNo}'}',
+                          '¥${_fmt.format(c.amount / 100)} · ${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(c.signedAt))}'
+                          '${c.contractNo.isEmpty ? '' : ' · 编号 ${c.contractNo}'}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            _StatusChip(status: inv.status),
+                            _StatusChip(status: c.status),
                             IconButton(
                               tooltip: '流转状态',
                               icon: const Icon(Icons.swap_horiz,
                                   size: 20, color: AppTheme.primary),
-                              onPressed: () => _cycleStatus(inv),
+                              onPressed: () => _cycleStatus(c),
                             ),
                             IconButton(
                               tooltip: '删除',
                               icon: const Icon(Icons.delete_outline,
                                   size: 20, color: AppTheme.danger),
-                              onPressed: () => _deleteInvoice(inv),
+                              onPressed: () => _deleteContract(c),
                             ),
                           ],
                         ),
@@ -207,16 +207,16 @@ class _InvoicePageState extends State<InvoicePage> {
     );
   }
 
-  IconData _statusIcon(InvoiceStatus s) => switch (s) {
-        InvoiceStatus.draft => Icons.edit_note_outlined,
-        InvoiceStatus.issued => Icons.check_circle_outline,
-        InvoiceStatus.voided => Icons.cancel_outlined,
+  IconData _statusIcon(ContractStatus s) => switch (s) {
+        ContractStatus.draft => Icons.edit_note_outlined,
+        ContractStatus.signed => Icons.check_circle_outline,
+        ContractStatus.done => Icons.task_alt_outlined,
       };
 
-  Color _statusColor(InvoiceStatus s) => switch (s) {
-        InvoiceStatus.draft => AppTheme.warn,
-        InvoiceStatus.issued => AppTheme.accent,
-        InvoiceStatus.voided => AppTheme.textSub,
+  Color _statusColor(ContractStatus s) => switch (s) {
+        ContractStatus.draft => AppTheme.warn,
+        ContractStatus.signed => AppTheme.accent,
+        ContractStatus.done => AppTheme.primary,
       };
 }
 
@@ -224,48 +224,48 @@ class _EditResult {
   final String target;
   final int amount;
   final DateTime date;
-  final InvoiceStatus status;
-  final String invoiceNo;
+  final ContractStatus status;
+  final String contractNo;
   final String note;
   const _EditResult({
     required this.target,
     required this.amount,
     required this.date,
     required this.status,
-    required this.invoiceNo,
+    required this.contractNo,
     required this.note,
   });
 }
 
-class _InvoiceEditDialog extends StatefulWidget {
-  final Invoice? invoice;
-  const _InvoiceEditDialog({this.invoice});
+class _ContractEditDialog extends StatefulWidget {
+  final Contract? contract;
+  const _ContractEditDialog({this.contract});
 
   @override
-  State<_InvoiceEditDialog> createState() => _InvoiceEditDialogState();
+  State<_ContractEditDialog> createState() => _ContractEditDialogState();
 }
 
-class _InvoiceEditDialogState extends State<_InvoiceEditDialog> {
+class _ContractEditDialogState extends State<_ContractEditDialog> {
   late final TextEditingController _targetCtrl;
   late final TextEditingController _amountCtrl;
   late final TextEditingController _noCtrl;
   late final TextEditingController _noteCtrl;
   late DateTime _date;
-  late InvoiceStatus _status;
+  late ContractStatus _status;
 
   @override
   void initState() {
     super.initState();
-    final inv = widget.invoice;
-    _targetCtrl = TextEditingController(text: inv?.target ?? '');
+    final c = widget.contract;
+    _targetCtrl = TextEditingController(text: c?.target ?? '');
     _amountCtrl = TextEditingController(
-        text: inv == null ? '' : Money.yuan(inv.amount));
-    _noCtrl = TextEditingController(text: inv?.invoiceNo ?? '');
-    _noteCtrl = TextEditingController(text: inv?.note ?? '');
-    _date = inv == null
+        text: c == null ? '' : Money.yuan(c.amount));
+    _noCtrl = TextEditingController(text: c?.contractNo ?? '');
+    _noteCtrl = TextEditingController(text: c?.note ?? '');
+    _date = c == null
         ? DateTime.now()
-        : DateTime.fromMillisecondsSinceEpoch(inv.issuedAt);
-    _status = inv?.status ?? InvoiceStatus.draft;
+        : DateTime.fromMillisecondsSinceEpoch(c.signedAt);
+    _status = c?.status ?? ContractStatus.draft;
   }
 
   @override
@@ -289,9 +289,9 @@ class _InvoiceEditDialogState extends State<_InvoiceEditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isNew = widget.invoice == null;
+    final isNew = widget.contract == null;
     return AlertDialog(
-      title: Text(isNew ? '新增发票' : '编辑发票'),
+      title: Text(isNew ? '新增合同' : '编辑合同'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -299,7 +299,7 @@ class _InvoiceEditDialogState extends State<_InvoiceEditDialog> {
             TextField(
               controller: _targetCtrl,
               decoration: const InputDecoration(
-                  labelText: '开票对象（客户 / 公司名）', isDense: true),
+                  labelText: '签约对象（客户 / 公司名）', isDense: true),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -307,22 +307,22 @@ class _InvoiceEditDialogState extends State<_InvoiceEditDialog> {
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
-                  labelText: '开票金额（元）', isDense: true),
+                  labelText: '合同金额（元）', isDense: true),
             ),
             const SizedBox(height: 10),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('开票日期', style: TextStyle(fontSize: 14)),
+              title: const Text('签订日期', style: TextStyle(fontSize: 14)),
               trailing: Text(
                   DateFormat('yyyy-MM-dd').format(_date),
                   style: const TextStyle(color: AppTheme.primary)),
               onTap: _pickDate,
             ),
-            DropdownButtonFormField<InvoiceStatus>(
+            DropdownButtonFormField<ContractStatus>(
               initialValue: _status,
               decoration:
                   const InputDecoration(labelText: '状态', isDense: true),
-              items: InvoiceStatus.values
+              items: ContractStatus.values
                   .map((s) => DropdownMenuItem(
                       value: s, child: Text(s.label)))
                   .toList(),
@@ -334,7 +334,7 @@ class _InvoiceEditDialogState extends State<_InvoiceEditDialog> {
             TextField(
               controller: _noCtrl,
               decoration: const InputDecoration(
-                  labelText: '发票号码（可选）', isDense: true),
+                  labelText: '合同编号（可选）', isDense: true),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -356,7 +356,7 @@ class _InvoiceEditDialogState extends State<_InvoiceEditDialog> {
             final amount = Money.parseYuanToFen(_amountCtrl.text.trim());
             if (target.isEmpty || amount <= 0) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('请填写开票对象和有效金额')),
+                const SnackBar(content: Text('请填写签约对象和有效金额')),
               );
               return;
             }
@@ -365,7 +365,7 @@ class _InvoiceEditDialogState extends State<_InvoiceEditDialog> {
               amount: amount,
               date: _date,
               status: _status,
-              invoiceNo: _noCtrl.text.trim(),
+              contractNo: _noCtrl.text.trim(),
               note: _noteCtrl.text.trim(),
             ));
           },
@@ -377,15 +377,15 @@ class _InvoiceEditDialogState extends State<_InvoiceEditDialog> {
 }
 
 class _StatusChip extends StatelessWidget {
-  final InvoiceStatus status;
+  final ContractStatus status;
   const _StatusChip({required this.status});
 
   @override
   Widget build(BuildContext context) {
     final color = switch (status) {
-      InvoiceStatus.draft => AppTheme.warn,
-      InvoiceStatus.issued => AppTheme.accent,
-      InvoiceStatus.voided => AppTheme.textSub,
+      ContractStatus.draft => AppTheme.warn,
+      ContractStatus.signed => AppTheme.accent,
+      ContractStatus.done => AppTheme.primary,
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
