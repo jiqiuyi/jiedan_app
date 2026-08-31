@@ -45,16 +45,18 @@ class AppDb {
             customer_id INTEGER,
             title TEXT,
             status INTEGER,
-            amount_total REAL,
+            amount_total INTEGER DEFAULT 0,
             created_at INTEGER,
-            updated_at INTEGER
+            updated_at INTEGER,
+            due_date INTEGER DEFAULT 0,
+            remind_at INTEGER DEFAULT 0
           )
         ''');
         await db.execute('''
           CREATE TABLE payments(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id INTEGER,
-            amount REAL,
+            amount INTEGER DEFAULT 0,
             type INTEGER,
             type_label TEXT,
             paid_at INTEGER,
@@ -73,6 +75,9 @@ class AppDb {
         await _createWithdrawals(db);
         await _createRecharges(db);
         await _createQuotes(db);
+        await _createPendingCollections(db);
+        await _createMilestones(db);
+        await _createInvoices(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -95,6 +100,9 @@ class AppDb {
         }
         if (oldVersion < 8) {
           await _migrateToV8(db);
+        }
+        if (oldVersion < 9) {
+          await _migrateToV9(db);
         }
       },
     );
@@ -138,8 +146,8 @@ class AppDb {
         phone TEXT,
         invited_at INTEGER,
         paid INTEGER DEFAULT 0,
-        pay_amount REAL DEFAULT 0,
-        rebate REAL DEFAULT 0,
+        pay_amount INTEGER DEFAULT 0,
+        rebate INTEGER DEFAULT 0,
         paid_at INTEGER
       )
     ''');
@@ -150,7 +158,7 @@ class AppDb {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS withdrawals(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        amount REAL NOT NULL,
+        amount INTEGER NOT NULL DEFAULT 0,
         method INTEGER NOT NULL,
         account_name TEXT,
         account_no TEXT,
@@ -166,7 +174,7 @@ class AppDb {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS recharges(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        amount REAL NOT NULL,
+        amount INTEGER NOT NULL DEFAULT 0,
         method INTEGER NOT NULL,
         status INTEGER DEFAULT 0,
         created_at INTEGER,
@@ -175,20 +183,69 @@ class AppDb {
     ''');
   }
 
-  /// v7 新增：报价单历史表；v8 扩展简单/详细类型三列。
+  /// v7 新增：报价单历史表；v8 扩展简单/详细类型三列；v9 增 customer_id 列 + 金额改分。
   Future<void> _createQuotes(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS quotes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         project_id INTEGER,
+        customer_id INTEGER,
         title TEXT,
         tax_rate REAL DEFAULT 0,
         lines_json TEXT,
-        total REAL DEFAULT 0,
+        total INTEGER DEFAULT 0,
         created_at INTEGER,
         quote_type TEXT DEFAULT 'full',
         note TEXT,
         tax_include INTEGER DEFAULT 1
+      )
+    ''');
+  }
+
+  /// v9 新增：待收款记录表（报价转待收款 / 项目待收尾款）
+  Future<void> _createPendingCollections(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS pending_collections(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER,
+        quote_id INTEGER,
+        customer_id INTEGER,
+        title TEXT,
+        amount INTEGER DEFAULT 0,
+        due_date INTEGER DEFAULT 0,
+        status INTEGER DEFAULT 0,
+        created_at INTEGER,
+        settled_at INTEGER
+      )
+    ''');
+  }
+
+  /// v9 新增：项目里程碑 / 阶段表
+  Future<void> _createMilestones(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS milestones(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER,
+        name TEXT,
+        amount INTEGER DEFAULT 0,
+        done INTEGER DEFAULT 0,
+        created_at INTEGER
+      )
+    ''');
+  }
+
+  /// v9 新增：发票记录表
+  Future<void> _createInvoices(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS invoices(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        target TEXT,
+        amount INTEGER DEFAULT 0,
+        project_id INTEGER,
+        status INTEGER DEFAULT 0,
+        issued_at INTEGER,
+        invoice_no TEXT,
+        note TEXT
       )
     ''');
   }
@@ -221,6 +278,150 @@ class AppDb {
     }
   }
 
+  /// v9 迁移（金额改分 + 新功能表 + 新列）。
+  /// SQLite 不支持 ALTER COLUMN 改类型，采用「新表 + 复制 x100 + 换名」重建金额表。
+  /// 涉及表：projects / payments / quotes / withdrawals / recharges / invitees。
+  /// 新增表：pending_collections / milestones / invoices。
+  /// quotes 增 customer_id，projects 增 due_date / remind_at。
+  Future<void> _migrateToV9(Database db) async {
+    // 1) projects：amount_total 元→分（x100），新增 due_date / remind_at
+    final pCols = await db.rawQuery('PRAGMA table_info(projects)');
+    final hasDue = pCols.any((c) => c['name'] == 'due_date');
+    final hasRemind = pCols.any((c) => c['name'] == 'remind_at');
+    await db.execute('''
+      CREATE TABLE projects_new(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER,
+        title TEXT,
+        status INTEGER,
+        amount_total INTEGER DEFAULT 0,
+        created_at INTEGER,
+        updated_at INTEGER,
+        due_date INTEGER DEFAULT 0,
+        remind_at INTEGER DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      INSERT INTO projects_new(id, customer_id, title, status, amount_total, created_at, updated_at, due_date, remind_at)
+      SELECT id, customer_id, title, status, CAST(ROUND(amount_total*100) AS INTEGER), created_at, updated_at,
+        ${hasDue ? 'due_date' : '0'}, ${hasRemind ? 'remind_at' : '0'}
+      FROM projects
+    ''');
+    await db.execute('DROP TABLE projects');
+    await db.execute('ALTER TABLE projects_new RENAME TO projects');
+
+    // 2) payments：amount 元→分（x100）
+    await db.execute('''
+      CREATE TABLE payments_new(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER,
+        amount INTEGER DEFAULT 0,
+        type INTEGER,
+        type_label TEXT,
+        paid_at INTEGER,
+        note TEXT
+      )
+    ''');
+    await db.execute('''
+      INSERT INTO payments_new(id, project_id, amount, type, type_label, paid_at, note)
+      SELECT id, project_id, CAST(ROUND(amount*100) AS INTEGER), type, type_label, paid_at, note
+      FROM payments
+    ''');
+    await db.execute('DROP TABLE payments');
+    await db.execute('ALTER TABLE payments_new RENAME TO payments');
+
+    // 3) quotes：total 元→分（x100），新增 customer_id 列
+    await db.execute('''
+      CREATE TABLE quotes_new(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER,
+        customer_id INTEGER,
+        title TEXT,
+        tax_rate REAL DEFAULT 0,
+        lines_json TEXT,
+        total INTEGER DEFAULT 0,
+        created_at INTEGER,
+        quote_type TEXT DEFAULT 'full',
+        note TEXT,
+        tax_include INTEGER DEFAULT 1
+      )
+    ''');
+    await db.execute('''
+      INSERT INTO quotes_new(id, project_id, customer_id, title, tax_rate, lines_json, total, created_at, quote_type, note, tax_include)
+      SELECT id, project_id, NULL, title, tax_rate, lines_json, CAST(ROUND(total*100) AS INTEGER), created_at, quote_type, note, tax_include
+      FROM quotes
+    ''');
+    await db.execute('DROP TABLE quotes');
+    await db.execute('ALTER TABLE quotes_new RENAME TO quotes');
+
+    // 4) withdrawals：amount 元→分（x100）
+    await db.execute('''
+      CREATE TABLE withdrawals_new(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount INTEGER NOT NULL DEFAULT 0,
+        method INTEGER NOT NULL,
+        account_name TEXT,
+        account_no TEXT,
+        status INTEGER DEFAULT 0,
+        created_at INTEGER,
+        note TEXT
+      )
+    ''');
+    await db.execute('''
+      INSERT INTO withdrawals_new(id, amount, method, account_name, account_no, status, created_at, note)
+      SELECT id, CAST(ROUND(amount*100) AS INTEGER), method, account_name, account_no, status, created_at, note
+      FROM withdrawals
+    ''');
+    await db.execute('DROP TABLE withdrawals');
+    await db.execute('ALTER TABLE withdrawals_new RENAME TO withdrawals');
+
+    // 5) recharges：amount 元→分（x100）
+    await db.execute('''
+      CREATE TABLE recharges_new(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount INTEGER NOT NULL DEFAULT 0,
+        method INTEGER NOT NULL,
+        status INTEGER DEFAULT 0,
+        created_at INTEGER,
+        note TEXT
+      )
+    ''');
+    await db.execute('''
+      INSERT INTO recharges_new(id, amount, method, status, created_at, note)
+      SELECT id, CAST(ROUND(amount*100) AS INTEGER), method, status, created_at, note
+      FROM recharges
+    ''');
+    await db.execute('DROP TABLE recharges');
+    await db.execute('ALTER TABLE recharges_new RENAME TO recharges');
+
+    // 6) invitees：pay_amount / rebate 元→分（x100）
+    await db.execute('''
+      CREATE TABLE invitees_new(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        inviter_user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        phone TEXT,
+        invited_at INTEGER,
+        paid INTEGER DEFAULT 0,
+        pay_amount INTEGER DEFAULT 0,
+        rebate INTEGER DEFAULT 0,
+        paid_at INTEGER
+      )
+    ''');
+    await db.execute('''
+      INSERT INTO invitees_new(id, inviter_user_id, name, phone, invited_at, paid, pay_amount, rebate, paid_at)
+      SELECT id, inviter_user_id, name, phone, invited_at, paid, CAST(ROUND(pay_amount*100) AS INTEGER), CAST(ROUND(rebate*100) AS INTEGER), paid_at
+      FROM invitees
+    ''');
+    await db.execute('DROP TABLE invitees');
+    await db.execute('ALTER TABLE invitees_new RENAME TO invitees');
+
+    // 7) 新增表
+    await _createPendingCollections(db);
+    await _createMilestones(db);
+    await _createInvoices(db);
+  }
+
   // ---------- settings ----------
   Future<String?> getSetting(String key) async {
     final d = await db;
@@ -236,6 +437,44 @@ class AppDb {
       {'key': key, 'value': value},
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  // ---------- users（本地账号）----------
+  Future<UserAccount?> getUserByPhone(String phone) async {
+    final d = await db;
+    final rows = await d.query('users',
+        where: 'phone=?', whereArgs: [phone], limit: 1);
+    if (rows.isEmpty) return null;
+    return UserAccount.fromMap(rows.first);
+  }
+
+  Future<int> insertUser(UserAccount u) async {
+    final d = await db;
+    return d.insert('users', u.toMap()..remove('id'));
+  }
+
+  Future<void> updateUser(UserAccount u) async {
+    final d = await db;
+    await d.update('users', u.toMap(), where: 'id=?', whereArgs: [u.id]);
+  }
+
+  /// 当前登录账号（本地会话）
+  Future<UserAccount?> getCurrentUser() async {
+    final idStr = await getSetting('current_user_id');
+    if (idStr == null || idStr.isEmpty) return null;
+    final d = await db;
+    final rows = await d.query('users',
+        where: 'id=?', whereArgs: [int.tryParse(idStr)], limit: 1);
+    if (rows.isEmpty) return null;
+    return UserAccount.fromMap(rows.first);
+  }
+
+  Future<void> setCurrentUser(int? id) async {
+    if (id == null) {
+      await setSetting('current_user_id', '');
+    } else {
+      await setSetting('current_user_id', '$id');
+    }
   }
 
   // ---------- customers ----------
@@ -257,12 +496,14 @@ class AppDb {
 
   Future<void> deleteCustomer(int id) async {
     final d = await db;
-    // 级联删除：先删该客户全部项目（deleteProject 已级联删 payments），再删客户
+    // 级联删除：先删该客户全部项目（deleteProject 已级联删 payments/里程碑/待收/报价/发票），再删客户
     final projects = await d
         .query('projects', where: 'customer_id=?', whereArgs: [id]);
     for (final pr in projects) {
       await deleteProject(pr['id'] as int);
     }
+    await d.delete('pending_collections', where: 'customer_id=?', whereArgs: [id]);
+    await d.delete('quotes', where: 'customer_id=?', whereArgs: [id]);
     await d.delete('customers', where: 'id=?', whereArgs: [id]);
   }
 
@@ -293,6 +534,10 @@ class AppDb {
   Future<void> deleteProject(int id) async {
     final d = await db;
     await d.delete('payments', where: 'project_id=?', whereArgs: [id]);
+    await d.delete('milestones', where: 'project_id=?', whereArgs: [id]);
+    await d.delete('pending_collections', where: 'project_id=?', whereArgs: [id]);
+    await d.delete('invoices', where: 'project_id=?', whereArgs: [id]);
+    await d.delete('quotes', where: 'project_id=?', whereArgs: [id]);
     await d.delete('projects', where: 'id=?', whereArgs: [id]);
   }
 
@@ -314,34 +559,35 @@ class AppDb {
     await d.delete('payments', where: 'id=?', whereArgs: [id]);
   }
 
-  // 项目已收总额
-  Future<double> projectPaidTotal(int projectId) async {
+  // 项目已收总额（分）
+  Future<int> projectPaidTotal(int projectId) async {
     final d = await db;
     final rows = await d.rawQuery(
         'SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE project_id=?',
         [projectId]);
-    return ((rows.first['t'] as num?) ?? 0).toDouble();
+    return (rows.first['t'] as num?)?.toInt() ?? 0;
   }
 
-  // 全部项目的已收总额（列表页一次取齐，避免逐项目查询）
-  Future<Map<int, double>> projectPaidTotals() async {
+  // 全部项目的已收总额（列表页一次取齐，避免逐项目查询），值为分
+  Future<Map<int, int>> projectPaidTotals() async {
     final d = await db;
     final rows = await d.rawQuery(
         'SELECT project_id, COALESCE(SUM(amount),0) AS t FROM payments GROUP BY project_id');
     return {
-      for (final r in rows) r['project_id'] as int: ((r['t'] as num?) ?? 0).toDouble(),
+      for (final r in rows)
+        r['project_id'] as int: (r['t'] as num?)?.toInt() ?? 0,
     };
   }
 
-  // 本月收入
-  Future<double> monthPaidTotal(int year, int month) async {
+  // 本月收入（分）
+  Future<int> monthPaidTotal(int year, int month) async {
     final d = await db;
     final start = DateTime(year, month, 1).millisecondsSinceEpoch;
     final end = DateTime(year, month + 1, 1).millisecondsSinceEpoch;
     final rows = await d.rawQuery(
         'SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE paid_at>=? AND paid_at<?',
         [start, end]);
-    return ((rows.first['t'] as num?) ?? 0).toDouble();
+    return (rows.first['t'] as num?)?.toInt() ?? 0;
   }
 
   // 指定月份的全部收款明细（含项目标题），按收款时间倒序
@@ -351,13 +597,13 @@ class AppDb {
     return paymentsInRange(start, end);
   }
 
-  // 任意时间段内的收入合计（年/月/周/自定义区间共用）
-  Future<double> paidTotalInRange(int startMs, int endMs) async {
+  // 任意时间段内的收入合计（年/月/周/自定义区间共用），值为分
+  Future<int> paidTotalInRange(int startMs, int endMs) async {
     final d = await db;
     final rows = await d.rawQuery(
         'SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE paid_at>=? AND paid_at<?',
         [startMs, endMs]);
-    return ((rows.first['t'] as num?) ?? 0).toDouble();
+    return (rows.first['t'] as num?)?.toInt() ?? 0;
   }
 
   // 任意时间段内的全部收款明细（含项目标题），按收款时间倒序
@@ -371,48 +617,103 @@ class AppDb {
         [startMs, endMs]);
   }
 
-  // ---------- users（本地账号）----------
-  Future<UserAccount?> getUserByPhone(String phone) async {
+  // 近 12 个月每月收入（分），返回 [(年, 月, 金额)]
+  Future<List<Map<String, int>>> monthlyIncomeLast12() async {
     final d = await db;
-    final rows = await d.query('users',
-        where: 'phone=?', whereArgs: [phone], limit: 1);
-    if (rows.isEmpty) return null;
-    return UserAccount.fromMap(rows.first);
-  }
-
-  Future<int> insertUser(UserAccount u) async {
-    final d = await db;
-    return d.insert('users', u.toMap()..remove('id'));
-  }
-
-  Future<void> updateUser(UserAccount u) async {
-    final d = await db;
-    await d.update('users', u.toMap(), where: 'id=?', whereArgs: [u.id]);
-  }
-
-  /// 当前登录账号（本地会话）
-  Future<UserAccount?> getCurrentUser() async {
-    final idStr = await getSetting('current_user_id');
-    if (idStr == null) return null;
-    final d = await db;
-    final rows = await d.query('users',
-        where: 'id=?', whereArgs: [int.tryParse(idStr)], limit: 1);
-    if (rows.isEmpty) return null;
-    return UserAccount.fromMap(rows.first);
-  }
-
-  Future<void> setCurrentUser(int? id) async {
-    if (id == null) {
-      await setSetting('current_user_id', '');
-    } else {
-      await setSetting('current_user_id', '$id');
+    final now = DateTime.now();
+    final list = <Map<String, int>>[];
+    for (int i = 11; i >= 0; i--) {
+      final m = DateTime(now.year, now.month - i, 1);
+      final start = m.millisecondsSinceEpoch;
+      final end = DateTime(now.year, now.month - i + 1, 1).millisecondsSinceEpoch;
+      final rows = await d.rawQuery(
+          'SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE paid_at>=? AND paid_at<?',
+          [start, end]);
+      list.add({
+        'year': m.year,
+        'month': m.month,
+        'amount': (rows.first['t'] as num?)?.toInt() ?? 0,
+      });
     }
+    return list;
+  }
+
+  // 客户贡献排行（分）：按项目归属客户汇总已收金额，返回 [(customerName, totalFen)]
+  Future<List<Map<String, Object?>>> customerContribution() async {
+    final d = await db;
+    return d.rawQuery('''
+      SELECT COALESCE(c.name, '未关联客户') AS customer_name,
+             COALESCE(SUM(p.amount),0) AS total
+      FROM payments p
+      LEFT JOIN projects pr ON pr.id = p.project_id
+      LEFT JOIN customers c ON c.id = pr.customer_id
+      GROUP BY COALESCE(c.name, '未关联客户')
+      ORDER BY total DESC
+    ''');
+  }
+
+  // 待收总额（分）：所有 status=pending 的待收款合计
+  Future<int> pendingTotal() async {
+    final d = await db;
+    final rows = await d.rawQuery(
+        'SELECT COALESCE(SUM(amount),0) AS t FROM pending_collections WHERE status=?',
+        [PendingStatus.pending.index]);
+    return (rows.first['t'] as num?)?.toInt() ?? 0;
+  }
+
+  // 收款 / 待收构成：已收总额 与 待收总额（分）
+  Future<Map<String, int>> paidVsPendingSummary() async {
+    final paid = await allPaidTotal();
+    final pending = await pendingTotal();
+    return {'paid': paid, 'pending': pending};
+  }
+
+  // 对账汇总：每个项目 约定总额/已收/待收（分）
+  Future<List<Map<String, Object?>>> reconciliationSummary() async {
+    final d = await db;
+    return d.rawQuery('''
+      SELECT pr.id AS project_id,
+             COALESCE(pr.title, '已删除项目') AS project_title,
+             COALESCE(c.name, '未关联客户') AS customer_name,
+             COALESCE(pr.amount_total,0) AS amount_total,
+             COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.project_id = pr.id),0) AS paid_total,
+             COALESCE((SELECT SUM(pc.amount) FROM pending_collections pc WHERE pc.project_id = pr.id AND pc.status = 0),0) AS pending_total
+      FROM projects pr
+      LEFT JOIN customers c ON c.id = pr.customer_id
+      ORDER BY pr.updated_at DESC
+    ''');
+  }
+
+  // 有待收提醒设置的项目（due_date>0 且存在未结清待收）
+  Future<List<Map<String, Object?>>> projectsWithPendingReminder() async {
+    final d = await db;
+    return d.rawQuery('''
+      SELECT pr.id AS project_id, pr.title AS project_title, pr.due_date,
+             COALESCE((SELECT SUM(pc.amount) FROM pending_collections pc WHERE pc.project_id = pr.id AND pc.status = 0),0) AS pending_total
+      FROM projects pr
+      WHERE pr.due_date > 0
+        AND EXISTS(SELECT 1 FROM pending_collections pc WHERE pc.project_id = pr.id AND pc.status = 0)
+    ''');
   }
 
   // ---------- quotes（报价单历史，v7）----------
   Future<List<Quote>> getQuotes() async {
     final d = await db;
     final rows = await d.query('quotes', orderBy: 'created_at DESC');
+    return rows.map(Quote.fromMap).toList();
+  }
+
+  Future<List<Quote>> getQuotesByCustomer(int customerId) async {
+    final d = await db;
+    final rows = await d.query('quotes',
+        where: 'customer_id=?', whereArgs: [customerId], orderBy: 'created_at DESC');
+    return rows.map(Quote.fromMap).toList();
+  }
+
+  Future<List<Quote>> getQuotesByProject(int projectId) async {
+    final d = await db;
+    final rows = await d.query('quotes',
+        where: 'project_id=?', whereArgs: [projectId], orderBy: 'created_at DESC');
     return rows.map(Quote.fromMap).toList();
   }
 
@@ -429,6 +730,89 @@ class AppDb {
   Future<void> deleteQuote(int id) async {
     final d = await db;
     await d.delete('quotes', where: 'id=?', whereArgs: [id]);
+  }
+
+  // ---------- pending_collections（待收款，v9）----------
+  Future<List<PendingCollection>> getPendingCollections({bool onlyPending = false}) async {
+    final d = await db;
+    final rows = onlyPending
+        ? await d.query('pending_collections',
+            where: 'status=?', whereArgs: [PendingStatus.pending.index], orderBy: 'created_at DESC')
+        : await d.query('pending_collections', orderBy: 'created_at DESC');
+    return rows.map(PendingCollection.fromMap).toList();
+  }
+
+  Future<int> insertPendingCollection(PendingCollection pc) async {
+    final d = await db;
+    return d.insert('pending_collections', pc.toMap()..remove('id'));
+  }
+
+  Future<void> updatePendingCollection(PendingCollection pc) async {
+    final d = await db;
+    await d.update('pending_collections', pc.toMap(),
+        where: 'id=?', whereArgs: [pc.id]);
+  }
+
+  Future<void> settlePending(int id) async {
+    final d = await db;
+    await d.update(
+        'pending_collections',
+        {
+          'status': PendingStatus.done.index,
+          'settled_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        where: 'id=?',
+        whereArgs: [id]);
+  }
+
+  Future<void> deletePendingCollection(int id) async {
+    final d = await db;
+    await d.delete('pending_collections', where: 'id=?', whereArgs: [id]);
+  }
+
+  // ---------- milestones（项目里程碑，v9）----------
+  Future<List<Milestone>> getMilestones(int projectId) async {
+    final d = await db;
+    final rows = await d.query('milestones',
+        where: 'project_id=?', whereArgs: [projectId], orderBy: 'created_at ASC');
+    return rows.map(Milestone.fromMap).toList();
+  }
+
+  Future<int> insertMilestone(Milestone ms) async {
+    final d = await db;
+    return d.insert('milestones', ms.toMap()..remove('id'));
+  }
+
+  Future<void> updateMilestone(Milestone ms) async {
+    final d = await db;
+    await d.update('milestones', ms.toMap(), where: 'id=?', whereArgs: [ms.id]);
+  }
+
+  Future<void> deleteMilestone(int id) async {
+    final d = await db;
+    await d.delete('milestones', where: 'id=?', whereArgs: [id]);
+  }
+
+  // ---------- invoices（发票，v9）----------
+  Future<List<Invoice>> getInvoices() async {
+    final d = await db;
+    final rows = await d.query('invoices', orderBy: 'issued_at DESC');
+    return rows.map(Invoice.fromMap).toList();
+  }
+
+  Future<int> insertInvoice(Invoice inv) async {
+    final d = await db;
+    return d.insert('invoices', inv.toMap()..remove('id'));
+  }
+
+  Future<void> updateInvoice(Invoice inv) async {
+    final d = await db;
+    await d.update('invoices', inv.toMap(), where: 'id=?', whereArgs: [inv.id]);
+  }
+
+  Future<void> deleteInvoice(int id) async {
+    final d = await db;
+    await d.delete('invoices', where: 'id=?', whereArgs: [id]);
   }
 
   // ---------- feedbacks（意见反馈）----------
@@ -508,37 +892,38 @@ class AppDb {
 
   // ---------- 钱包 / 提现（v5）----------
 
-  /// 全部已收总额（所有 payments 合计）
-  Future<double> allPaidTotal() async {
+  /// 全部已收总额（所有 payments 合计），分为单位
+  Future<int> allPaidTotal() async {
     final d = await db;
     final rows = await d
         .rawQuery('SELECT COALESCE(SUM(amount),0) AS t FROM payments');
-    return ((rows.first['t'] as num?) ?? 0).toDouble();
+    return (rows.first['t'] as num?)?.toInt() ?? 0;
   }
 
-  /// 已提交提现总额（含待处理 / 处理中 / 已提现，均占用可提现额度）
-  Future<double> totalWithdrawn() async {
+  /// 已提交提现总额（含待处理 / 处理中 / 已提现，均占用可提现额度），分为单位
+  Future<int> totalWithdrawn() async {
     final d = await db;
     final rows = await d
         .rawQuery('SELECT COALESCE(SUM(amount),0) AS t FROM withdrawals');
-    return ((rows.first['t'] as num?) ?? 0).toDouble();
+    return (rows.first['t'] as num?)?.toInt() ?? 0;
   }
 
-  /// 已确认到账的充值总额（仅 status=done）
-  Future<double> totalRecharged() async {
+  /// 已确认到账的充值总额（仅 status=done），分为单位
+  Future<int> totalRecharged() async {
     final d = await db;
     final rows = await d.rawQuery(
         'SELECT COALESCE(SUM(amount),0) AS t FROM recharges WHERE status=?',
         [RechargeStatus.done.index]);
-    return ((rows.first['t'] as num?) ?? 0).toDouble();
+    return (rows.first['t'] as num?)?.toInt() ?? 0;
   }
 
-  /// 可提现余额 = 累计收款 + 累计充值到账 - 已提交提现
-  Future<double> withdrawableBalance() async {
+  /// 可提现余额（分）= 累计收款 + 累计充值到账 - 已提交提现
+  Future<int> withdrawableBalance() async {
     final paid = await allPaidTotal();
     final recharged = await totalRecharged();
     final withdrawn = await totalWithdrawn();
-    return (paid + recharged - withdrawn).clamp(0, double.infinity);
+    final v = paid + recharged - withdrawn;
+    return v < 0 ? 0 : v;
   }
 
   Future<int> insertRecharge(Recharge r) async {

@@ -23,7 +23,7 @@ class ProjectsPage extends StatefulWidget {
 class _ProjectsPageState extends State<ProjectsPage> {
   List<Project> _projects = [];
   List<Customer> _customers = [];
-  Map<int, double> _paidTotals = {};
+  Map<int, int> _paidTotals = {}; // 项目已收总额（分）
   int _tab = 0; // 0=全部, 1..4=状态+1
   String _query = '';
   Timer? _debounce;
@@ -148,7 +148,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
         customerId: selectedCustomer,
         title: titleCtrl.text.trim(),
         status: ProjectStatus.accepted,
-        amountTotal: double.tryParse(amountCtrl.text.trim()) ?? 0,
+        amountTotal: Money.parseYuanToFen(amountCtrl.text.trim()),
         createdAt: now,
         updatedAt: now,
       ));
@@ -238,7 +238,8 @@ class _ProjectsPageState extends State<ProjectsPage> {
                         itemBuilder: (ctx, i) {
                           final pr = items[i];
                           final paid = _paidTotals[pr.id] ?? 0;
-                          final remaining = (pr.amountTotal - paid).clamp(0, double.infinity);
+                          final remaining =
+                              pr.amountTotal - paid < 0 ? 0 : pr.amountTotal - paid;
                           return Card(
                             child: ListTile(
                               onTap: () async {
@@ -252,7 +253,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('${_customerName(pr.customerId)} · 约定 ¥${NumberFormat('#,##0.00').format(pr.amountTotal)}',
+                                  Text('${_customerName(pr.customerId)} · 约定 ¥${NumberFormat('#,##0.00').format(pr.amountTotal / 100)}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(color: AppTheme.textSub)),
@@ -266,7 +267,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
                                         children: [
                                           const TextSpan(text: '已收 ', style: TextStyle(color: AppTheme.textSub)),
                                           TextSpan(
-                                            text: '¥${NumberFormat('#,##0.00').format(paid)}',
+                                            text: '¥${NumberFormat('#,##0.00').format(paid / 100)}',
                                             style: TextStyle(
                                                 color: AppTheme.accent,
                                                 fontWeight: FontWeight.w700),
@@ -275,7 +276,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
                                           TextSpan(
                                             text: remaining <= 0
                                                 ? '已结清'
-                                                : '¥${NumberFormat('#,##0.00').format(remaining)}',
+                                                : '¥${NumberFormat('#,##0.00').format(remaining / 100)}',
                                             style: TextStyle(
                                                 color: remaining <= 0 ? AppTheme.accent : AppTheme.warn,
                                                 fontWeight: FontWeight.w700),

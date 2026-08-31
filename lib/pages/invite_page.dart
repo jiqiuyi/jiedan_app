@@ -156,7 +156,7 @@ class _InvitePageState extends State<InvitePage> {
                           Expanded(
                             child: _Stat(
                                 label: '累计返现',
-                                value: _fmt.format(_stats.totalRebate),
+                                value: _fmt.format(_stats.totalRebate / 100),
                                 unit: '元'),
                           ),
                         ],
@@ -260,7 +260,7 @@ class _InviteeTile extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(
           e.paid
-              ? '已付款 ¥${fmt.format(e.payAmount)} · 返现 ¥${fmt.format(e.rebate)}'
+              ? '已付款 ¥${fmt.format(e.payAmount / 100)} · 返现 ¥${fmt.format(e.rebate / 100)}'
               : (e.phone.isNotEmpty ? e.phone : '已注册 · 待付款'),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,

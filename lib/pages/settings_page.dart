@@ -11,6 +11,9 @@ import 'payment_code_settings_page.dart';
 import 'data_management_page.dart';
 import 'wallet_page.dart';
 import 'privacy_policy_page.dart';
+import 'income_stats_page.dart';
+import 'invoice_page.dart';
+import 'reconciliation_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -181,6 +184,54 @@ class _SettingsPageState extends State<SettingsPage> {
                     context,
                     MaterialPageRoute(builder: (_) => const WalletPage()),
                   ),
+                ),
+              ),
+              // ---- 经营报表：收入统计 / 发票管理 / 对账汇总（v1.10.0） ----
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.bar_chart,
+                          color: AppTheme.primary),
+                      title: const Text('收入统计'),
+                      subtitle: const Text('近 12 个月收入曲线、客户贡献排行'),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const IncomeStatsPage()),
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: const Icon(Icons.receipt_long_outlined,
+                          color: AppTheme.primary),
+                      title: const Text('发票管理'),
+                      subtitle: const Text('记录开票对象、金额、状态，支持导出'),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const InvoicePage()),
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: const Icon(Icons.rule_outlined,
+                          color: AppTheme.primary),
+                      title: const Text('对账汇总'),
+                      subtitle: const Text('每项目约定 / 已收 / 待收一览'),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const ReconciliationPage()),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               // ---- 收款设置入口 ----

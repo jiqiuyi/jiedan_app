@@ -4,10 +4,13 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'app_state.dart';
 import 'theme.dart';
 import 'pages/home_shell.dart';
+import 'services/notify_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppState.instance.load();
+  // 初始化本地催款提醒通知（完全本地，不涉及网络）
+  await NotifyService.instance.init();
   runApp(const JieDanApp());
 }
 
