@@ -168,8 +168,8 @@ Future<bool> showProjectCollectSheet(
   BuildContext context, {
   required int projectId,
   required String projectTitle,
-  required double amountTotal,
-  required double paidTotal,
+  required int amountTotal, // 分
+  required int paidTotal, // 分
 }) async {
   final db = AppDb.instance;
   final wxPath = await db.getWxQrPath();
@@ -227,8 +227,8 @@ Future<bool> showProjectCollectSheet(
 class _ProjectCollectSheet extends StatefulWidget {
   final int projectId;
   final String projectTitle;
-  final double amountTotal;
-  final double paidTotal;
+  final int amountTotal; // 分
+  final int paidTotal; // 分
   final String? wxPath;
   final String? aliPath;
 
@@ -256,9 +256,11 @@ class _ProjectCollectSheetState extends State<_ProjectCollectSheet> {
   @override
   void initState() {
     super.initState();
-    final remaining = (widget.amountTotal - widget.paidTotal).clamp(0, double.infinity);
+    final remaining = widget.amountTotal - widget.paidTotal < 0
+        ? 0
+        : widget.amountTotal - widget.paidTotal;
     if (widget.amountTotal > 0 && remaining > 0) {
-      _amountCtrl.text = remaining.toStringAsFixed(2);
+      _amountCtrl.text = Money.yuan(remaining);
     }
     // 默认类型：未收过->定金；有剩余->尾款；否则全额
     if (widget.paidTotal <= 0 && widget.amountTotal > 0) {
@@ -299,9 +301,10 @@ class _ProjectCollectSheetState extends State<_ProjectCollectSheet> {
       amount: double.parse(v.toStringAsFixed(2)),
       title: widget.projectTitle,
     ));
+    final amountFen = Money.parseYuanToFen(v.toStringAsFixed(2));
     await AppDb.instance.insertPayment(Payment(
       projectId: widget.projectId,
-      amount: double.parse(v.toStringAsFixed(2)),
+      amount: amountFen,
       type: _type,
       typeLabel: _type == PayType.custom ? _customTypeCtrl.text.trim() : '',
       paidAt: DateTime.now().millisecondsSinceEpoch,
@@ -388,7 +391,7 @@ class _ProjectCollectSheetState extends State<_ProjectCollectSheet> {
                 decoration: InputDecoration(
                   labelText: '实收金额（元） *',
                   hintText: widget.amountTotal > 0
-                      ? '约定总额 ¥${widget.amountTotal.toStringAsFixed(2)}，已收 ¥${widget.paidTotal.toStringAsFixed(2)}'
+                      ? '约定总额 ¥${Money.yuan(widget.amountTotal)}，已收 ¥${Money.yuan(widget.paidTotal)}'
                       : '未约定总额',
                   prefixText: '¥ ',
                 ),

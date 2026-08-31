@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.8.0';
+  static const String version = '1.10.0';
 
   // ---- 云端后端 ----
   // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）仍存本地。
@@ -23,13 +23,16 @@ class AppConfig {
   static const double foreverPrice = 98; // 永久订阅价（元，一次买断）
 
   // ---- 报价默认参数 ----
-  static const double defaultHourRate = 150; // 默认工时单价（元/小时）
+  // 默认工时单价（分/小时）。v9 金额统一改分为整数存储后，此处同步为分。
+  static const int defaultHourRate = 15000; // 150 元/小时 = 15000 分
   // 默认综合税率：未填写税率时按 0 计算，不自动计税（用户可自行填写）
   static const double defaultTaxRate = 0;
 
   // ---- 数据库 ----
   static const String dbName = 'jiedan_guanjia.db';
-  static const int dbVersion = 8; // v8：报价单支持简单/详细类型（quotes 增 quote_type/note/tax_include）
+  // v9：金额统一改分（int）、quotes 增 customer_id、projects 增 due_date/remind_at、
+  //      新增 pending_collections（待收款）/ milestones（里程碑）/ invoices（发票）
+  static const int dbVersion = 9;
 
   // ---- 钱包 / 提现 ----
   // 提现账户保存键（settings）：值为 JSON {"method":0,"name":"","no":""}
@@ -102,5 +105,57 @@ enum FeedbackType {
       case FeedbackType.other:
         return '其他';
     }
+  }
+}
+
+/// 待收款状态（v9）
+enum PendingStatus {
+  pending, // 待收款
+  done; // 已结清
+
+  String get label {
+    switch (this) {
+      case PendingStatus.pending:
+        return '待收款';
+      case PendingStatus.done:
+        return '已结清';
+    }
+  }
+}
+
+/// 发票状态（v9）
+enum InvoiceStatus {
+  draft, // 待开票
+  issued, // 已开票
+  voided; // 已作废
+
+  String get label {
+    switch (this) {
+      case InvoiceStatus.draft:
+        return '待开票';
+      case InvoiceStatus.issued:
+        return '已开票';
+      case InvoiceStatus.voided:
+        return '已作废';
+    }
+  }
+}
+
+/// 金额工具类（v9 起全库金额以「分」为单位的 int 存储与计算，
+/// UI 展示统一经此工具转换为「元 + 两位小数」字符串）。
+class Money {
+  Money._();
+
+  /// 分 → "元"字符串（两位小数）。如 12345 → "123.45"。
+  static String yuan(int fen) => (fen / 100).toStringAsFixed(2);
+
+  /// 分 → "¥123.45" 带货币符号。
+  static String rmb(int fen) => '¥${yuan(fen)}';
+
+  /// 元（字符串，两位小数或整数输入）→ 分。解析失败返回 0。
+  static int parseYuanToFen(String yuan) {
+    final v = double.tryParse(yuan.trim());
+    if (v == null || v <= 0) return 0;
+    return (v * 100).round();
   }
 }

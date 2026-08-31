@@ -284,7 +284,7 @@ class AppState extends ChangeNotifier {
       return InviteStats(
         friendCount: invitees.length,
         paidCount: paidCount,
-        totalRebate: _num(me['rebateTotal']),
+        totalRebate: (_num(me['rebateTotal']) * 100).round(),
         bonusGranted: _bool(me['vipRewardGranted']),
       );
     }
@@ -296,7 +296,7 @@ class AppState extends ChangeNotifier {
     final list = await AppDb.instance.getInvitees(uid);
     final paidCount = list.where((e) => e.paid).length;
     final totalRebate =
-        list.where((e) => e.paid).fold<double>(0, (s, e) => s + e.rebate);
+        list.where((e) => e.paid).fold<int>(0, (s, e) => s + e.rebate);
     final bonusGranted = await AppDb.instance.inviteBonusGranted(uid);
     return InviteStats(
       friendCount: list.length,
@@ -321,9 +321,9 @@ class AppState extends ChangeNotifier {
           phone: _str(e['phone']),
           invitedAt: invitedAt,
           paid: _bool(e['paid']),
-          payAmount: _num(e['payAmount']),
+          payAmount: (_num(e['payAmount']) * 100).round(),
           // 后端 invitees 不返回 rebate，本地按返现比例结算展示
-          rebate: _num(e['payAmount']) * AppConfig.rebateRate,
+          rebate: (_num(e['payAmount']) * AppConfig.rebateRate * 100).round(),
           paidAt: paidAt,
         );
       }).toList();
@@ -347,17 +347,17 @@ class AppState extends ChangeNotifier {
     ));
   }
 
-  Future<void> markInviteePaid(int inviteeId, double payAmount) async {
+  Future<void> markInviteePaid(int inviteeId, int payAmountFen) async {
     if (_cloudReady) return;
     final uid = _currentUser?.id;
     if (uid == null) return;
     final list = await AppDb.instance.getInvitees(uid);
     final target = list.where((e) => e.id == inviteeId).firstOrNull;
     if (target == null) return;
-    final rebate = payAmount * AppConfig.rebateRate;
+    final rebate = (payAmountFen * AppConfig.rebateRate).round();
     await AppDb.instance.updateInvitee(target.copyWith(
       paid: true,
-      payAmount: payAmount,
+      payAmount: payAmountFen,
       rebate: rebate,
       paidAt: DateTime.now().millisecondsSinceEpoch,
     ));
@@ -420,7 +420,7 @@ class AppState extends ChangeNotifier {
 class InviteStats {
   final int friendCount; // 已登记好友数
   final int paidCount; // 已真实付款人数
-  final double totalRebate; // 累计返现金额
+  final int totalRebate; // 累计返现金额（分，v9 统一改分）
   final bool bonusGranted; // 是否已触发过"推荐送 VIP"
 
   const InviteStats({
