@@ -28,10 +28,9 @@ class _QuotePageState extends State<QuotePage>
   late final TabController _tabController;
 
   // ================= 简单报价状态（与详细报价完全隔离） =================
-  int _simpleTargetMode = 0; // 0=客户名称手动输入, 1=关联项目
-  final _simpleNameCtrl = TextEditingController(); // 客户名称
-  int? _simpleProjectId; // 关联项目
-  int? _simpleCustomerId; // 关联客户档案（v1.10.0，可选）
+  final _simpleNameCtrl = TextEditingController(); // 客户名称（也可由关联项目/档案回填）
+  int? _simpleProjectId; // 关联项目（可选，v1.12.0 起与客户名称同屏展示）
+  int? _simpleCustomerId; // 关联客户档案（可选）
   final _simpleAmountCtrl = TextEditingController(); // 报价总额
   final _simpleNoteCtrl = TextEditingController(); // 备注（可选）
   int? _simpleQuoteId; // 正在编辑的简单报价历史 id（null=新建）
@@ -59,26 +58,13 @@ class _QuotePageState extends State<QuotePage>
   double get _tax => _subtotal * _taxRate;
   double get _total => _subtotal + _tax;
 
-  /// 简单报价对象名：客户名称 / 关联项目标题 二选一
+  /// 简单报价对象名：优先客户名称；未填客户名时回退到关联项目标题
   String get _simpleObjectName {
-    if (_simpleTargetMode == 1 && _simpleProjectId != null) {
+    final name = _simpleNameCtrl.text.trim();
+    if (name.isNotEmpty) return name;
+    if (_simpleProjectId != null) {
       for (final pr in _projects) {
         if (pr.id == _simpleProjectId) return pr.title;
-      }
-      return '';
-    }
-    return _simpleNameCtrl.text.trim();
-  }
-
-  /// 简单报价选中关联项目时，回填该项目所属客户名
-  String get _simpleLinkedCustomerName {
-    if (_simpleProjectId == null) return '';
-    for (final pr in _projects) {
-      if (pr.id == _simpleProjectId) {
-        for (final c in _customers) {
-          if (c.id == pr.customerId) return c.name;
-        }
-        return '';
       }
     }
     return '';
@@ -165,7 +151,7 @@ class _QuotePageState extends State<QuotePage>
     final now = DateTime.now().millisecondsSinceEpoch;
     final q = Quote(
       id: _simpleQuoteId,
-      projectId: _simpleTargetMode == 1 ? _simpleProjectId : null,
+      projectId: _simpleProjectId,
       customerId: _simpleCustomerId,
       title: objectName,
       taxRate: 0,
@@ -678,15 +664,8 @@ class _QuotePageState extends State<QuotePage>
       _simpleCustomerId = q.customerId;
       _simpleAmountCtrl.text = _numText(q.total / 100);
       _simpleNoteCtrl.text = q.note;
-      if (q.projectId != null) {
-        _simpleTargetMode = 1;
-        _simpleProjectId = q.projectId;
-        _simpleNameCtrl.clear();
-      } else {
-        _simpleTargetMode = 0;
-        _simpleProjectId = null;
-        _simpleNameCtrl.text = q.title;
-      }
+      _simpleProjectId = q.projectId;
+      _simpleNameCtrl.text = q.title;
     });
   }
 
@@ -737,6 +716,36 @@ class _QuotePageState extends State<QuotePage>
     });
   }
 
+  /// 关联项目：底部弹层选择器（v1.12.0 改，替代原丑下拉）
+  Future<void> _pickSimpleProject() async {
+    final selected = await showModalBottomSheet<int?>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _ProjectPickerSheet(
+        projects: _projects,
+        customers: _customers,
+        selectedId: _simpleProjectId,
+      ),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _simpleProjectId = selected == -1 ? null : selected;
+      // 选中关联项目且客户名未填时，自动回填该项目所属客户名
+      if (_simpleProjectId != null && _simpleNameCtrl.text.trim().isEmpty) {
+        for (final pr in _projects) {
+          if (pr.id == _simpleProjectId) {
+            for (final c in _customers) {
+              if (c.id == pr.customerId && c.name.isNotEmpty) {
+                _simpleNameCtrl.text = c.name;
+              }
+            }
+            break;
+          }
+        }
+      }
+    });
+  }
+
   Widget _buildSimpleTab() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -747,109 +756,108 @@ class _QuotePageState extends State<QuotePage>
               style: TextStyle(
                   fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
-          _SimpleModeSwitch(
-            mode: _simpleTargetMode,
-            onChanged: (m) {
-              setState(() {
-                _simpleTargetMode = m;
-                // 互斥：切换时清空另一侧输入，保证"客户名称/关联项目"二选一
-                if (m == 0) {
-                  _simpleProjectId = null;
-                } else {
-                  _simpleNameCtrl.clear();
-                }
-              });
-            },
-          ),
-          const SizedBox(height: 12),
-          if (_simpleTargetMode == 0)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: _simpleNameCtrl,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                    hintText: '输入客户名称',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // 关联客户档案：轻量入口 + 底部弹层选择
-                InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: _pickSimpleCustomer,
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.badge_outlined,
-                            size: 18,
-                            color: _simpleCustomerId == null
-                                ? AppTheme.textSub
-                                : AppTheme.primary),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _simpleCustomerId == null
-                                ? '关联客户档案（可选）'
-                                : _customers
-                                        .firstWhere((c) => c.id == _simpleCustomerId)
-                                        .name,
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: _simpleCustomerId == null
-                                  ? AppTheme.textSub
-                                  : AppTheme.textMain,
-                            ),
-                          ),
-                        ),
-                        if (_simpleCustomerId != null)
-                          GestureDetector(
-                            onTap: () => setState(() => _simpleCustomerId = null),
-                            child: const Icon(Icons.close,
-                                size: 16, color: AppTheme.textSub),
-                          )
-                        else
-                          const Icon(Icons.chevron_right,
-                              size: 18, color: AppTheme.textSub),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            )
-          else
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                DropdownButtonFormField<int?>(
-                  initialValue: _simpleProjectId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(isDense: true),
-                  items: [
-                    const DropdownMenuItem<int?>(
-                        value: null, child: Text('请选择关联项目')),
-                    ..._projects.map((pr) => DropdownMenuItem<int?>(
-                        value: pr.id, child: Text(pr.title))),
-                  ],
-                  onChanged: (v) => setState(() => _simpleProjectId = v),
-                ),
-                if (_simpleProjectId != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      '客户：$_simpleLinkedCustomerName',
-                      style: const TextStyle(
-                          fontSize: 12, color: AppTheme.textSub),
-                    ),
-                  ),
-              ],
+          TextField(
+            controller: _simpleNameCtrl,
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+              hintText: '输入客户名称',
             ),
+          ),
+          const SizedBox(height: 8),
+          // 关联项目：轻量入口 + 底部弹层选择（v1.12.0 改，替代原丑下拉）
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: _pickSimpleProject,
+            child: InputDecorator(
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.folder_outlined,
+                      size: 18,
+                      color: _simpleProjectId == null
+                          ? AppTheme.textSub
+                          : AppTheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _simpleProjectId == null
+                          ? '关联项目（可选）'
+                          : _projects
+                                  .firstWhere((p) => p.id == _simpleProjectId)
+                                  .title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: _simpleProjectId == null
+                            ? AppTheme.textSub
+                            : AppTheme.textMain,
+                      ),
+                    ),
+                  ),
+                  if (_simpleProjectId != null)
+                    GestureDetector(
+                      onTap: () => setState(() => _simpleProjectId = null),
+                      child: const Icon(Icons.close,
+                          size: 16, color: AppTheme.textSub),
+                    )
+                  else
+                    const Icon(Icons.chevron_right,
+                        size: 18, color: AppTheme.textSub),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // 关联客户档案：轻量入口 + 底部弹层选择
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: _pickSimpleCustomer,
+            child: InputDecorator(
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.badge_outlined,
+                      size: 18,
+                      color: _simpleCustomerId == null
+                          ? AppTheme.textSub
+                          : AppTheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _simpleCustomerId == null
+                          ? '关联客户档案（可选）'
+                          : _customers
+                                  .firstWhere((c) => c.id == _simpleCustomerId)
+                                  .name,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: _simpleCustomerId == null
+                            ? AppTheme.textSub
+                            : AppTheme.textMain,
+                      ),
+                    ),
+                  ),
+                  if (_simpleCustomerId != null)
+                    GestureDetector(
+                      onTap: () => setState(() => _simpleCustomerId = null),
+                      child: const Icon(Icons.close,
+                          size: 16, color: AppTheme.textSub),
+                    )
+                  else
+                    const Icon(Icons.chevron_right,
+                        size: 18, color: AppTheme.textSub),
+                ],
+              ),
+            ),
+          ),
           const Spacer(),
           // 大号报价总额输入框（C 位）
           Center(
@@ -1320,70 +1328,117 @@ class _LineCardState extends State<_LineCard> {
   }
 }
 
-/// 轻量分段切换（替代 SegmentedButton，v1.11.0 改）：
-/// 浅色底 + 选中态白色胶囊 + 主色文字，整体更克制。
-class _SimpleModeSwitch extends StatelessWidget {
-  final int mode;
-  final ValueChanged<int> onChanged;
-  const _SimpleModeSwitch({required this.mode, required this.onChanged});
+/// 关联项目：底部弹层选择器（v1.12.0 改，替代原丑下拉）
+class _ProjectPickerSheet extends StatelessWidget {
+  final List<Project> projects;
+  final List<Customer> customers;
+  final int? selectedId;
+  const _ProjectPickerSheet({
+    required this.projects,
+    required this.customers,
+    required this.selectedId,
+  });
+
+  String _customerName(int customerId) {
+    for (final c in customers) {
+      if (c.id == customerId) return c.name;
+    }
+    return '';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final hasProjects = projects.isNotEmpty;
     return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEFF1F7),
-        borderRadius: BorderRadius.circular(10),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: Row(
+      padding: const EdgeInsets.only(top: 12, bottom: 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _item(0, Icons.person_outline, '客户名称'),
-          _item(1, Icons.folder_outlined, '关联项目'),
-        ],
-      ),
-    );
-  }
-
-  Widget _item(int value, IconData icon, String label) {
-    final selected = mode == value;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => onChanged(value),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: selected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon,
-                  size: 16,
-                  color: selected ? AppTheme.primary : AppTheme.textSub),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                  color: selected ? AppTheme.primary : AppTheme.textSub,
-                ),
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE4E7EF),
+                borderRadius: BorderRadius.circular(2),
               ),
-            ],
+            ),
           ),
-        ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 14, 20, 4),
+            child: Text('关联项目',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textMain)),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 2, 20, 6),
+            child: Text('选中后若未填客户名会自动回填所属客户',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
+          ),
+          const Divider(height: 1),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.block,
+                      size: 20, color: AppTheme.textSub),
+                  title: const Text('不关联',
+                      style: TextStyle(color: AppTheme.textSub)),
+                  trailing: selectedId == null
+                      ? const Icon(Icons.check,
+                          size: 18, color: AppTheme.primary)
+                      : null,
+                  onTap: () => Navigator.pop(context, -1),
+                ),
+                if (!hasProjects)
+                  const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Text('还没有项目，可在项目页先添加',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 13, color: AppTheme.textSub)),
+                  ),
+                ...projects.map((pr) => ListTile(
+                      leading: CircleAvatar(
+                        radius: 16,
+                        backgroundColor:
+                            AppTheme.primary.withValues(alpha: 0.1),
+                        child: Text(
+                          pr.title.characters.isEmpty
+                              ? '?'
+                              : pr.title.characters.first,
+                          style: const TextStyle(
+                              fontSize: 13,
+                              color: AppTheme.primary,
+                              fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      title: Text(pr.title,
+                          style: const TextStyle(fontSize: 14)),
+                      subtitle: _customerName(pr.customerId).isNotEmpty
+                          ? Text(_customerName(pr.customerId),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12))
+                          : null,
+                      trailing: selectedId == pr.id
+                          ? const Icon(Icons.check,
+                              size: 18, color: AppTheme.primary)
+                          : null,
+                      onTap: () => Navigator.pop(context, pr.id),
+                    )),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
