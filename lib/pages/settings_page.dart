@@ -12,7 +12,6 @@ import 'data_management_page.dart';
 import 'wallet_page.dart';
 import 'privacy_policy_page.dart';
 import 'income_stats_page.dart';
-import 'contract_page.dart';
 import 'reconciliation_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -225,20 +224,6 @@ class _SettingsPageState extends State<SettingsPage> {
                         context,
                         MaterialPageRoute(
                             builder: (_) => const IncomeStatsPage()),
-                      ),
-                    ),
-                    const Divider(height: 1, indent: 56),
-                    ListTile(
-                      leading: const Icon(Icons.description_outlined,
-                          color: AppTheme.primary),
-                      title: const Text('合同管理'),
-                      subtitle: const Text('记录签约对象、金额、状态，支持导出'),
-                      trailing: const Icon(Icons.chevron_right,
-                          color: AppTheme.textSub),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const ContractPage()),
                       ),
                     ),
                     const Divider(height: 1, indent: 56),
