@@ -616,25 +616,25 @@ class Milestone {
       );
 }
 
-/// 发票记录（v9 新增）
-class Invoice {
+/// 合同/协议记录（v10 替代发票）
+class Contract {
   final int? id;
-  final String target; // 开票对象（客户/公司名）
-  final int amount; // 开票金额（分）
+  final String target; // 签约对象（客户/公司名）
+  final int amount; // 合同金额（分）
   final int? projectId; // 关联项目（可空）
-  final InvoiceStatus status;
-  final int issuedAt; // 开票日期（ms）
-  final String invoiceNo; // 发票号码
+  final ContractStatus status;
+  final int signedAt; // 签订日期（ms）
+  final String contractNo; // 合同编号
   final String note; // 备注
 
-  const Invoice({
+  const Contract({
     this.id,
     required this.target,
     required this.amount,
     this.projectId,
-    this.status = InvoiceStatus.draft,
-    required this.issuedAt,
-    this.invoiceNo = '',
+    this.status = ContractStatus.draft,
+    required this.signedAt,
+    this.contractNo = '',
     this.note = '',
   });
 
@@ -644,39 +644,39 @@ class Invoice {
         'amount': amount,
         'project_id': projectId,
         'status': status.index,
-        'issued_at': issuedAt,
-        'invoice_no': invoiceNo,
+        'signed_at': signedAt,
+        'contract_no': contractNo,
         'note': note,
       };
 
-  factory Invoice.fromMap(Map<String, Object?> m) => Invoice(
+  factory Contract.fromMap(Map<String, Object?> m) => Contract(
         id: m['id'] as int?,
         target: (m['target'] as String?) ?? '',
         amount: (m['amount'] as num?)?.toInt() ?? 0,
         projectId: m['project_id'] as int?,
-        status: InvoiceStatus.values[(m['status'] as int?) ?? 0],
-        issuedAt: (m['issued_at'] as int?) ?? 0,
-        invoiceNo: (m['invoice_no'] as String?) ?? '',
+        status: ContractStatus.values[(m['status'] as int?) ?? 0],
+        signedAt: (m['signed_at'] as int?) ?? 0,
+        contractNo: (m['contract_no'] as String?) ?? '',
         note: (m['note'] as String?) ?? '',
       );
 
-  Invoice copyWith({
+  Contract copyWith({
     String? target,
     int? amount,
     int? projectId,
-    InvoiceStatus? status,
-    int? issuedAt,
-    String? invoiceNo,
+    ContractStatus? status,
+    int? signedAt,
+    String? contractNo,
     String? note,
   }) =>
-      Invoice(
+      Contract(
         id: id,
         target: target ?? this.target,
         amount: amount ?? this.amount,
         projectId: projectId ?? this.projectId,
         status: status ?? this.status,
-        issuedAt: issuedAt ?? this.issuedAt,
-        invoiceNo: invoiceNo ?? this.invoiceNo,
+        signedAt: signedAt ?? this.signedAt,
+        contractNo: contractNo ?? this.contractNo,
         note: note ?? this.note,
       );
 }

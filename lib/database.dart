@@ -77,7 +77,7 @@ class AppDb {
         await _createQuotes(db);
         await _createPendingCollections(db);
         await _createMilestones(db);
-        await _createInvoices(db);
+        await _createContracts(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -103,6 +103,9 @@ class AppDb {
         }
         if (oldVersion < 9) {
           await _migrateToV9(db);
+        }
+        if (oldVersion < 10) {
+          await _migrateToV10(db);
         }
       },
     );
@@ -234,7 +237,7 @@ class AppDb {
     ''');
   }
 
-  /// v9 新增：发票记录表
+  /// v9 新增：发票记录表（v10 起被 contracts 替代，仅 v9 迁移阶段使用）
   Future<void> _createInvoices(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS invoices(
@@ -248,6 +251,53 @@ class AppDb {
         note TEXT
       )
     ''');
+  }
+
+  /// v10 新增：合同/协议记录表（替代 v9 的 invoices）
+  Future<void> _createContracts(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS contracts(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        target TEXT,
+        amount INTEGER DEFAULT 0,
+        project_id INTEGER,
+        status INTEGER DEFAULT 0,
+        signed_at INTEGER,
+        contract_no TEXT,
+        note TEXT
+      )
+    ''');
+  }
+
+  /// v10 迁移：废弃 invoices 表，替换为 contracts 表。
+  /// 存量发票数据按状态映射迁移（draft→草稿 / issued→已签 / voided→完成），
+  /// 迁移完成后删除旧表。
+  Future<void> _migrateToV10(Database db) async {
+    await _createContracts(db);
+    final rows = await db.query('invoices');
+    if (rows.isNotEmpty) {
+      final b = db.batch();
+      for (final r in rows) {
+        final oldStatus = (r['status'] as int?) ?? 0;
+        final newStatus = switch (oldStatus) {
+          1 => 1, // issued -> signed
+          2 => 2, // voided -> done
+          _ => 0, // draft -> draft
+        };
+        b.insert('contracts', {
+          'id': r['id'],
+          'target': r['target'],
+          'amount': r['amount'],
+          'project_id': r['project_id'],
+          'status': newStatus,
+          'signed_at': r['issued_at'],
+          'contract_no': r['invoice_no'],
+          'note': r['note'],
+        });
+      }
+      await b.commit(noResult: true);
+    }
+    await db.execute('DROP TABLE IF EXISTS invoices');
   }
 
   /// v7 迁移：
@@ -537,6 +587,7 @@ class AppDb {
     await d.delete('milestones', where: 'project_id=?', whereArgs: [id]);
     await d.delete('pending_collections', where: 'project_id=?', whereArgs: [id]);
     await d.delete('invoices', where: 'project_id=?', whereArgs: [id]);
+    await d.delete('contracts', where: 'project_id=?', whereArgs: [id]);
     await d.delete('quotes', where: 'project_id=?', whereArgs: [id]);
     await d.delete('projects', where: 'id=?', whereArgs: [id]);
   }
@@ -793,26 +844,26 @@ class AppDb {
     await d.delete('milestones', where: 'id=?', whereArgs: [id]);
   }
 
-  // ---------- invoices（发票，v9）----------
-  Future<List<Invoice>> getInvoices() async {
+  // ---------- contracts（合同/协议，v10）----------
+  Future<List<Contract>> getContracts() async {
     final d = await db;
-    final rows = await d.query('invoices', orderBy: 'issued_at DESC');
-    return rows.map(Invoice.fromMap).toList();
+    final rows = await d.query('contracts', orderBy: 'signed_at DESC');
+    return rows.map(Contract.fromMap).toList();
   }
 
-  Future<int> insertInvoice(Invoice inv) async {
+  Future<int> insertContract(Contract c) async {
     final d = await db;
-    return d.insert('invoices', inv.toMap()..remove('id'));
+    return d.insert('contracts', c.toMap()..remove('id'));
   }
 
-  Future<void> updateInvoice(Invoice inv) async {
+  Future<void> updateContract(Contract c) async {
     final d = await db;
-    await d.update('invoices', inv.toMap(), where: 'id=?', whereArgs: [inv.id]);
+    await d.update('contracts', c.toMap(), where: 'id=?', whereArgs: [c.id]);
   }
 
-  Future<void> deleteInvoice(int id) async {
+  Future<void> deleteContract(int id) async {
     final d = await db;
-    await d.delete('invoices', where: 'id=?', whereArgs: [id]);
+    await d.delete('contracts', where: 'id=?', whereArgs: [id]);
   }
 
   // ---------- feedbacks（意见反馈）----------
