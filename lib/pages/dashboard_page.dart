@@ -19,12 +19,13 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   final _fmt = NumberFormat('#,##0.00');
-  double _monthIncome = 0;
+  int _monthIncome = 0;
   int _projectCount = 0;
   int _customerCount = 0;
-  double _awaitingAmount = 0;
+  int _awaitingAmount = 0;
   int _doneCount = 0;
   List<Project> _recent = [];
+  List<PendingCollection> _pendings = [];
   StreamSubscription<int>? _sub;
 
   @override
@@ -46,13 +47,15 @@ class _DashboardPageState extends State<DashboardPage> {
     final month = await db.monthPaidTotal(now.year, now.month);
     final projects = await db.getProjects();
     final customers = await db.getCustomers();
+    final pendings = await db.getPendingCollections(onlyPending: true);
     // N+1 修复：一次批量查询所有项目已收总额，避免逐项目查询
     final paidTotals = await db.projectPaidTotals();
-    double awaiting = 0;
+    int awaiting = 0;
     for (final pr in projects) {
       if (pr.status == ProjectStatus.awaiting) {
         final paid = paidTotals[pr.id] ?? 0;
-        awaiting += (pr.amountTotal - paid).clamp(0, double.infinity);
+        final remain = pr.amountTotal - paid;
+        if (remain > 0) awaiting += remain;
       }
     }
     if (!mounted) return;
@@ -63,6 +66,7 @@ class _DashboardPageState extends State<DashboardPage> {
       _awaitingAmount = awaiting;
       _doneCount = projects.where((e) => e.status == ProjectStatus.done).length;
       _recent = projects.take(5).toList();
+      _pendings = pendings;
     });
   }
 
@@ -123,6 +127,49 @@ class _DashboardPageState extends State<DashboardPage> {
     if (ok) _refesh();
   }
 
+  /// 看板待收尾款：结清（标记已收款）
+  Future<void> _settlePending(PendingCollection p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('结清待收尾款'),
+        content: Text('确认已收到「${p.title}」的 ¥${_fmt.format(p.amount / 100)} 吗？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认结清'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await AppDb.instance.settlePending(p.id!);
+    _refesh();
+  }
+
+  /// 看板待收尾款：删除记录
+  Future<void> _deletePending(PendingCollection p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除待收记录'),
+        content: Text('确定删除「${p.title}」的待收记录吗？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await AppDb.instance.deletePendingCollection(p.id!);
+    _refesh();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -153,7 +200,7 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
               _StatCard(
                 label: '待收尾款',
-                value: '¥${_fmt.format(_awaitingAmount)}',
+                value: '¥${_fmt.format(_awaitingAmount / 100)}',
                 color: AppTheme.warn,
               ),
             ],
@@ -172,6 +219,19 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             ],
           ),
+          if (_pendings.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+              child: Text('待收尾款', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textMain)),
+            ),
+            ..._pendings.map((p) => _PendingCard(
+                  item: p,
+                  fmt: _fmt,
+                  onSettle: () => _settlePending(p),
+                  onDelete: () => _deletePending(p),
+                )),
+          ],
           const SizedBox(height: 10),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 18, vertical: 8),
@@ -191,7 +251,7 @@ class _DashboardPageState extends State<DashboardPage> {
 }
 
 class _IncomeCard extends StatelessWidget {
-  final double amount;
+  final int amount; // 分
   final NumberFormat fmt;
   const _IncomeCard({required this.amount, required this.fmt});
 
@@ -214,7 +274,7 @@ class _IncomeCard extends StatelessWidget {
         children: [
           Text('本月收入', style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 13)),
           const SizedBox(height: 8),
-          Text('¥${fmt.format(amount)}',
+          Text('¥${fmt.format(amount / 100)}',
               style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w700)),
           const SizedBox(height: 14),
           Text('本月新增款项合计 · $month · 点击查看历史记录',
@@ -305,6 +365,55 @@ class _StatusBadge extends StatelessWidget {
           const SizedBox(width: 4),
           Text(status.label, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600)),
         ],
+      ),
+    );
+  }
+}
+
+/// 看板待收尾款列表项（v1.10.0）
+class _PendingCard extends StatelessWidget {
+  final PendingCollection item;
+  final NumberFormat fmt;
+  final VoidCallback onSettle;
+  final VoidCallback onDelete;
+  const _PendingCard({
+    required this.item,
+    required this.fmt,
+    required this.onSettle,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dueText = item.dueDate > 0
+        ? '到期 ${DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(item.dueDate))}'
+        : '未设到期日';
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.schedule, color: AppTheme.warn),
+        title: Text(item.title,
+            maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(dueText,
+            style: const TextStyle(fontSize: 12, color: AppTheme.textSub)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('¥${fmt.format(item.amount / 100)}',
+                style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.warn)),
+            IconButton(
+              tooltip: '标记已收款',
+              icon: const Icon(Icons.check_circle_outline,
+                  size: 20, color: AppTheme.accent),
+              onPressed: onSettle,
+            ),
+            IconButton(
+              tooltip: '删除',
+              icon: const Icon(Icons.delete_outline,
+                  size: 20, color: AppTheme.textSub),
+              onPressed: onDelete,
+            ),
+          ],
+        ),
       ),
     );
   }

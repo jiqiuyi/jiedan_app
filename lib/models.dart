@@ -48,9 +48,11 @@ class Project {
   final int customerId;
   final String title;
   final ProjectStatus status;
-  final double amountTotal; // 约定总额
+  final int amountTotal; // 约定总额（分）
   final int createdAt;
   final int updatedAt;
+  final int dueDate; // 待收提醒日（ms），0 表示未设置（v9）
+  final int remindAt; // 提醒时间点（ms），0 表示未设置（v9）
 
   const Project({
     this.id,
@@ -60,6 +62,8 @@ class Project {
     this.amountTotal = 0,
     required this.createdAt,
     required this.updatedAt,
+    this.dueDate = 0,
+    this.remindAt = 0,
   });
 
   Map<String, Object?> toMap() => {
@@ -70,6 +74,8 @@ class Project {
         'amount_total': amountTotal,
         'created_at': createdAt,
         'updated_at': updatedAt,
+        'due_date': dueDate,
+        'remind_at': remindAt,
       };
 
   factory Project.fromMap(Map<String, Object?> m) => Project(
@@ -77,16 +83,20 @@ class Project {
         customerId: m['customer_id'] as int,
         title: m['title'] as String,
         status: ProjectStatus.values[m['status'] as int],
-        amountTotal: ((m['amount_total'] as num?) ?? 0).toDouble(),
+        amountTotal: (m['amount_total'] as num?)?.toInt() ?? 0,
         createdAt: m['created_at'] as int,
         updatedAt: m['updated_at'] as int,
+        dueDate: (m['due_date'] as num?)?.toInt() ?? 0,
+        remindAt: (m['remind_at'] as num?)?.toInt() ?? 0,
       );
 
   Project copyWith({
     String? title,
     ProjectStatus? status,
-    double? amountTotal,
+    int? amountTotal,
     int? updatedAt,
+    int? dueDate,
+    int? remindAt,
   }) =>
       Project(
         id: id,
@@ -96,13 +106,15 @@ class Project {
         amountTotal: amountTotal ?? this.amountTotal,
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
+        dueDate: dueDate ?? this.dueDate,
+        remindAt: remindAt ?? this.remindAt,
       );
 }
 
 class Payment {
   final int? id;
   final int projectId;
-  final double amount;
+  final int amount; // 金额（分）
   final PayType type;
   final String typeLabel; // 自定义类型名称（type==custom 时有效）
   final int paidAt;
@@ -135,7 +147,7 @@ class Payment {
   factory Payment.fromMap(Map<String, Object?> m) => Payment(
         id: m['id'] as int?,
         projectId: m['project_id'] as int,
-        amount: ((m['amount'] as num?) ?? 0).toDouble(),
+        amount: (m['amount'] as num?)?.toInt() ?? 0,
         type: PayType.values[m['type'] as int],
         typeLabel: (m['type_label'] as String?) ?? '',
         paidAt: m['paid_at'] as int,
@@ -231,7 +243,7 @@ class WithdrawAccount {
 /// 提现记录（v5 新增）
 class Withdrawal {
   final int? id;
-  final double amount;
+  final int amount; // 金额（分）
   final WithdrawMethod method;
   final String accountName; // 提现时的收款人姓名（快照）
   final String accountNo; // 提现时的收款账号（快照）
@@ -263,7 +275,7 @@ class Withdrawal {
 
   factory Withdrawal.fromMap(Map<String, Object?> m) => Withdrawal(
         id: m['id'] as int?,
-        amount: ((m['amount'] as num?) ?? 0).toDouble(),
+        amount: (m['amount'] as num?)?.toInt() ?? 0,
         method: WithdrawMethod.values[m['method'] as int],
         accountName: (m['account_name'] as String?) ?? '',
         accountNo: (m['account_no'] as String?) ?? '',
@@ -274,7 +286,7 @@ class Withdrawal {
 
   Withdrawal copyWith({
     int? id,
-    double? amount,
+    int? amount,
     WithdrawMethod? method,
     String? accountName,
     String? accountNo,
@@ -328,7 +340,7 @@ enum RechargeStatus {
 /// MVP：出示收款码 + 手动确认到账；真实通道接入后由支付回调自动标记 done。
 class Recharge {
   final int? id;
-  final double amount; // 充值金额（元）
+  final int amount; // 充值金额（分）
   final RechargeMethod method; // 充值方式
   final RechargeStatus status;
   final int createdAt;
@@ -354,7 +366,7 @@ class Recharge {
 
   factory Recharge.fromMap(Map<String, Object?> m) => Recharge(
         id: m['id'] as int?,
-        amount: ((m['amount'] as num?) ?? 0).toDouble(),
+        amount: (m['amount'] as num?)?.toInt() ?? 0,
         method: RechargeMethod.values[(m['method'] as int?) ?? 0],
         status: RechargeStatus.values[(m['status'] as int?) ?? 0],
         createdAt: (m['created_at'] as int?) ?? 0,
@@ -363,7 +375,7 @@ class Recharge {
 
   Recharge copyWith({
     int? id,
-    double? amount,
+    int? amount,
     RechargeMethod? method,
     RechargeStatus? status,
     int? createdAt,
@@ -382,9 +394,9 @@ class Recharge {
 // 报价单行（可序列化入库：quotes.lines_json）
 class QuoteLine {
   final String itemName;
-  final double hours;
-  final double hourRate;
-  final double materialFee;
+  final double hours; // 工时（小时，保留小数）
+  final int hourRate; // 单价（分/小时）
+  final int materialFee; // 材料费（分）
 
   const QuoteLine({
     required this.itemName,
@@ -393,8 +405,8 @@ class QuoteLine {
     this.materialFee = 0,
   });
 
-  double get laborCost => hours * hourRate;
-  double get subtotal => laborCost + materialFee;
+  int get laborCost => (hours * hourRate).round(); // 人工费（分）
+  int get subtotal => laborCost + materialFee;
 
   Map<String, Object?> toMap() => {
         'itemName': itemName,
@@ -406,22 +418,24 @@ class QuoteLine {
   factory QuoteLine.fromMap(Map<String, Object?> m) => QuoteLine(
         itemName: (m['itemName'] as String?) ?? '',
         hours: ((m['hours'] as num?) ?? 0).toDouble(),
-        hourRate: ((m['hourRate'] as num?) ?? 0).toDouble(),
-        materialFee: ((m['materialFee'] as num?) ?? 0).toDouble(),
+        hourRate: (m['hourRate'] as num?)?.toInt() ?? 0,
+        materialFee: (m['materialFee'] as num?)?.toInt() ?? 0,
       );
 }
 
-/// 报价单（v7 新增，落库历史；v8 扩展简单/详细两种类型）。
-/// 保存后可查看历史、重新打开编辑、复制文本；可关联到项目。
+/// 报价单（v7 新增，落库历史；v8 扩展简单/详细两种类型；v9 关联客户 customer_id、
+/// 金额改分为整数分存储）。
+/// 保存后可查看历史、重新打开编辑、复制文本；可关联到项目或客户。
 /// - type='simple'：简单报价（一口价含税，无明细/税率，有备注）
 /// - type='full'：详细报价（明细 + 税率自动计算）
 class Quote {
   final int? id;
   final int? projectId; // 可空：不关联项目
+  final int? customerId; // 关联客户（v9），可空
   final String title; // 报价单标题（客户/项目名）
   final double taxRate; // 税率（%）
   final List<QuoteLine> lines;
-  final double total; // 报价总额（含税）
+  final int total; // 报价总额（分，含税）
   final int createdAt;
   final String type; // 'simple' 简单报价 / 'full' 详细报价
   final String note; // 备注（简单报价常用，详细报价可选）
@@ -430,6 +444,7 @@ class Quote {
   const Quote({
     this.id,
     this.projectId,
+    this.customerId,
     required this.title,
     this.taxRate = 0,
     this.lines = const [],
@@ -445,6 +460,7 @@ class Quote {
   Map<String, Object?> toMap() => {
         'id': id,
         'project_id': projectId,
+        'customer_id': customerId,
         'title': title,
         'tax_rate': taxRate,
         'lines_json': jsonEncode(lines.map((e) => e.toMap()).toList()),
@@ -467,10 +483,11 @@ class Quote {
     return Quote(
       id: m['id'] as int?,
       projectId: m['project_id'] as int?,
+      customerId: m['customer_id'] as int?,
       title: (m['title'] as String?) ?? '',
       taxRate: ((m['tax_rate'] as num?) ?? 0).toDouble(),
       lines: lines,
-      total: ((m['total'] as num?) ?? 0).toDouble(),
+      total: (m['total'] as num?)?.toInt() ?? 0,
       createdAt: (m['created_at'] as int?) ?? 0,
       type: (m['quote_type'] as String?) ?? 'full',
       note: (m['note'] as String?) ?? '',
@@ -478,6 +495,190 @@ class Quote {
           (m['tax_include'] as int?) == null ? true : (m['tax_include'] as int) == 1,
     );
   }
+}
+
+/// 待收款记录（v9 新增，报价转待收款 / 项目尾款待收）
+class PendingCollection {
+  final int? id;
+  final int? projectId; // 关联项目（可空）
+  final int? quoteId; // 来源报价（可空）
+  final int? customerId; // 关联客户（可空）
+  final String title; // 待收名称（默认项目/报价名）
+  final int amount; // 待收金额（分）
+  final int dueDate; // 到期日（ms），0 表示未设置
+  final PendingStatus status;
+  final int createdAt;
+  final int? settledAt; // 结清时间（ms）
+
+  const PendingCollection({
+    this.id,
+    this.projectId,
+    this.quoteId,
+    this.customerId,
+    required this.title,
+    required this.amount,
+    this.dueDate = 0,
+    this.status = PendingStatus.pending,
+    required this.createdAt,
+    this.settledAt,
+  });
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'project_id': projectId,
+        'quote_id': quoteId,
+        'customer_id': customerId,
+        'title': title,
+        'amount': amount,
+        'due_date': dueDate,
+        'status': status.index,
+        'created_at': createdAt,
+        'settled_at': settledAt,
+      };
+
+  factory PendingCollection.fromMap(Map<String, Object?> m) => PendingCollection(
+        id: m['id'] as int?,
+        projectId: m['project_id'] as int?,
+        quoteId: m['quote_id'] as int?,
+        customerId: m['customer_id'] as int?,
+        title: (m['title'] as String?) ?? '',
+        amount: (m['amount'] as num?)?.toInt() ?? 0,
+        dueDate: (m['due_date'] as num?)?.toInt() ?? 0,
+        status: PendingStatus.values[(m['status'] as int?) ?? 0],
+        createdAt: (m['created_at'] as int?) ?? 0,
+        settledAt: m['settled_at'] as int?,
+      );
+
+  PendingCollection copyWith({
+    String? title,
+    int? amount,
+    int? dueDate,
+    PendingStatus? status,
+    int? settledAt,
+  }) =>
+      PendingCollection(
+        id: id,
+        projectId: projectId,
+        quoteId: quoteId,
+        customerId: customerId,
+        title: title ?? this.title,
+        amount: amount ?? this.amount,
+        dueDate: dueDate ?? this.dueDate,
+        status: status ?? this.status,
+        createdAt: createdAt,
+        settledAt: settledAt ?? this.settledAt,
+      );
+}
+
+/// 项目里程碑 / 阶段（v9 新增）
+class Milestone {
+  final int? id;
+  final int projectId;
+  final String name; // 阶段名称
+  final int amount; // 阶段金额（分）
+  final bool done; // 是否完成
+  final int createdAt;
+
+  const Milestone({
+    this.id,
+    required this.projectId,
+    required this.name,
+    this.amount = 0,
+    this.done = false,
+    required this.createdAt,
+  });
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'project_id': projectId,
+        'name': name,
+        'amount': amount,
+        'done': done ? 1 : 0,
+        'created_at': createdAt,
+      };
+
+  factory Milestone.fromMap(Map<String, Object?> m) => Milestone(
+        id: m['id'] as int?,
+        projectId: m['project_id'] as int,
+        name: (m['name'] as String?) ?? '',
+        amount: (m['amount'] as num?)?.toInt() ?? 0,
+        done: (m['done'] as int?) == 1,
+        createdAt: (m['created_at'] as int?) ?? 0,
+      );
+
+  Milestone copyWith({String? name, int? amount, bool? done}) => Milestone(
+        id: id,
+        projectId: projectId,
+        name: name ?? this.name,
+        amount: amount ?? this.amount,
+        done: done ?? this.done,
+        createdAt: createdAt,
+      );
+}
+
+/// 发票记录（v9 新增）
+class Invoice {
+  final int? id;
+  final String target; // 开票对象（客户/公司名）
+  final int amount; // 开票金额（分）
+  final int? projectId; // 关联项目（可空）
+  final InvoiceStatus status;
+  final int issuedAt; // 开票日期（ms）
+  final String invoiceNo; // 发票号码
+  final String note; // 备注
+
+  const Invoice({
+    this.id,
+    required this.target,
+    required this.amount,
+    this.projectId,
+    this.status = InvoiceStatus.draft,
+    required this.issuedAt,
+    this.invoiceNo = '',
+    this.note = '',
+  });
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'target': target,
+        'amount': amount,
+        'project_id': projectId,
+        'status': status.index,
+        'issued_at': issuedAt,
+        'invoice_no': invoiceNo,
+        'note': note,
+      };
+
+  factory Invoice.fromMap(Map<String, Object?> m) => Invoice(
+        id: m['id'] as int?,
+        target: (m['target'] as String?) ?? '',
+        amount: (m['amount'] as num?)?.toInt() ?? 0,
+        projectId: m['project_id'] as int?,
+        status: InvoiceStatus.values[(m['status'] as int?) ?? 0],
+        issuedAt: (m['issued_at'] as int?) ?? 0,
+        invoiceNo: (m['invoice_no'] as String?) ?? '',
+        note: (m['note'] as String?) ?? '',
+      );
+
+  Invoice copyWith({
+    String? target,
+    int? amount,
+    int? projectId,
+    InvoiceStatus? status,
+    int? issuedAt,
+    String? invoiceNo,
+    String? note,
+  }) =>
+      Invoice(
+        id: id,
+        target: target ?? this.target,
+        amount: amount ?? this.amount,
+        projectId: projectId ?? this.projectId,
+        status: status ?? this.status,
+        issuedAt: issuedAt ?? this.issuedAt,
+        invoiceNo: invoiceNo ?? this.invoiceNo,
+        note: note ?? this.note,
+      );
 }
 
 /// 本地账号：手机号 + 密码哈希 + 订阅状态。
@@ -556,8 +757,8 @@ class Invitee {
   final String phone; // 被邀请人手机号（选填）
   final int invitedAt;
   final bool paid; // 是否真实付款开通 VIP
-  final double payAmount; // 真实付款金额（未付为 0）
-  final double rebate; // 对应返现金额 = payAmount * rebateRate
+  final int payAmount; // 真实付款金额（分，未付为 0）
+  final int rebate; // 对应返现金额（分）= payAmount * rebateRate
   final int? paidAt;
 
   const Invitee({
@@ -591,8 +792,8 @@ class Invitee {
         phone: (m['phone'] as String?) ?? '',
         invitedAt: (m['invited_at'] as int?) ?? 0,
         paid: (m['paid'] as int?) == 1,
-        payAmount: ((m['pay_amount'] as num?) ?? 0).toDouble(),
-        rebate: ((m['rebate'] as num?) ?? 0).toDouble(),
+        payAmount: (m['pay_amount'] as num?)?.toInt() ?? 0,
+        rebate: (m['rebate'] as num?)?.toInt() ?? 0,
         paidAt: m['paid_at'] as int?,
       );
 
@@ -603,8 +804,8 @@ class Invitee {
     String? phone,
     int? invitedAt,
     bool? paid,
-    double? payAmount,
-    double? rebate,
+    int? payAmount,
+    int? rebate,
     int? paidAt,
   }) =>
       Invitee(

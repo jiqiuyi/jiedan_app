@@ -17,13 +17,13 @@ import '../state/ticker.dart';
 Future<bool> showPaymentDialog(
   BuildContext context, {
   required int projectId,
-  required double amountTotal,
-  required double paidTotal,
+  required int amountTotal, // 分
+  required int paidTotal, // 分
 }) async {
   final amountCtrl = TextEditingController();
   final noteCtrl = TextEditingController();
   final customTypeCtrl = TextEditingController();
-  final remaining = (amountTotal - paidTotal).clamp(0, double.infinity);
+  final remaining = amountTotal - paidTotal < 0 ? 0 : amountTotal - paidTotal;
 
   // 根据收款阶段挑选默认类型
   late PayType defaultType;
@@ -34,18 +34,18 @@ Future<bool> showPaymentDialog(
   } else if (paidTotal <= 0) {
     defaultType = PayType.deposit;
     amountHint = paidTotal <= 0 && remaining > 0
-        ? '可收定金，剩余待收 ¥${remaining.toStringAsFixed(2)}'
+        ? '可收定金，剩余待收 ¥${Money.yuan(remaining)}'
         : '';
   } else if (remaining > 0) {
     defaultType = PayType.balance;
-    amountHint = '剩余待收 ¥${remaining.toStringAsFixed(2)}';
+    amountHint = '剩余待收 ¥${Money.yuan(remaining)}';
   } else {
     defaultType = PayType.full;
   }
 
   // 有剩余时预填剩余金额，一键保存
   if (remaining > 0 && amountTotal > 0) {
-    amountCtrl.text = remaining.toStringAsFixed(2);
+    amountCtrl.text = Money.yuan(remaining);
   }
 
   var type = defaultType;
@@ -122,7 +122,7 @@ Future<bool> showPaymentDialog(
   if (ok == true) {
     await AppDb.instance.insertPayment(Payment(
       projectId: projectId,
-      amount: double.parse(amountCtrl.text.trim()),
+      amount: Money.parseYuanToFen(amountCtrl.text.trim()),
       type: type,
       typeLabel: type == PayType.custom ? customTypeCtrl.text.trim() : '',
       paidAt: DateTime.now().millisecondsSinceEpoch,

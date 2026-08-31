@@ -31,6 +31,7 @@ class _QuotePageState extends State<QuotePage>
   int _simpleTargetMode = 0; // 0=客户名称手动输入, 1=关联项目
   final _simpleNameCtrl = TextEditingController(); // 客户名称
   int? _simpleProjectId; // 关联项目
+  int? _simpleCustomerId; // 关联客户档案（v1.10.0，可选）
   final _simpleAmountCtrl = TextEditingController(); // 报价总额
   final _simpleNoteCtrl = TextEditingController(); // 备注（可选）
   int? _simpleQuoteId; // 正在编辑的简单报价历史 id（null=新建）
@@ -49,10 +50,11 @@ class _QuotePageState extends State<QuotePage>
   int? _quoteId; // 当前编辑的历史报价单 id（null=新建）
   int? _quoteCreatedAt; // 编辑历史时保留原时间戳
   int? _projectId; // 关联项目
+  int? _detailCustomerId; // 关联客户档案（v1.10.0，可选）
   List<Project> _projects = [];
   List<Customer> _customers = []; // 关联项目回填客户名
 
-  double get _subtotal =>
+  int get _subtotal =>
       _lines.fold(0, (sum, l) => sum + l.laborCost + l.materialFee);
   double get _tax => _subtotal * _taxRate;
   double get _total => _subtotal + _tax;
@@ -164,10 +166,11 @@ class _QuotePageState extends State<QuotePage>
     final q = Quote(
       id: _simpleQuoteId,
       projectId: _simpleTargetMode == 1 ? _simpleProjectId : null,
+      customerId: _simpleCustomerId,
       title: objectName,
       taxRate: 0,
       lines: const [],
-      total: double.parse(amount.toStringAsFixed(2)),
+      total: Money.parseYuanToFen(amount.toStringAsFixed(2)),
       createdAt: _simpleCreatedAt ?? now,
       type: 'simple',
       note: note,
@@ -187,6 +190,7 @@ class _QuotePageState extends State<QuotePage>
       _simpleQuoteId = null;
       _simpleCreatedAt = null;
       _simpleProjectId = null;
+      _simpleCustomerId = null;
       _simpleNameCtrl.clear();
       _simpleAmountCtrl.clear();
       _simpleNoteCtrl.clear();
@@ -203,16 +207,16 @@ class _QuotePageState extends State<QuotePage>
       final l = _lines[i];
       b.writeln('${i + 1}. ${l.itemName}');
       if (l.hours > 0) {
-        b.writeln('   工时 ${l.hours}h × ${_fmt.format(l.hourRate)}元/h = ${_fmt.format(l.laborCost)}元');
+        b.writeln('   工时 ${l.hours}h × ${_fmt.format(l.hourRate / 100)}元/h = ${_fmt.format(l.laborCost / 100)}元');
       }
       if (l.materialFee > 0) {
-        b.writeln('   物料 ${_fmt.format(l.materialFee)}元');
+        b.writeln('   物料 ${_fmt.format(l.materialFee / 100)}元');
       }
     }
     b.writeln('------------------');
-    b.writeln('小计：${_fmt.format(_subtotal)} 元');
-    b.writeln('税费（${(_taxRate * 100).toStringAsFixed(0)}%）：${_fmt.format(_tax)} 元');
-    b.writeln('合计：${_fmt.format(_total)} 元');
+    b.writeln('小计：${_fmt.format(_subtotal / 100)} 元');
+    b.writeln('税费（${(_taxRate * 100).toStringAsFixed(0)}%）：${_fmt.format(_tax / 100)} 元');
+    b.writeln('合计：${_fmt.format(_total / 100)} 元');
     b.writeln('请确认无误后回复，感谢合作！');
     return b.toString();
   }
@@ -238,10 +242,11 @@ class _QuotePageState extends State<QuotePage>
     final q = Quote(
       id: _quoteId,
       projectId: _projectId,
+      customerId: _detailCustomerId,
       title: title,
       taxRate: _taxRate * 100, // 模型存百分比
       lines: List.of(_lines),
-      total: double.parse(_total.toStringAsFixed(2)),
+      total: _total.round(),
       createdAt: _quoteCreatedAt ?? now,
       type: 'full',
       note: _detailNoteCtrl.text.trim(),
@@ -261,6 +266,7 @@ class _QuotePageState extends State<QuotePage>
       _quoteId = null;
       _quoteCreatedAt = null;
       _projectId = null;
+      _detailCustomerId = null;
       _titleCtrl.clear();
       _clientCtrl.clear();
       _taxCtrl.clear();
@@ -293,6 +299,137 @@ class _QuotePageState extends State<QuotePage>
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('已转为详细报价，可继续调整明细')),
     );
+  }
+
+  // ================= 报价 → 待收款 / 正式项目（v1.10.0） =================
+  /// 报价转为待收款：调用已有 pending_collections 插入逻辑
+  Future<void> _quoteToPendingCollection(Quote q) async {
+    await AppDb.instance.insertPendingCollection(PendingCollection(
+      quoteId: q.id,
+      projectId: q.projectId,
+      customerId: q.customerId,
+      title: q.title,
+      amount: q.total,
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+    ));
+  }
+
+  /// 报价确认成交转正式项目：需关联客户（无则弹窗选/建客户），
+  /// 创建项目后回写报价的 projectId 关联
+  Future<int?> _quoteToProject(Quote q) async {
+    int? customerId = q.customerId;
+    if (customerId == null) {
+      customerId = await _pickCustomerForProject(q.title);
+      if (customerId == null) return null; // 用户取消
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final projectId = await AppDb.instance.insertProject(Project(
+      customerId: customerId,
+      title: q.title,
+      status: ProjectStatus.accepted,
+      amountTotal: q.total,
+      createdAt: now,
+      updatedAt: now,
+    ));
+    // 回写报价的 projectId 关联
+    final updated = Quote(
+      id: q.id,
+      projectId: projectId,
+      customerId: q.customerId ?? customerId,
+      title: q.title,
+      taxRate: q.taxRate,
+      lines: q.lines,
+      total: q.total,
+      createdAt: q.createdAt,
+      type: q.type,
+      note: q.note,
+      taxInclude: q.taxInclude,
+    );
+    if (q.id != null) {
+      await AppDb.instance.updateQuote(updated);
+    }
+    return projectId;
+  }
+
+  /// 报价无关联客户时弹窗选择已有客户或新建客户（返回 null 表示取消）
+  Future<int?> _pickCustomerForProject(String quoteTitle) async {
+    final customers = await AppDb.instance.getCustomers();
+    if (!mounted) return null;
+    final nameCtrl = TextEditingController();
+    int? selected = customers.length == 1 ? customers.first.id : null;
+    final result = await showDialog<int>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('确认成交 · 选择客户'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('将「$quoteTitle」转为正式项目，需指定所属客户：',
+                  style: const TextStyle(fontSize: 13, color: AppTheme.textSub)),
+              const SizedBox(height: 12),
+              if (customers.isNotEmpty) ...[
+                DropdownButtonFormField<int>(
+                  initialValue: selected,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                      isDense: true, labelText: '已有客户'),
+                  items: customers
+                      .map((c) => DropdownMenuItem<int>(
+                          value: c.id!, child: Text(c.name)))
+                      .toList(),
+                  onChanged: (v) => setState(() {
+                    selected = v;
+                    nameCtrl.clear();
+                  }),
+                ),
+                const SizedBox(height: 12),
+                const Divider(),
+                const Text('或新建客户：',
+                    style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
+                const SizedBox(height: 6),
+              ],
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                  hintText: '新客户名称',
+                ),
+                onChanged: (v) => setState(() {
+                  if (v.trim().isNotEmpty) selected = null;
+                }),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('取消')),
+            FilledButton(
+              onPressed: () {
+                final newName = nameCtrl.text.trim();
+                if (newName.isNotEmpty) {
+                  // 新建客户并返回其 id
+                  AppDb.instance
+                      .insertCustomer(Customer(
+                        name: newName,
+                        createdAt: DateTime.now().millisecondsSinceEpoch,
+                      ))
+                      .then((id) {
+                        if (ctx.mounted) Navigator.pop(ctx, id);
+                      });
+                } else if (selected != null) {
+                  Navigator.pop(ctx, selected);
+                }
+              },
+              child: const Text('确认成交'),
+            ),
+          ],
+        ),
+      ),
+    );
+    nameCtrl.dispose();
+    return result;
   }
 
   // ================= 历史弹层 =================
@@ -372,6 +509,41 @@ class _QuotePageState extends State<QuotePage>
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert,
+                              size: 20, color: AppTheme.textSub),
+                          tooltip: '更多操作',
+                          onSelected: (v) async {
+                            final messenger =
+                                ScaffoldMessenger.of(context);
+                            if (v == 'to_pending') {
+                              await _quoteToPendingCollection(q);
+                              if (!ctx.mounted) return;
+                              Navigator.pop(ctx);
+                              messenger.showSnackBar(
+                                const SnackBar(content: Text('已转为待收款，可在看板查看待收尾款')),
+                              );
+                            } else if (v == 'to_project') {
+                              final projectId =
+                                  await _quoteToProject(q);
+                              if (projectId == null || !ctx.mounted) return;
+                              Navigator.pop(ctx);
+                              messenger.showSnackBar(
+                                const SnackBar(content: Text('已确认成交并创建正式项目')),
+                              );
+                            }
+                          },
+                          itemBuilder: (ctx) => [
+                            const PopupMenuItem<String>(
+                              value: 'to_pending',
+                              child: Text('转为待收款'),
+                            ),
+                            const PopupMenuItem<String>(
+                              value: 'to_project',
+                              child: Text('确认成交转正式项目'),
+                            ),
+                          ],
+                        ),
                         IconButton(
                           icon: const Icon(Icons.content_copy,
                               size: 20, color: AppTheme.textSub),
@@ -482,16 +654,16 @@ class _QuotePageState extends State<QuotePage>
       final l = q.lines[i];
       b.writeln('${i + 1}. ${l.itemName}');
       if (l.hours > 0) {
-        b.writeln('   工时 ${l.hours}h × ${_fmt.format(l.hourRate)}元/h = ${_fmt.format(l.laborCost)}元');
+        b.writeln('   工时 ${l.hours}h × ${_fmt.format(l.hourRate / 100)}元/h = ${_fmt.format(l.laborCost / 100)}元');
       }
       if (l.materialFee > 0) {
-        b.writeln('   物料 ${_fmt.format(l.materialFee)}元');
+        b.writeln('   物料 ${_fmt.format(l.materialFee / 100)}元');
       }
     }
     b.writeln('------------------');
-    b.writeln('小计：${_fmt.format(sub)} 元');
-    b.writeln('税费（${q.taxRate.toStringAsFixed(0)}%）：${_fmt.format(tax)} 元');
-    b.writeln('合计：${_fmt.format(q.total)} 元');
+    b.writeln('小计：${_fmt.format(sub / 100)} 元');
+    b.writeln('税费（${q.taxRate.toStringAsFixed(0)}%）：${_fmt.format(tax / 100)} 元');
+    b.writeln('合计：${_fmt.format(q.total / 100)} 元');
     b.writeln('请确认无误后回复，感谢合作！');
     return b.toString();
   }
@@ -503,7 +675,8 @@ class _QuotePageState extends State<QuotePage>
       _tabController.index = 0; // 跳转简单 Tab
       _simpleQuoteId = q.id;
       _simpleCreatedAt = q.createdAt;
-      _simpleAmountCtrl.text = _numText(q.total);
+      _simpleCustomerId = q.customerId;
+      _simpleAmountCtrl.text = _numText(q.total / 100);
       _simpleNoteCtrl.text = q.note;
       if (q.projectId != null) {
         _simpleTargetMode = 1;
@@ -523,6 +696,7 @@ class _QuotePageState extends State<QuotePage>
       _tabController.index = 1; // 跳转详细 Tab
       _quoteId = q.id;
       _quoteCreatedAt = q.createdAt;
+      _detailCustomerId = q.customerId;
       _titleCtrl.text = q.title;
       _projectId = q.projectId;
       _clientCtrl.text = q.title;
@@ -577,13 +751,41 @@ class _QuotePageState extends State<QuotePage>
           ),
           const SizedBox(height: 12),
           if (_simpleTargetMode == 0)
-            TextField(
-              controller: _simpleNameCtrl,
-              decoration: const InputDecoration(
-                isDense: true,
-                border: OutlineInputBorder(),
-                hintText: '输入客户名称',
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _simpleNameCtrl,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                    hintText: '输入客户名称',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<int?>(
+                  initialValue: _simpleCustomerId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: '关联客户档案（可选）',
+                  ),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                        value: null, child: Text('不关联')),
+                    ..._customers.map((c) => DropdownMenuItem<int?>(
+                        value: c.id, child: Text(c.name))),
+                  ],
+                  onChanged: (v) => setState(() {
+                    _simpleCustomerId = v;
+                    // 选中客户档案时自动回填客户名称
+                    if (v != null) {
+                      final c = _customers.firstWhere((x) => x.id == v);
+                      _simpleNameCtrl.text = c.name;
+                    }
+                  }),
+                ),
+              ],
             )
           else
             Column(
@@ -704,6 +906,28 @@ class _QuotePageState extends State<QuotePage>
                   controller: _clientCtrl,
                   decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
                 ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<int?>(
+                  initialValue: _detailCustomerId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: '关联客户档案（可选）',
+                  ),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                        value: null, child: Text('不关联')),
+                    ..._customers.map((c) => DropdownMenuItem<int?>(
+                        value: c.id, child: Text(c.name))),
+                  ],
+                  onChanged: (v) => setState(() {
+                    _detailCustomerId = v;
+                    if (v != null) {
+                      final c = _customers.firstWhere((x) => x.id == v);
+                      _clientCtrl.text = c.name;
+                    }
+                  }),
+                ),
                 const SizedBox(height: 12),
                 const Text('关联项目（可选）',
                     style: TextStyle(
@@ -797,10 +1021,10 @@ class _QuotePageState extends State<QuotePage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _row('费用小计', '¥${_fmt.format(_subtotal)}', Colors.white70),
-                _row('税费', '¥${_fmt.format(_tax)}', Colors.white70),
+                _row('费用小计', '¥${_fmt.format(_subtotal / 100)}', Colors.white70),
+                _row('税费', '¥${_fmt.format(_tax / 100)}', Colors.white70),
                 const Divider(color: Colors.white24),
-                _row('本次报价合计', '¥${_fmt.format(_total)}', Colors.white, bold: true, big: true),
+                _row('本次报价合计', '¥${_fmt.format(_total / 100)}', Colors.white, bold: true, big: true),
               ],
             ),
           ),
@@ -918,8 +1142,8 @@ class _LineCardState extends State<_LineCard> {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.line.itemName);
     _hoursCtrl = TextEditingController(text: widget.line.hours == 0 ? '' : widget.line.hours.toString());
-    _rateCtrl = TextEditingController(text: widget.line.hourRate == 0 ? '' : widget.line.hourRate.toString());
-    _matCtrl = TextEditingController(text: widget.line.materialFee == 0 ? '' : widget.line.materialFee.toString());
+    _rateCtrl = TextEditingController(text: widget.line.hourRate == 0 ? '' : Money.yuan(widget.line.hourRate));
+    _matCtrl = TextEditingController(text: widget.line.materialFee == 0 ? '' : Money.yuan(widget.line.materialFee));
   }
 
   @override
@@ -934,8 +1158,8 @@ class _LineCardState extends State<_LineCard> {
   void _emit() => widget.onChanged(QuoteLine(
         itemName: _nameCtrl.text.trim(),
         hours: double.tryParse(_hoursCtrl.text.trim()) ?? 0,
-        hourRate: double.tryParse(_rateCtrl.text.trim()) ?? 0,
-        materialFee: double.tryParse(_matCtrl.text.trim()) ?? 0,
+        hourRate: Money.parseYuanToFen(_rateCtrl.text.trim()),
+        materialFee: Money.parseYuanToFen(_matCtrl.text.trim()),
       ));
 
   Widget _rowLabel(String text) => Text(

@@ -23,10 +23,10 @@ class WalletPage extends StatefulWidget {
 class _WalletPageState extends State<WalletPage> {
   final _fmt = NumberFormat('#,##0.00');
 
-  double _balance = 0; // 可提现余额
-  double _totalPaid = 0; // 累计收款
-  double _totalRecharged = 0; // 累计充值到账
-  double _totalWithdrawn = 0; // 已提交提现
+  int _balance = 0; // 可提现余额（分）
+  int _totalPaid = 0; // 累计收款（分）
+  int _totalRecharged = 0; // 累计充值到账（分）
+  int _totalWithdrawn = 0; // 已提交提现（分）
   List<Withdrawal> _withdrawals = [];
   List<Recharge> _recharges = [];
   WithdrawAccount _account = const WithdrawAccount();
@@ -51,10 +51,10 @@ class _WalletPageState extends State<WalletPage> {
     ]);
     if (!mounted) return;
     setState(() {
-      _balance = results[0] as double;
-      _totalPaid = results[1] as double;
-      _totalRecharged = results[2] as double;
-      _totalWithdrawn = results[3] as double;
+      _balance = results[0] as int;
+      _totalPaid = results[1] as int;
+      _totalRecharged = results[2] as int;
+      _totalWithdrawn = results[3] as int;
       _withdrawals = results[4] as List<Withdrawal>;
       _recharges = results[5] as List<Recharge>;
       _account = results[6] as WithdrawAccount;
@@ -220,7 +220,7 @@ class _WalletPageState extends State<WalletPage> {
     if (!mounted) return;
 
     await AppDb.instance.insertRecharge(Recharge(
-      amount: ok.amount,
+      amount: Money.parseYuanToFen(ok.amount.toStringAsFixed(2)),
       method: ok.method,
       status: arrived == true ? RechargeStatus.done : RechargeStatus.pending,
       createdAt: DateTime.now().millisecondsSinceEpoch,
@@ -306,12 +306,13 @@ class _WalletPageState extends State<WalletPage> {
     );
     if (!mounted) return;
     if (ok == null || ok <= 0) return;
-    if (ok > _balance) {
+    if (ok * 100 > _balance) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('提现金额不能超过可提现余额')),
       );
       return;
     }
+    final amountFen = Money.parseYuanToFen(ok.toStringAsFixed(2));
     // 走当前提现通道（真实通道接入后此处自动切换到自动打款）
     setState(() => _busy = true);
     try {
@@ -324,7 +325,7 @@ class _WalletPageState extends State<WalletPage> {
       if (!mounted) return;
       if (result.ok) {
         await AppDb.instance.insertWithdrawal(Withdrawal(
-          amount: ok,
+          amount: amountFen,
           method: _account.method,
           accountName: _account.name,
           accountNo: _account.no,
@@ -557,10 +558,10 @@ class _WalletPageState extends State<WalletPage> {
 
 /// 余额卡
 class _BalanceCard extends StatelessWidget {
-  final double balance;
-  final double totalPaid;
-  final double totalRecharged;
-  final double totalWithdrawn;
+  final int balance;
+  final int totalPaid;
+  final int totalRecharged;
+  final int totalWithdrawn;
   final NumberFormat fmt;
   const _BalanceCard({
     required this.balance,
@@ -590,7 +591,7 @@ class _BalanceCard extends StatelessWidget {
               style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.85), fontSize: 13)),
           const SizedBox(height: 8),
-          Text('¥${fmt.format(balance)}',
+          Text('¥${fmt.format(balance / 100)}',
               style: const TextStyle(
                   color: Colors.white,
                   fontSize: 34,
@@ -599,21 +600,21 @@ class _BalanceCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text('累计收款\n¥${fmt.format(totalPaid)}',
+                child: Text('累计收款\n¥${fmt.format(totalPaid / 100)}',
                     style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.75),
                         fontSize: 12,
                         height: 1.5)),
               ),
               Expanded(
-                child: Text('累计充值\n¥${fmt.format(totalRecharged)}',
+                child: Text('累计充值\n¥${fmt.format(totalRecharged / 100)}',
                     style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.75),
                         fontSize: 12,
                         height: 1.5)),
               ),
               Expanded(
-                child: Text('已提现\n¥${fmt.format(totalWithdrawn)}',
+                child: Text('已提现\n¥${fmt.format(totalWithdrawn / 100)}',
                     style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.75),
                         fontSize: 12,
@@ -655,7 +656,7 @@ class _RechargeTile extends StatelessWidget {
               : Icons.account_balance_wallet_outlined,
               size: 22, color: AppTheme.accent),
         ),
-        title: Text('+¥${fmt.format(r.amount)}',
+        title: Text('+¥${fmt.format(r.amount / 100)}',
             style: const TextStyle(
                 fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.accent)),
         subtitle: Text(
@@ -730,7 +731,7 @@ class _WithdrawTile extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   color: AppTheme.primary)),
         ),
-        title: Text('-¥${fmt.format(w.amount)}',
+        title: Text('-¥${fmt.format(w.amount / 100)}',
             style: const TextStyle(
                 fontSize: 16, fontWeight: FontWeight.w700)),
         subtitle: Text(
