@@ -5,11 +5,26 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.11.0';
+  static const String version = '1.13.0';
 
   // ---- 云端后端 ----
   // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）仍存本地。
   static const String apiBaseUrl = 'http://121.41.97.109:8090';
+  // ---- HTTPS 证书固定（防破解 P1）----
+  // 当前默认仍走 http://121.41.97.109:8090 保持可连；待正式 HTTPS 证书签发后：
+  //   1) apiBaseUrl 切为 https://域名；
+  //   2) 用 openssl x509 -in server.pem -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -hex
+  //      生成服务器证书公钥 SHA-256 指纹填入下方 pinnedCertSha256；
+  // 届时客户端仅信任该指纹证书，防止重打包应用把请求劫持到伪造服务器。
+  static const String pinnedCertSha256 = '';
+
+  // ---- 防重打包自签名校验（防破解 P3）----
+  // 正式 release 签名证书 SHA-256 指纹（keytool -list -v 输出，冒号分隔大写）。
+  // 启动时（仅 release 模式）读取 APK 实际签名证书指纹，与本值不一致即判定
+  // 包被二次签名/重打包（破解者无法拿到正式 keystore），直接拒绝进入应用。
+  // 更换正式签名证书后必须同步更新本常量，否则正式包会被误判为被篡改。
+  static const String expectedSigningCertSha256 =
+      'F1:79:87:FC:BD:9A:FE:E6:A9:76:79:E7:BE:C2:0E:7C:F8:A3:6E:95:C0:C5:82:50:4E:8E:65:22:89:BA:E8:38';
 
   // ---- 免费版额度（达到上限后触发付费引导）----
   static const int freeCustomerLimit = 1; // 免费版客户上限

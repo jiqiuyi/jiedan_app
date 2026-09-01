@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../constants.dart';
 import '../theme.dart';
 import '../app_state.dart';
-import '../api_client.dart';
 import 'login_page.dart';
 
 class PaywallPage extends StatefulWidget {
@@ -16,7 +15,7 @@ class PaywallPage extends StatefulWidget {
 }
 
 class _PaywallPageState extends State<PaywallPage> {
-  bool _paying = false;
+  final bool _paying = false;
   bool _firstMonthUsed = false; // 当前账号是否已用过首月特惠
   int _selected = 1; // 默认选中档位（年付）
 
@@ -103,100 +102,20 @@ class _PaywallPageState extends State<PaywallPage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('确认开通专业版'),
+        title: const Text('开通专业版'),
         content: Text(
           '${plan.name} · ${plan.price}\n'
           '${plan.desc}\n\n'
-          'MVP 阶段为模拟支付：确认后创建订单并进入模拟收银台。',
+          '支付功能待接入，当前无法完成购买。正式版将接入支付宝 / 微信支付。',
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认开通'),
-          ),
+              child: const Text('知道了')),
         ],
       ),
     );
     if (confirm != true || !mounted) return;
-
-    setState(() => _paying = true);
-    String? error;
-    try {
-      // 云端下单
-      final planKey = plan.isFirstMonth
-          ? 'firstMonth'
-          : (plan.lifetime
-              ? 'forever'
-              : (plan.months >= 12 ? 'year' : 'month'));
-      final order = await AppState.instance.createOrder(planKey);
-      if (!mounted) return;
-      // 展示模拟收银台（MVP：显示订单信息，模拟支付）
-      final paid = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('模拟收银台'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('订单号：${order['orderNo'] ?? '-'}',
-                  style: const TextStyle(fontSize: 13)),
-              const SizedBox(height: 6),
-              Text(
-                  '应付金额：¥${(order['amount'] is num ? (order['amount'] as num) : 0).toStringAsFixed(2)}',
-                  style: const TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 10),
-              const Text(
-                'MVP 演示阶段未接入真实支付通道，\n点击下方按钮模拟「支付成功」。\n正式版将接入支付宝 / 微信支付。',
-                style: TextStyle(fontSize: 12, color: AppTheme.textSub),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消')),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('模拟支付成功'),
-            ),
-          ],
-        ),
-      );
-      if (paid != true) {
-        setState(() => _paying = false);
-        return;
-      }
-      final orderId = order['orderId'];
-      if (orderId is! num) {
-        throw Exception('订单创建异常');
-      }
-      await AppState.instance.confirmMockPay(orderId.toInt());
-      if (plan.isFirstMonth) {
-        await AppState.instance.markFirstMonthOfferUsed();
-      }
-    } on ApiException catch (e) {
-      error = e.message;
-    } catch (_) {
-      error = '支付失败，请稍后重试';
-    }
-    if (!mounted) return;
-    setState(() => _paying = false);
-    if (error != null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error)));
-      return;
-    }
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(plan.successText),
-      ),
-    );
   }
 
   @override
@@ -253,7 +172,7 @@ class _PaywallPageState extends State<PaywallPage> {
               const SizedBox(height: 12),
               const Center(
                 child: Text(
-                  'MVP 演示阶段：支付网关未接入，走云端模拟支付。\n正式版上线后将接入支付宝/微信支付。',
+                  '支付功能正在接入中，暂不支持在线开通。\n正式版上线后将接入支付宝/微信支付。',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppTheme.textSub, fontSize: 12),
                 ),

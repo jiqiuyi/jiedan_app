@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../api_client.dart';
+import '../app_state.dart';
 import '../services/backup_service.dart';
 import '../theme.dart';
 
@@ -77,13 +79,20 @@ class _DataManagementPageState extends State<DataManagementPage> {
     setState(() => _busy = true);
     try {
       final counts = await BackupService.instance.importBackup(path);
+      // 防破解加固（P2）：备份可能被篡改（伪造 is_pro=1），导入后强制清除
+      // 云端 token 与本地会话，要求用户重新登录，VIP 以云端 me() 为准覆盖。
+      await ApiClient.instance.clearToken();
+      await AppState.instance.clearSession();
       final summary = BackupService.instance.describeBackup(counts);
       if (!mounted) return;
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('导入成功'),
-          content: Text(summary),
+          content: Text(
+            '$summary\n\n安全提示：为保护账号权益，导入后已退出登录，'
+            'VIP 状态将以云端账号为准，请重新登录。',
+          ),
           actions: [
             FilledButton(
               onPressed: () => Navigator.pop(ctx),
