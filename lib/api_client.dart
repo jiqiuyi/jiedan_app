@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:crypto/crypto.dart' show sha256;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/io_client.dart';
 
 import 'constants.dart';
 
@@ -17,27 +20,56 @@ class ApiException implements Exception {
 /// 云端 API 封装：账号 / 订阅 / 订单 / 推广数据。
 /// 业务数据（客户/项目/收款）仍走本地 AppDb，不经过本类。
 class ApiClient {
-  ApiClient._();
+  ApiClient._() {
+    _client = _buildClient();
+  }
   static final ApiClient instance = ApiClient._();
 
+  /// HTTP 客户端：默认走系统栈；apiBaseUrl 切到 HTTPS 时自动启用证书固定。
+  late http.Client _client;
+
+  /// token 持久化走 flutter_secure_storage（防破解 P2：关键凭据不进普通明文存储）
+  static const _storage = FlutterSecureStorage();
   static const String _tokenKey = 'cloud_token';
   String? _token;
   String? get token => _token;
 
   /// 启动时从本地读取持久化的 token
   Future<void> loadToken() async {
-    final sp = await SharedPreferences.getInstance();
-    _token = sp.getString(_tokenKey);
+    _token = await _storage.read(key: _tokenKey);
   }
 
   Future<void> _saveToken(String? t) async {
     _token = t;
-    final sp = await SharedPreferences.getInstance();
     if (t == null) {
-      await sp.remove(_tokenKey);
+      await _storage.delete(key: _tokenKey);
     } else {
-      await sp.setString(_tokenKey, t);
+      await _storage.write(key: _tokenKey, value: t);
     }
+  }
+
+  /// 构建 HTTP 客户端：
+  /// - 明文 http（默认）：使用系统默认 HttpClient；
+  /// - https：启用证书固定（只信任内置的固定证书指纹），防止中间人重打包后
+  ///   将请求指向伪造服务器。待正式 HTTPS 证书签发后，将
+  ///   [AppConfig.apiBaseUrl] 切到 https 并更新 [AppConfig.pinnedCertSha256]。
+  static http.Client _buildClient() {
+    final base = AppConfig.apiBaseUrl;
+    if (base.startsWith('https://')) {
+      final sc = SecurityContext(withTrustedRoots: true);
+      // 可选：从 assets 加载内置证书（未来证书签发后放入）
+      // final bytes = rootBundle.load('assets/certs/server.pem'); ...
+      final httpClient = HttpClient(context: sc)
+        ..badCertificateCallback = (cert, host, port) {
+          // 只信任内置的固定证书指纹（用 DER 编码计算 SHA-256）
+          final sha = sha256.convert(cert.der).toString();
+          final pinned = AppConfig.pinnedCertSha256;
+          if (pinned.isEmpty) return false;
+          return sha == pinned.toLowerCase();
+        };
+      return IOClient(httpClient);
+    }
+    return http.Client();
   }
 
   Future<Map<String, dynamic>> _call(
@@ -55,11 +87,11 @@ class ApiClient {
     late http.Response resp;
     try {
       if (method == 'GET') {
-        resp = await http.get(uri, headers: headers).timeout(
+        resp = await _client.get(uri, headers: headers).timeout(
               const Duration(seconds: 12),
             );
       } else {
-        resp = await http
+        resp = await _client
             .post(uri, headers: headers, body: jsonEncode(body ?? {}))
             .timeout(const Duration(seconds: 12));
       }
@@ -126,14 +158,6 @@ class ApiClient {
       'plan': plan,
     });
     return json;
-  }
-
-  /// 模拟支付回调（MVP：真实支付接入前的演示通道），支付成功后后端完成
-  /// 开通专业版 + 邀请人返现 + 满员送 VIP 的结算。
-  Future<Map<String, dynamic>> mockPay(int orderId) async {
-    return _call('POST', '/api/pay/simulate', {
-      'orderId': orderId,
-    });
   }
 
   /// 退出登录：清除本地 token

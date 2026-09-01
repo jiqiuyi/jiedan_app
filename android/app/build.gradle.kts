@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -33,17 +35,30 @@ android {
 
     signingConfigs {
         create("release") {
-            // 正式签名：jiedan-guanjia.keystore（请妥善保存该文件与密码，丢失后无法覆盖更新）
-            storeFile = file("jiedan-guanjia.keystore")
-            storePassword = "jiedan@2026"
-            keyAlias = "jiedan"
-            keyPassword = "jiedan@2026"
+            // 防破解加固（P1）：keystore 密码脱库 —— 从本地 android/key.properties 读取，
+            // 该文件已 gitignore，keystore 文件也移出工程目录（D:/dev/jiedan_keystore）。
+            val keystoreProperties = Properties().apply {
+                val f = rootProject.file("key.properties")
+                if (f.exists()) f.inputStream().use { load(it) }
+            }
+            storeFile = keystoreProperties.getProperty("storeFile")
+                ?.let { file(it) }
+            storePassword = keystoreProperties.getProperty("storePassword")
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+            keyPassword = keystoreProperties.getProperty("keyPassword")
         }
     }
 
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
+            // 防破解加固（P3）：开启 R8/ProGuard 压缩与混淆（配合 Flutter --obfuscate 双重混淆）
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
