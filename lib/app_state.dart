@@ -34,21 +34,19 @@ class AppState extends ChangeNotifier {
   Future<void> load() async {
     await ApiClient.instance.loadToken();
     _currentUser = await AppDb.instance.getCurrentUser();
-    if (_currentUser != null) {
-      // 订阅状态以账号为准（含到期校验）
-      _isPro = _currentUser!.proActive;
-    } else {
-      // 兼容旧版本：无账号版本地 is_pro 标记
-      final v = await AppDb.instance.getSetting('is_pro');
-      _isPro = v == '1';
-    }
+    // 防破解加固（P0）：VIP 判定以云端为准，本地 SQLite 的 is_pro 仅作展示缓存，
+    // 不再作为 VIP 判定依据。未登录或云端不可用时一律按免费版处理（只读降级，
+    // 绝不信任本地标记）。
+    _isPro = false;
     notifyListeners();
-    // 有 token 时后台拉云端数据刷新订阅/推广状态（失败不阻断本地使用）
+    // 有 token 时拉云端数据刷新订阅/推广状态；云端不可用时保持 _isPro=false
     if (ApiClient.instance.token != null) {
       try {
         await refreshCloud();
       } catch (_) {
-        // 云端暂不可用，保持本地缓存状态
+        // 云端暂不可用：只读降级，保持 _isPro=false（不信任本地标记）
+        _isPro = false;
+        notifyListeners();
       }
     }
   }
@@ -105,18 +103,9 @@ class AppState extends ChangeNotifier {
         proExpireAt: expireAt,
       );
     } else {
-      local = local.copyWith(nickname: nickname);
-      if (isPro) {
-        local = UserAccount(
-          id: local.id,
-          phone: local.phone,
-          passHash: local.passHash,
-          nickname: local.nickname,
-          createdAt: local.createdAt,
-          isPro: true,
-          proExpireAt: expireAt,
-        );
-      }
+      // 防破解加固（P0）：云端 isPro 无论 true/false 一律覆盖本地缓存，
+      // 本地 users 表仅作会话展示缓存，VIP 判定只认云端。
+      local = local.copyWith(nickname: nickname, isPro: isPro, proExpireAt: expireAt);
     }
     await AppDb.instance.updateUser(local);
     await AppDb.instance.setCurrentUser(local.id);
@@ -196,30 +185,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 本地 MVP 兜底：未连云端时直接解锁专业版（保留兼容）
-  Future<void> activatePro({int months = 1, bool lifetime = false}) async {
-    if (_currentUser != null) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final int? expireAt = lifetime
-          ? null
-          : DateTime.fromMillisecondsSinceEpoch(now)
-              .add(Duration(days: 30 * months))
-              .millisecondsSinceEpoch;
-      final updated = UserAccount(
-        id: _currentUser!.id,
-        phone: _currentUser!.phone,
-        passHash: _currentUser!.passHash,
-        nickname: _currentUser!.nickname,
-        createdAt: _currentUser!.createdAt,
-        isPro: true,
-        proExpireAt: expireAt,
-      );
-      await AppDb.instance.updateUser(updated);
-      _currentUser = updated;
-    } else {
-      await AppDb.instance.setSetting('is_pro', '1');
-    }
-    _isPro = true;
+  /// 强制清除本地会话（云端 token + 本地用户缓存）。
+  /// 防破解加固（P2）：备份导入后调用，要求用户重新登录，
+  /// VIP 状态以云端 me() 为准重新覆盖，避免被篡改备份里的 is_pro 误导。
+  Future<void> clearSession() async {
+    await ApiClient.instance.clearToken();
+    await AppDb.instance.setCurrentUser(null);
+    _currentUser = null;
+    _isPro = false;
+    _cloudMe = null;
+    _cloudReady = false;
     notifyListeners();
   }
 
@@ -230,12 +205,6 @@ class AppState extends ChangeNotifier {
   /// 返回订单信息 { orderId, orderNo, amount, plan, qrPayload }；失败抛异常。
   Future<Map<String, dynamic>> createOrder(String plan) {
     return ApiClient.instance.createOrder(plan);
-  }
-
-  /// 模拟支付（MVP 演示通道），成功后刷新云端状态。
-  Future<void> confirmMockPay(int orderId) async {
-    await ApiClient.instance.mockPay(orderId);
-    await refreshCloud();
   }
 
   // ==================== 首月特惠（1 元，每人仅一次） ====================
@@ -368,34 +337,11 @@ class AppState extends ChangeNotifier {
     await AppDb.instance.deleteInvitee(inviteeId);
   }
 
-  /// 云端模式下 VIP 赠送由后端在满 2 位有效好友时自动发放，无需手动触发。
+  /// 云端模式下 VIP 赠送由后端在满 2 位有效好友时自动发放。
+  /// 防破解加固（P0/P2）：本地不再具备发放 VIP 的能力，一律返回 false，
+  /// 避免通过本地改写数据库或构造数据直接解锁专业版。
   Future<bool> grantInviteVipIfEligible() async {
-    if (_cloudReady) return false;
-    final uid = _currentUser?.id;
-    if (uid == null) return false;
-    final granted = await AppDb.instance.inviteBonusGranted(uid);
-    if (granted) return false;
-    final list = await AppDb.instance.getInvitees(uid);
-    if (list.length < AppConfig.inviteFreeVipFriends) return false;
-    if (_currentUser != null) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final base = _currentUser!.proExpireAt != null &&
-              _currentUser!.proExpireAt! > now
-          ? _currentUser!.proExpireAt!
-          : now;
-      final expireAt = DateTime.fromMillisecondsSinceEpoch(base)
-          .add(Duration(days: 30 * AppConfig.inviteRewardMonths.toInt()))
-          .millisecondsSinceEpoch;
-      final updated = _currentUser!.copyWith(isPro: true, proExpireAt: expireAt);
-      await AppDb.instance.updateUser(updated);
-      _currentUser = updated;
-    } else {
-      await AppDb.instance.setSetting('is_pro', '1');
-    }
-    await AppDb.instance.markInviteBonusGranted(uid);
-    _isPro = true;
-    notifyListeners();
-    return true;
+    return false;
   }
 
   /// 通知全局刷新（供页面层在数据变化后触发重建）

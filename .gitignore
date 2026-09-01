@@ -54,5 +54,7 @@ android/app/*.jks
 # æœ¬åœ°æž„å»ºä¸´æ—¶æ—¥å¿—
 temp_build_log.txt
 
-# Õæ»úÑéÖ¤½ØÍ¼£¨ÁÙÊ±²úÎï£©
+# ï¿½ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½ï¿½Í¼ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï£©
 verify/
+# P1: local key.properties (contains keystore path/password, never commit)
+android/key.properties
