@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../database.dart';
+import '../models.dart';
 import '../theme.dart';
 
 /// 收入统计页（v1.10.0 新增）：
-/// 近 12 个月收入柱状图、客户贡献排行、收款/待收构成。
+/// 近 12 个月收入柱状图、客户贡献排行、应收款项/报价与收入口径汇总。
 /// 数据全部来自本机 SQLite，不涉及任何云端。
 class IncomeStatsPage extends StatefulWidget {
   const IncomeStatsPage({super.key});
@@ -18,7 +19,10 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
   bool _loading = true;
   List<Map<String, int>> _monthly = [];
   List<Map<String, Object?>> _contrib = [];
-  Map<String, int> _paidVsPending = {'paid': 0, 'pending': 0};
+  // 三个统计口径各自独立保存（单位均为分），避免平铺在一个 map 里互相污染：
+  int _quoteTotal = 0; // 口径一：全部报价总金额
+  int _received = 0; // 口径二：实际已收款
+  int _receivable = 0; // 口径三：尚未收回应收欠款
   final _fmt = NumberFormat('#,##0.00');
 
   @override
@@ -32,11 +36,16 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
     final monthly = await db.monthlyIncomeLast12();
     final contrib = await db.customerContribution();
     final summary = await db.paidVsPendingSummary();
+    // 报价总额需要读取全量报价记录后自行求和，避免在 DB 层新增聚合 SQL。
+    final quotes = await db.getQuotes();
     if (!mounted) return;
     setState(() {
       _monthly = monthly;
       _contrib = contrib;
-      _paidVsPending = summary;
+      // 三种口径分开计算，互不影响：
+      _quoteTotal = calcTotalQuoteAmount(quotes);
+      _received = calcReceivedAmount(summary);
+      _receivable = calcReceivableAmount(summary);
       _loading = false;
     });
   }
@@ -52,7 +61,9 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
               child: ListView(
                 padding: const EdgeInsets.only(top: 8, bottom: 32),
                 children: [
-                  _buildCompositionCard(),
+                  _buildReceivableCard(),
+                  const SizedBox(height: 6),
+                  _buildAmountOverviewCard(),
                   const SizedBox(height: 6),
                   const Padding(
                     padding: EdgeInsets.fromLTRB(18, 14, 18, 6),
@@ -79,12 +90,70 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
     );
   }
 
-  // 收款 / 待收构成
-  Widget _buildCompositionCard() {
-    final paid = _paidVsPending['paid'] ?? 0;
-    final pending = _paidVsPending['pending'] ?? 0;
-    final total = paid + pending;
-    final paidRatio = total <= 0 ? 0.0 : paid / total;
+  // 应收欠款独立高亮卡片：自由职业最关心「还有多少钱没收回来」，单独成块突出展示。
+  Widget _buildReceivableCard() {
+    final cleared = _receivable <= 0;
+    final receivableText = _fmt.format(_receivable / 100);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: cleared
+            ? const LinearGradient(
+                colors: [Color(0xFF27AE60), Color(0xFF2EBD85)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : const LinearGradient(
+                colors: [Color(0xFFE67E22), Color(0xFFF39C12)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                cleared ? Icons.check_circle_outline : Icons.notifications_active_outlined,
+                size: 18,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                cleared ? '应收款项 · 已全部结清' : '应收欠款 · 待追回',
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.9), fontSize: 13),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '¥${cleared ? '0.00' : receivableText}',
+            style: const TextStyle(
+                color: Colors.white, fontSize: 30, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          // 业务口径说明：应收欠款 = 待收余额（部分收款或全款未收时的未回款金额）
+          Text(
+            cleared
+                ? '无未回款，所有收款均已结清'
+                : '共 ¥$receivableText 尚未收回，请及时跟进催收',
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 报价总金额 / 实际已收款 口径汇总卡片：区分「全部报价」「实际到手收入」两类业务口径。
+  Widget _buildAmountOverviewCard() {
+    final quoteTotal = _quoteTotal < 0 ? 0 : _quoteTotal;
+    final received = _received < 0 ? 0 : _received;
+    final receivedRatio =
+        quoteTotal <= 0 ? 0.0 : (received / quoteTotal).clamp(0.0, 1.0);
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Padding(
@@ -92,30 +161,38 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('收款 / 待收构成',
+            const Text('报价与收入口径',
                 style: TextStyle(
                     fontSize: 15, fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
             Row(
               children: [
-                _Legend(color: AppTheme.accent, label: '已收 ¥${_fmt.format(paid / 100)}'),
+                // 口径一：全部报价总金额（含税一口价 / 详细报价合计）
+                _Legend(
+                    color: AppTheme.primary,
+                    label: '全部报价 ¥${_fmt.format(quoteTotal / 100)}'),
                 const SizedBox(width: 16),
-                _Legend(color: AppTheme.warn, label: '待收 ¥${_fmt.format(pending / 100)}'),
+                // 口径二：累计实际到账收入
+                _Legend(
+                    color: AppTheme.accent,
+                    label: '已收入 ¥${_fmt.format(received / 100)}'),
               ],
             ),
             const SizedBox(height: 10),
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
-                value: paidRatio,
+                value: receivedRatio,
                 minHeight: 10,
-                backgroundColor: AppTheme.warn.withValues(alpha: 0.25),
+                backgroundColor: AppTheme.primary.withValues(alpha: 0.15),
                 color: AppTheme.accent,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              '已收占比 ${(paidRatio * 100).toStringAsFixed(1)}%',
+              quoteTotal <= 0
+                  ? '暂无报价数据，先去「报价」页创建报价单'
+                  : '已收入占报价总额 ${(receivedRatio * 100).toStringAsFixed(1)}%',
               style: const TextStyle(color: AppTheme.textSub, fontSize: 12),
             ),
           ],
@@ -331,4 +408,33 @@ class _MonthlyBarChart extends StatelessWidget {
       ),
     );
   }
+}
+
+// ---- 业务统计口径计算（纯函数，便于单元测试与复用）----
+// 三个口径互相独立：报价总额、实际已收、应收欠款，单位均为「分」。
+// 所有入参负数一律按 0 处理，防止脏数据扭曲统计结果。
+
+// 口径一：全部报价总金额（分）。遍历全部报价记录求和，负数视为非法值按 0 计。
+int calcTotalQuoteAmount(List<Quote> quotes) {
+  var total = 0;
+  for (final q in quotes) {
+    total += q.total < 0 ? 0 : q.total;
+  }
+  return total;
+}
+
+// 口径二：实际已收款（分）。负数兜底置 0。
+int calcReceivedAmount(Map<String, int> summary) {
+  final paid = summary['paid'] ?? 0;
+  return paid < 0 ? 0 : paid;
+}
+
+// 口径三：应收欠款（分）。按业务状态区分：
+//  - 待收余额为 0：全款已结清，无应收欠款；
+//  - 待收余额 > 0：部分收款或全款未收，应收欠款即为待收余额；
+//  - 数值非法（<0）一律兜底为 0。
+int calcReceivableAmount(Map<String, int> summary) {
+  final pending = summary['pending'] ?? 0;
+  if (pending <= 0) return 0;
+  return pending;
 }
