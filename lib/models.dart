@@ -2,13 +2,16 @@ import 'dart:convert';
 
 import 'constants.dart';
 
+// 实体模型层：与数据库表 / 云端 JSON 一一对应。
+// 金额字段统一为「分」整数（INTEGER），禁止使用 double（见 database.dart 金额口径）。
+// 序列化遵循：toMap/fromMap 走 sqflite 行映射；WithdrawAccount 走 toJson/fromJson（存 settings）。
 class Customer {
   final int? id;
   final String name;
   final String contact;
   final String note;
   final int createdAt;
-  final int updatedAt; // v11：最后修改时间（ms），云端同步用
+  final int updatedAt; // 最后修改时间（ms），同步用
 
   const Customer({
     this.id,
@@ -28,14 +31,25 @@ class Customer {
         'updated_at': updatedAt,
       };
 
-  factory Customer.fromMap(Map<String, Object?> m) => Customer(
-        id: m['id'] as int?,
-        name: m['name'] as String,
-        contact: (m['contact'] as String?) ?? '',
-        note: (m['note'] as String?) ?? '',
-        createdAt: (m['created_at'] as int?) ?? 0,
-        updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
-      );
+  // 解析顺序与 toMap / 表列顺序一致；空值统一取默认，避免旧数据缺列崩溃。
+  factory Customer.fromMap(Map<String, Object?> m) {
+    final fields = {
+      'name': (m['name'] as String?) ?? '',
+      'contact': (m['contact'] as String?) ?? '',
+      'note': (m['note'] as String?) ?? '',
+    };
+    return Customer(
+      id: m['id'] as int?,
+      name: fields['name']!,
+      contact: fields['contact']!,
+      note: fields['note']!,
+      createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
+      updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  // 业务合法性：客户名不能为空或纯空白。
+  bool isValidCustomer() => name.trim().isNotEmpty;
 
   Customer copyWith({String? name, String? contact, String? note}) =>
       Customer(
@@ -55,9 +69,9 @@ class Project {
   final ProjectStatus status;
   final int amountTotal; // 约定总额（分）
   final int createdAt;
-  final int updatedAt;
-  final int dueDate; // 待收提醒日（ms），0 表示未设置（v9）
-  final int remindAt; // 提醒时间点（ms），0 表示未设置（v9）
+  final int updatedAt; // 最后修改时间（ms），同步用
+  final int dueDate; // 待收提醒日（ms），0 未设置
+  final int remindAt; // 提醒时间点（ms），0 未设置
 
   const Project({
     this.id,
@@ -83,17 +97,26 @@ class Project {
         'remind_at': remindAt,
       };
 
-  factory Project.fromMap(Map<String, Object?> m) => Project(
-        id: m['id'] as int?,
-        customerId: m['customer_id'] as int,
-        title: m['title'] as String,
-        status: ProjectStatus.values[m['status'] as int],
-        amountTotal: (m['amount_total'] as num?)?.toInt() ?? 0,
-        createdAt: m['created_at'] as int,
-        updatedAt: m['updated_at'] as int,
-        dueDate: (m['due_date'] as num?)?.toInt() ?? 0,
-        remindAt: (m['remind_at'] as num?)?.toInt() ?? 0,
-      );
+  // status 号越界时兜底到首个枚举，避免历史脏数据触发 RangeError。
+  factory Project.fromMap(Map<String, Object?> m) {
+    final rawStatus = (m['status'] as int?) ?? 0;
+    final statusIndex = rawStatus.clamp(0, ProjectStatus.values.length - 1);
+    return Project(
+      id: m['id'] as int?,
+      customerId: (m['customer_id'] as num?)?.toInt() ?? 0,
+      title: (m['title'] as String?) ?? '',
+      status: ProjectStatus.values[statusIndex],
+      amountTotal: (m['amount_total'] as num?)?.toInt() ?? 0,
+      createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
+      updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
+      dueDate: (m['due_date'] as num?)?.toInt() ?? 0,
+      remindAt: (m['remind_at'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  // 业务合法性：项目名不能为空；必须已关联客户（customerId > 0）。
+  bool isValidProject() =>
+      title.trim().isNotEmpty && customerId > 0;
 
   Project copyWith({
     String? title,
@@ -124,7 +147,7 @@ class Payment {
   final String typeLabel; // 自定义类型名称（type==custom 时有效）
   final int paidAt;
   final String note;
-  final int updatedAt; // v11：最后修改时间（ms），云端同步用
+  final int updatedAt; // 最后修改时间（ms），同步用
 
   const Payment({
     this.id,
@@ -137,7 +160,7 @@ class Payment {
     this.updatedAt = 0,
   });
 
-  /// 展示用收款类型名：自定义类型显示自定义名称，否则显示枚举 label。
+  // 展示用收款类型名：自定义类型显示自定义名称，否则显示枚举 label。
   String get displayType =>
       type == PayType.custom ? (typeLabel.trim().isEmpty ? '自定义' : typeLabel.trim()) : type.label;
 
@@ -154,17 +177,18 @@ class Payment {
 
   factory Payment.fromMap(Map<String, Object?> m) => Payment(
         id: m['id'] as int?,
-        projectId: m['project_id'] as int,
+        projectId: (m['project_id'] as num?)?.toInt() ?? 0,
         amount: (m['amount'] as num?)?.toInt() ?? 0,
-        type: PayType.values[m['type'] as int],
+        type: PayType.values[
+            ((m['type'] as int?) ?? 0).clamp(0, PayType.values.length - 1)],
         typeLabel: (m['type_label'] as String?) ?? '',
-        paidAt: m['paid_at'] as int,
+        paidAt: (m['paid_at'] as num?)?.toInt() ?? 0,
         note: (m['note'] as String?) ?? '',
         updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
       );
 }
 
-/// 提现方式
+// 提现方式
 enum WithdrawMethod {
   wechat, // 微信
   alipay, // 支付宝
@@ -193,7 +217,7 @@ enum WithdrawMethod {
   }
 }
 
-/// 提现状态
+// 提现状态
 enum WithdrawStatus {
   pending, // 待处理（已提交申请，等待打款）
   processing, // 处理中（打款进行中）
@@ -211,7 +235,7 @@ enum WithdrawStatus {
   }
 }
 
-/// 提现账户（收款人姓名 + 账号），存 settings（JSON）
+// 提现账户（收款人姓名 + 账号），存 settings（JSON）
 class WithdrawAccount {
   final WithdrawMethod method;
   final String name; // 收款人姓名
@@ -249,13 +273,13 @@ class WithdrawAccount {
   }
 }
 
-/// 提现记录（v5 新增）
+// 提现记录（v5 新增）
 class Withdrawal {
   final int? id;
   final int amount; // 金额（分）
   final WithdrawMethod method;
-  final String accountName; // 提现时的收款人姓名（快照）
-  final String accountNo; // 提现时的收款账号（快照）
+  final String accountName; // 提现时收款人姓名（快照）
+  final String accountNo; // 提现时收款账号（快照）
   final WithdrawStatus status;
   final int createdAt;
   final String note;
@@ -285,11 +309,13 @@ class Withdrawal {
   factory Withdrawal.fromMap(Map<String, Object?> m) => Withdrawal(
         id: m['id'] as int?,
         amount: (m['amount'] as num?)?.toInt() ?? 0,
-        method: WithdrawMethod.values[m['method'] as int],
+        method: WithdrawMethod.values[
+            ((m['method'] as int?) ?? 0).clamp(0, WithdrawMethod.values.length - 1)],
         accountName: (m['account_name'] as String?) ?? '',
         accountNo: (m['account_no'] as String?) ?? '',
-        status: WithdrawStatus.values[(m['status'] as int?) ?? 0],
-        createdAt: (m['created_at'] as int?) ?? 0,
+        status: WithdrawStatus.values[
+            ((m['status'] as int?) ?? 0).clamp(0, WithdrawStatus.values.length - 1)],
+        createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
         note: (m['note'] as String?) ?? '',
       );
 
@@ -315,7 +341,7 @@ class Withdrawal {
       );
 }
 
-/// 充值方式（v6 新增）
+// 充值方式（v6 新增）
 enum RechargeMethod {
   wechat, // 微信
   alipay; // 支付宝
@@ -330,7 +356,7 @@ enum RechargeMethod {
   }
 }
 
-/// 充值状态（v6 新增）
+// 充值状态（v6 新增）
 enum RechargeStatus {
   pending, // 待确认到账（已出示收款码，等待用户确认）
   done; // 已到账（余额已入账）
@@ -345,8 +371,7 @@ enum RechargeStatus {
   }
 }
 
-/// 充值记录（v6 新增）。
-/// MVP：出示收款码 + 手动确认到账；真实通道接入后由支付回调自动标记 done。
+// 充值记录（v6 新增）：MVP 出示收款码 + 手动确认；真实通道接入后由支付回调自动标 done。
 class Recharge {
   final int? id;
   final int amount; // 充值金额（分）
@@ -376,9 +401,11 @@ class Recharge {
   factory Recharge.fromMap(Map<String, Object?> m) => Recharge(
         id: m['id'] as int?,
         amount: (m['amount'] as num?)?.toInt() ?? 0,
-        method: RechargeMethod.values[(m['method'] as int?) ?? 0],
-        status: RechargeStatus.values[(m['status'] as int?) ?? 0],
-        createdAt: (m['created_at'] as int?) ?? 0,
+        method: RechargeMethod.values[
+            ((m['method'] as int?) ?? 0).clamp(0, RechargeMethod.values.length - 1)],
+        status: RechargeStatus.values[
+            ((m['status'] as int?) ?? 0).clamp(0, RechargeStatus.values.length - 1)],
+        createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
         note: (m['note'] as String?) ?? '',
       );
 
@@ -432,11 +459,8 @@ class QuoteLine {
       );
 }
 
-/// 报价单（v7 新增，落库历史；v8 扩展简单/详细两种类型；v9 关联客户 customer_id、
-/// 金额改分为整数分存储）。
-/// 保存后可查看历史、重新打开编辑、复制文本；可关联到项目或客户。
-/// - type='simple'：简单报价（一口价含税，无明细/税率，有备注）
-/// - type='full'：详细报价（明细 + 税率自动计算）
+// 报价单（v7 落库历史；v8 扩展 simple/full；v9 关联客户 + 金额改分为整数分）。
+// type='simple'：简单报价（一口价含税，无明细/税率）；type='full'：详细报价（明细+税率）。
 class Quote {
   final int? id;
   final int? projectId; // 可空：不关联项目
@@ -446,10 +470,10 @@ class Quote {
   final List<QuoteLine> lines;
   final int total; // 报价总额（分，含税）
   final int createdAt;
-  final String type; // 'simple' 简单报价 / 'full' 详细报价
+  final String type; // 'simple' 简单 / 'full' 详细
   final String note; // 备注（简单报价常用，详细报价可选）
   final bool taxInclude; // 总额是否含税（简单报价恒 true）
-  final int updatedAt; // v11：最后修改时间（ms），云端同步用
+  final int updatedAt; // 最后修改时间（ms），同步用
 
   const Quote({
     this.id,
@@ -483,34 +507,45 @@ class Quote {
         'updated_at': updatedAt,
       };
 
+  // title 先归一化再判断合法性；lines_json 解析失败按空行处理。
   factory Quote.fromMap(Map<String, Object?> m) {
-    final linesRaw = (m['lines_json'] as String?) ?? '[]';
-    List<QuoteLine> lines = [];
-    try {
-      final list = jsonDecode(linesRaw) as List;
-      lines = list
-          .map((e) => QuoteLine.fromMap((e as Map).cast<String, Object?>()))
-          .toList();
-    } catch (_) {/* 解析失败按空行处理 */}
+    final lines = _parseLines(m['lines_json']);
+    final title = (m['title'] as String?) ?? '';
+    final taxIncludeRaw = m['tax_include'] as int?;
     return Quote(
       id: m['id'] as int?,
       projectId: m['project_id'] as int?,
       customerId: m['customer_id'] as int?,
-      title: (m['title'] as String?) ?? '',
+      title: title,
       taxRate: ((m['tax_rate'] as num?) ?? 0).toDouble(),
       lines: lines,
       total: (m['total'] as num?)?.toInt() ?? 0,
-      createdAt: (m['created_at'] as int?) ?? 0,
+      createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
       type: (m['quote_type'] as String?) ?? 'full',
       note: (m['note'] as String?) ?? '',
-      taxInclude:
-          (m['tax_include'] as int?) == null ? true : (m['tax_include'] as int) == 1,
+      taxInclude: taxIncludeRaw == null ? true : taxIncludeRaw == 1,
       updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
     );
   }
+
+  // 业务合法性：报价总额不能为负；标题（客户/项目名）不能为空或纯空白。
+  bool isValidQuote() => total >= 0 && title.trim().isNotEmpty;
 }
 
-/// 待收款记录（v9 新增，报价转待收款 / 项目尾款待收）
+// lines_json 反序列化 helper（解析失败返回空行）。
+List<QuoteLine> _parseLines(Object? json) {
+  final raw = (json as String?) ?? '[]';
+  try {
+    final list = jsonDecode(raw) as List;
+    return list
+        .map((e) => QuoteLine.fromMap((e as Map).cast<String, Object?>()))
+        .toList();
+  } catch (_) {
+    return const [];
+  }
+}
+
+// 待收款记录（v9 新增，报价转待收款 / 项目尾款待收）
 class PendingCollection {
   final int? id;
   final int? projectId; // 关联项目（可空）
@@ -518,11 +553,11 @@ class PendingCollection {
   final int? customerId; // 关联客户（可空）
   final String title; // 待收名称（默认项目/报价名）
   final int amount; // 待收金额（分）
-  final int dueDate; // 到期日（ms），0 表示未设置
+  final int dueDate; // 到期日（ms），0 未设置
   final PendingStatus status;
   final int createdAt;
   final int? settledAt; // 结清时间（ms）
-  final int updatedAt; // v11：最后修改时间（ms），云端同步用
+  final int updatedAt; // 最后修改时间（ms），同步用
 
   const PendingCollection({
     this.id,
@@ -560,8 +595,9 @@ class PendingCollection {
         title: (m['title'] as String?) ?? '',
         amount: (m['amount'] as num?)?.toInt() ?? 0,
         dueDate: (m['due_date'] as num?)?.toInt() ?? 0,
-        status: PendingStatus.values[(m['status'] as int?) ?? 0],
-        createdAt: (m['created_at'] as int?) ?? 0,
+        status: PendingStatus.values[
+            ((m['status'] as int?) ?? 0).clamp(0, PendingStatus.values.length - 1)],
+        createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
         settledAt: m['settled_at'] as int?,
         updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
       );
@@ -588,7 +624,7 @@ class PendingCollection {
       );
 }
 
-/// 项目里程碑 / 阶段（v9 新增）
+// 项目里程碑 / 阶段（v9 新增）
 class Milestone {
   final int? id;
   final int projectId;
@@ -596,7 +632,7 @@ class Milestone {
   final int amount; // 阶段金额（分）
   final bool done; // 是否完成
   final int createdAt;
-  final int updatedAt; // v11：最后修改时间（ms），云端同步用
+  final int updatedAt; // 最后修改时间（ms），同步用
 
   const Milestone({
     this.id,
@@ -620,11 +656,11 @@ class Milestone {
 
   factory Milestone.fromMap(Map<String, Object?> m) => Milestone(
         id: m['id'] as int?,
-        projectId: m['project_id'] as int,
+        projectId: (m['project_id'] as num?)?.toInt() ?? 0,
         name: (m['name'] as String?) ?? '',
         amount: (m['amount'] as num?)?.toInt() ?? 0,
         done: (m['done'] as int?) == 1,
-        createdAt: (m['created_at'] as int?) ?? 0,
+        createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
         updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
       );
 
@@ -639,7 +675,7 @@ class Milestone {
       );
 }
 
-/// 合同/协议记录（v10 替代发票）
+// 合同/协议记录（v10 替代发票）
 class Contract {
   final int? id;
   final String target; // 签约对象（客户/公司名）
@@ -649,7 +685,7 @@ class Contract {
   final int signedAt; // 签订日期（ms）
   final String contractNo; // 合同编号
   final String note; // 备注
-  final int updatedAt; // v11：最后修改时间（ms），云端同步用
+  final int updatedAt; // 最后修改时间（ms），同步用
 
   const Contract({
     this.id,
@@ -680,8 +716,9 @@ class Contract {
         target: (m['target'] as String?) ?? '',
         amount: (m['amount'] as num?)?.toInt() ?? 0,
         projectId: m['project_id'] as int?,
-        status: ContractStatus.values[(m['status'] as int?) ?? 0],
-        signedAt: (m['signed_at'] as int?) ?? 0,
+        status: ContractStatus.values[
+            ((m['status'] as int?) ?? 0).clamp(0, ContractStatus.values.length - 1)],
+        signedAt: (m['signed_at'] as num?)?.toInt() ?? 0,
         contractNo: (m['contract_no'] as String?) ?? '',
         note: (m['note'] as String?) ?? '',
         updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
@@ -709,9 +746,8 @@ class Contract {
       );
 }
 
-/// 本地账号：手机号 + 密码哈希 + 订阅状态。
-/// MVP 阶段无云端，账号与订阅均存于本地 SQLite；
-/// 后续接入服务器时仅需替换数据源，模型结构可保持不变。
+// 本地账号：手机号 + 密码哈希 + 订阅状态。
+// MVP 无云端，账号/订阅存本地 SQLite；接服务器后仅换数据源，模型保持不变。
 class UserAccount {
   final int? id;
   final String phone;
@@ -719,7 +755,7 @@ class UserAccount {
   final String nickname;
   final int createdAt;
   final bool isPro; // 是否解锁专业版
-  final int? proExpireAt; // 订阅到期时间戳(ms)，null 表示永久（一次买断）
+  final int? proExpireAt; // 订阅到期（ms），null 表示永久（一次买断）
 
   const UserAccount({
     this.id,
@@ -731,7 +767,7 @@ class UserAccount {
     this.proExpireAt,
   });
 
-  /// 订阅是否仍在有效期内
+  // 订阅是否仍在有效期内
   bool get proActive =>
       isPro && (proExpireAt == null || proExpireAt! > DateTime.now().millisecondsSinceEpoch);
 
@@ -752,10 +788,10 @@ class UserAccount {
 
   factory UserAccount.fromMap(Map<String, Object?> m) => UserAccount(
         id: m['id'] as int?,
-        phone: m['phone'] as String,
-        passHash: m['pass_hash'] as String,
+        phone: (m['phone'] as String?) ?? '',
+        passHash: (m['pass_hash'] as String?) ?? '',
         nickname: (m['nickname'] as String?) ?? '',
-        createdAt: (m['created_at'] as int?) ?? 0,
+        createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
         isPro: (m['is_pro'] as int?) == 1,
         proExpireAt: m['pro_expire_at'] as int?,
       );
@@ -776,8 +812,8 @@ class UserAccount {
       );
 }
 
-/// 被邀请人（推广活动，本地 MVP 版）。
-/// 邀请人端手动登记：推荐了谁、谁已真实付款开通 VIP（触发 50% 返现）。
+// 被邀请人（推广活动，本地 MVP 版）。
+// 邀请人端手动登记：推荐了谁、谁已真实付款开通 VIP（触发 50% 返现）。
 class Invitee {
   final int? id;
   final int inviterUserId; // 邀请人（本机账号）
@@ -815,10 +851,10 @@ class Invitee {
 
   factory Invitee.fromMap(Map<String, Object?> m) => Invitee(
         id: m['id'] as int?,
-        inviterUserId: m['inviter_user_id'] as int,
-        name: m['name'] as String,
+        inviterUserId: (m['inviter_user_id'] as num?)?.toInt() ?? 0,
+        name: (m['name'] as String?) ?? '',
         phone: (m['phone'] as String?) ?? '',
-        invitedAt: (m['invited_at'] as int?) ?? 0,
+        invitedAt: (m['invited_at'] as num?)?.toInt() ?? 0,
         paid: (m['paid'] as int?) == 1,
         payAmount: (m['pay_amount'] as num?)?.toInt() ?? 0,
         rebate: (m['rebate'] as num?)?.toInt() ?? 0,
