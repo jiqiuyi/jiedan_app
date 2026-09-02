@@ -173,6 +173,19 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ),
                     ),
+                    const Divider(height: 1, indent: 16),
+                    ListTile(
+                      leading: const Icon(Icons.card_giftcard,
+                          color: AppTheme.primary),
+                      title: const Text('推广活动'),
+                      subtitle: const Text('推荐好友送 VIP，新人付款返现 50%'),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const InvitePage()),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -291,23 +304,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Column(
                   children: [
                     ListTile(
-                      leading: const Icon(Icons.card_giftcard,
-                          color: AppTheme.primary),
-                      title: const Text('推广活动'),
-                      subtitle: const Text('推荐好友送 VIP，新人付款返现 50%'),
-                      trailing: const Icon(Icons.chevron_right,
-                          color: AppTheme.textSub),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const InvitePage()),
-                      ),
-                    ),
-                    const Divider(height: 1, indent: 56),
-                    ListTile(
                       leading: const Icon(Icons.feedback_outlined,
                           color: AppTheme.primary),
                       title: const Text('意见反馈'),
-                      subtitle: const Text('提交 Bug 或更新建议'),
+                      subtitle: const Text('在线提交 Bug 或更新建议，实时收到'),
                       trailing: const Icon(Icons.chevron_right,
                           color: AppTheme.textSub),
                       onTap: () => Navigator.push(

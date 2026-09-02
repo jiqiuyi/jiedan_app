@@ -158,6 +158,21 @@ class SyncService extends ChangeNotifier {
   /// 立即后台推送本地全部数据（含墓碑）到云端。供页面「立即同步」调用。
   Future<void> pushNow() => _runMutex(() => _pushNow());
 
+  /// 删除服务器上本账号的全部同步数据（存储方式切回「仅本地」时的可选项）。
+  /// 仅清除云端命名空间，本地数据保持不变；同时清空本地同步水位，
+  /// 之后再次切回含服务器模式时会按首次全量重新上传。
+  /// 返回服务器返回的被删除行数。
+  Future<int> deleteServerData() async {
+    if (!canSync) return 0;
+    final res = await ApiClient.instance.deleteServerSync();
+    final rows = (res['deletedRows'] as num?)?.toInt() ?? 0;
+    await _setLwm(0);
+    _lastSyncAt = now();
+    _lastError = null;
+    notifyListeners();
+    return rows;
+  }
+
   Future<void> _pushNow() async {
     if (!canSync) return;
     final tables = await _buildTables();
