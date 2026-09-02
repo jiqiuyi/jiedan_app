@@ -487,7 +487,7 @@ class _QuotePageState extends State<QuotePage>
                       ],
                     ),
                     subtitle: Text(
-                        '¥${_fmt.format(q.total)} · ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(q.createdAt))}'),
+                        '¥${_fmt.format(q.total / 100)} · ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(q.createdAt))}'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -615,7 +615,7 @@ class _QuotePageState extends State<QuotePage>
       final b = StringBuffer()
         ..writeln('【报价】')
         ..writeln('客户：${q.title}');
-      b.writeln('报价金额：¥${_fmt.format(q.total)}');
+      b.writeln('报价金额：¥${_fmt.format(q.total / 100)}');
       if (q.note.trim().isNotEmpty) {
         b.writeln('备注：${q.note.trim()}');
       }
