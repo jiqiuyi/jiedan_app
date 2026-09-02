@@ -221,6 +221,15 @@ class ApiClient {
     });
   }
 
+  /// 拉取当前用户在服务器上的全部反馈（最新在前）。
+  /// 返回 { ok, count, feedbacks: [...] }，每项含 type/content/contact/
+  /// createdAt/reply/repliedAt，reply 为作者回复（未回复时为 null）。
+  Future<Map<String, dynamic>> fetchMyFeedbacks() async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('GET', '/api/feedback/mine', null);
+  }
+
   /// 退出登录：清除本地 token
   Future<void> clearToken() => _saveToken(null);
 }
