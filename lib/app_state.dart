@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,7 @@ import 'api_client.dart';
 import 'constants.dart';
 import 'database.dart';
 import 'models.dart';
+import 'services/sync_service.dart';
 
 /// 全局应用状态（登录账号 + 订阅状态 + 数据变更通知）
 ///
@@ -143,6 +145,10 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       // me 拉取失败不阻断登录成功
     }
+    // 数据存储方式（v1.14.0）：含服务器模式时，注册成功后立即拉取合并云端业务数据。
+    if (SyncService.instance.canSync) {
+      unawaited(SyncService.instance.syncOnStart());
+    }
     notifyListeners();
     return null;
   }
@@ -170,6 +176,10 @@ class AppState extends ChangeNotifier {
       await refreshCloud();
     } catch (_) {
       // me 拉取失败不阻断登录成功
+    }
+    // 数据存储方式（v1.14.0）：含服务器模式时，登录成功后立即拉取合并云端业务数据。
+    if (SyncService.instance.canSync) {
+      unawaited(SyncService.instance.syncOnStart());
     }
     notifyListeners();
     return null;

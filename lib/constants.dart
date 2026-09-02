@@ -5,10 +5,11 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.13.0';
+  static const String version = '1.14.0';
 
   // ---- 云端后端 ----
-  // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）仍存本地。
+  // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）存储方式
+  // 由用户选择（仅本地 / 仅服务器 / 本地+服务器），见 StorageMode。
   static const String apiBaseUrl = 'http://121.41.97.109:8090';
   // ---- HTTPS 证书固定（防破解 P1）----
   // 当前默认仍走 http://121.41.97.109:8090 保持可连；待正式 HTTPS 证书签发后：
@@ -46,7 +47,14 @@ class AppConfig {
   // ---- 数据库 ----
   static const String dbName = 'jiedan_guanjia.db';
   // v10：invoices（发票）表废弃，替换为 contracts（合同/协议）表
-  static const int dbVersion = 10;
+  // v11：数据存储方式改造 —— 核心表新增 updated_at 列 + sync_tombstones 墓碑表
+  static const int dbVersion = 11;
+
+  // ---- 数据存储方式（v1.14.0）----
+  // 存储方式的持久化键（settings 表）
+  static const String storageModeKey = 'storage_mode';
+  // 同步水位键（settings 表）：记录上次成功拉取增量后服务器时间戳
+  static const String syncLwmKey = 'sync_lwm';
 
   // ---- 钱包 / 提现 ----
   // 提现账户保存键（settings）：值为 JSON {"method":0,"name":"","no":""}
@@ -172,4 +180,58 @@ class Money {
     if (v == null || v <= 0) return 0;
     return (v * 100).round();
   }
+}
+
+/// 数据存储方式（v1.14.0，三选一，均不收费）。
+enum StorageMode {
+  /// 仅本地：业务数据只存手机 SQLite，完全不访问云端业务接口（隐私承诺）。
+  local,
+
+  /// 仅服务器：以云端为权威存储，本地 SQLite 作为缓存，启动/登录时从云端拉取。
+  server,
+
+  /// 本地 + 服务器：双写。本地变更后异步推云端，登录/启动时云端合并回本地。
+  both;
+
+  String get label {
+    switch (this) {
+      case StorageMode.local:
+        return '仅本地';
+      case StorageMode.server:
+        return '仅服务器';
+      case StorageMode.both:
+        return '本地 + 服务器';
+    }
+  }
+
+  /// 摘要（设置页/切换确认中展示）
+  String get summary {
+    switch (this) {
+      case StorageMode.local:
+        return '数据只保存在本机，不联网、不上传，最私密';
+      case StorageMode.server:
+        return '数据以云端为准，登录任意设备均可读取';
+      case StorageMode.both:
+        return '本地与云端双向同步，一处修改处处一致';
+    }
+  }
+
+  /// 详细说明（选择页展示）
+  String get detail {
+    switch (this) {
+      case StorageMode.local:
+        return '客户 / 项目 / 收款 / 报价等全部业务数据仅保存于手机本地（SQLite）。'
+            '应用完全不访问云端业务接口，数据不会离开本机；卸载前请先在「数据管理」中导出备份。';
+      case StorageMode.server:
+        return '业务数据上传服务器，按账号隔离保存；本地仅保留一份缓存。'
+            '登录任意设备或重新安装后，数据从云端恢复。断开网络时仅能读取最近一次同步的缓存。';
+      case StorageMode.both:
+        return '每次修改同时写入本地并在后台同步到云端；登录 / 启动时自动从云端拉取合并回本地。'
+            '冲突时以服务器最新数据为准。适合多设备交替使用，既有本地备份又防丢失。';
+    }
+  }
+
+  /// 是否包含服务器存储（涉及云端业务接口）
+  bool get involvesServer =>
+      this == StorageMode.server || this == StorageMode.both;
 }

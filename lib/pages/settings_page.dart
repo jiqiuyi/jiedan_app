@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../constants.dart';
+import '../services/sync_service.dart';
 import '../theme.dart';
 import 'login_page.dart';
 import 'paywall_page.dart';
@@ -9,6 +10,7 @@ import 'feedback_page.dart';
 import 'invite_page.dart';
 import 'payment_code_settings_page.dart';
 import 'data_management_page.dart';
+import 'storage_mode_page.dart';
 import 'wallet_page.dart';
 import 'privacy_policy_page.dart';
 import 'income_stats_page.dart';
@@ -243,6 +245,46 @@ class _SettingsPageState extends State<SettingsPage> {
                   ],
                 ),
               ),
+              // ---- 数据与存储 ----
+              const _SectionHeader(title: '数据与存储'),
+              Card(
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.cloud_outlined,
+                          color: AppTheme.primary),
+                      title: const Text('数据存储方式'),
+                      subtitle: Text(
+                        '${SyncService.instance.mode.label} · '
+                        '${SyncService.instance.mode.summary}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const StorageModePage()),
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    ListTile(
+                      leading: const Icon(Icons.manage_search_outlined,
+                          color: AppTheme.primary),
+                      title: const Text('数据管理'),
+                      subtitle: const Text('导出备份 / 导入恢复，可配合云端同步使用'),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const DataManagementPage()),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               // ---- 服务与支持 ----
               const _SectionHeader(title: '服务与支持'),
               Card(
@@ -275,24 +317,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     const Divider(height: 1, indent: 56),
                     ListTile(
-                      leading: const Icon(Icons.manage_search_outlined,
-                          color: AppTheme.primary),
-                      title: const Text('数据管理'),
-                      subtitle: const Text('导出备份 / 导入恢复，数据只保存在手机里'),
-                      trailing: const Icon(Icons.chevron_right,
-                          color: AppTheme.textSub),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const DataManagementPage()),
-                      ),
-                    ),
-                    const Divider(height: 1, indent: 56),
-                    ListTile(
                       leading: const Icon(Icons.privacy_tip_outlined,
                           color: AppTheme.primary),
                       title: const Text('隐私政策'),
-                      subtitle: const Text('数据存储说明 · 业务数据仅存本机'),
+                      subtitle: const Text('数据存储说明 · 数据存放方式与隐私保护'),
                       trailing: const Icon(Icons.chevron_right,
                           color: AppTheme.textSub),
                       onTap: () => Navigator.push(

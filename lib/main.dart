@@ -7,6 +7,7 @@ import 'theme.dart';
 import 'pages/home_shell.dart';
 import 'services/notify_service.dart';
 import 'services/signature_guard.dart';
+import 'services/sync_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +21,9 @@ Future<void> main() async {
   await AppState.instance.load();
   // 初始化本地催款提醒通知（完全本地，不涉及网络）
   await NotifyService.instance.init();
+  // 初始化数据存储方式（v1.14.0）：读取持久化模式；
+  // 仅本地模式不访问云端；含服务器模式会在后台执行一次启动同步。
+  await SyncService.instance.init();
   runApp(const JieDanApp());
 }
 

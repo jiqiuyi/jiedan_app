@@ -160,6 +160,33 @@ class ApiClient {
     return json;
   }
 
+  // ---------------- 业务数据同步（v1.14.0，存储方式三选一）----------------
+
+  /// 推送本地增量到云端。返回 { ok, serverTs }。
+  /// [tables]：{ 表名: [行...] }，每行含数据库字段 + _ts（修改时间戳）。
+  /// 服务器按行合并，冲突以服务器最新为准；serverTs 用于增量拉取水位。
+  Future<Map<String, dynamic>> pushSync(Map<String, dynamic> tables) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/sync/push', {'tables': tables});
+  }
+
+  /// 增量拉取云端数据。返回 { ok, serverTs, tables }。
+  /// [since] 为上次成功同步的服务器时间戳（0 = 全量）。
+  Future<Map<String, dynamic>> pullSync(int since) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/sync/pull', {'since': since});
+  }
+
+  /// 双向合并：推送本地全部数据，并返回服务器权威快照（含服务器数据与本次
+  /// 推送采纳后的结果）。用于「本地+服务器」首启全量 + 登录/启动合并。
+  Future<Map<String, dynamic>> mergeSync(Map<String, dynamic> tables) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/sync/merge', {'tables': tables});
+  }
+
   /// 退出登录：清除本地 token
   Future<void> clearToken() => _saveToken(null);
 }
