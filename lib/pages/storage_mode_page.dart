@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../app_state.dart';
 import '../api_client.dart';
 import '../constants.dart';
 import '../services/sync_service.dart';
 import '../theme.dart';
+import '../utils/backup_util.dart';
 import 'login_page.dart';
 
 /// 从含服务器模式切回「仅本地」时，用户在弹窗中的两档处理选择（+ 取消）。
@@ -381,6 +385,141 @@ class _StorageModePageState extends State<StorageModePage> {
     }
   }
 
+  // ---------- JSON 全量备份 / 恢复（BackupUtil，纯本地） ----------
+
+  /// 导出全部业务数据为 JSON 备份，生成后弹系统分享面板保存到下载/网盘/微信。
+  Future<void> _onExportBackup() async {
+    try {
+      final path = await BackupUtil.instance.exportAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('备份文件已生成：$path'),
+        duration: const Duration(seconds: 3),
+      ));
+      await Share.shareXFiles(
+        [XFile(path, mimeType: 'application/json')],
+        text: '接单管家 数据备份文件，请妥善保存，重装后可导入恢复。',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导出备份失败：$e')),
+        );
+      }
+    }
+  }
+
+  /// 从 JSON 备份恢复数据（覆盖模式）。双层确认：
+  /// 第一层：提示覆盖风险 + 建议先备份；第二层：选择文件后的最终确认。
+  Future<void> _onRestoreBackup() async {
+    // 第一层确认：覆盖警告 + 建议先备份。
+    final first = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_outlined, color: AppTheme.danger, size: 22),
+            SizedBox(width: 8),
+            Expanded(child: Text('从备份恢复数据？')),
+          ],
+        ),
+        content: const Text(
+          '恢复会用备份文件覆盖本地现有的报价单、客户、项目全部数据，'
+          '覆盖后不可撤销。\n\n为避免误操作丢失数据，建议先执行一次「导出全部备份JSON」。',
+          style: TextStyle(height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('继续，选择备份文件'),
+          ),
+        ],
+      ),
+    );
+    if (first != true || !mounted) return;
+
+    // 选择备份 JSON 文件（复用项目 file_picker 插件）。
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      dialogTitle: '选择接单管家备份文件',
+    );
+    if (result == null || result.files.isEmpty) return;
+    final path = result.files.single.path;
+    if (path == null || !File(path).existsSync()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('无法读取所选备份文件')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    // 第二层确认：最终执行前再次确认。
+    final second = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认覆盖恢复？'),
+        content: const Text('将清空本地现有的报价单、客户、项目数据，'
+            '并替换为所选备份文件内容。确认继续？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确认恢复'),
+          ),
+        ],
+      ),
+    );
+    if (second != true || !mounted) return;
+
+    try {
+      final counts = await BackupUtil.instance.restoreFromFile(path);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('恢复成功'),
+          content: Text(
+            '已恢复：客户 ${counts['customers'] ?? 0} 条、'
+            '项目 ${counts['projects'] ?? 0} 条、'
+            '报价 ${counts['quotes'] ?? 0} 条。\n\n'
+            '本次恢复仅写入本地数据，不会自动上传或删除服务器数据。'
+            '若您开启了云端同步，请手动触发一次「立即同步」。',
+            style: const TextStyle(height: 1.6),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('好的'),
+            ),
+          ],
+        ),
+      );
+    } on FormatException catch (e) {
+      _toast('恢复失败：${e.message}');
+    } catch (e) {
+      _toast('恢复失败：$e');
+    }
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
+    );
+  }
+
   Future<void> _syncNow() async {
     if (_syncing) return;
     try {
@@ -552,6 +691,55 @@ class _StorageModePageState extends State<StorageModePage> {
                   ),
                 ),
               ],
+              const SizedBox(height: 20),
+              // ---- 本地数据备份 / 恢复（JSON 全量备份，纯本地操作）----
+              const Text(
+                '数据备份',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textSub),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ListTile(
+                  leading: const Icon(Icons.upload_file_outlined,
+                      color: AppTheme.primary),
+                  title: const Text('导出全部备份JSON'),
+                  subtitle: const Text('将报价、客户、项目全部数据导出为备份文件保存'),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: AppTheme.textSub),
+                  onTap: _onExportBackup,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                      color: AppTheme.danger.withValues(alpha: 0.4)),
+                ),
+                child: ListTile(
+                  leading: const Icon(Icons.settings_backup_restore,
+                      color: AppTheme.danger),
+                  title: Text(
+                    '从JSON备份恢复数据',
+                    style: TextStyle(color: AppTheme.danger),
+                  ),
+                  subtitle: const Text('用备份文件覆盖恢复（会覆盖现有数据，请谨慎操作）'),
+                  trailing: const Icon(Icons.chevron_right,
+                      color: AppTheme.danger),
+                  onTap: _onRestoreBackup,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '备份恢复仅在本机进行，不会自动上传或删除服务器数据。',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSub),
+              ),
             ],
           );
         },
