@@ -49,6 +49,18 @@ class SyncService extends ChangeNotifier {
   int? _lastSyncAt;
   int? get lastSyncAt => _lastSyncAt;
 
+  /// 云端鉴权是否已失效（同步接口返回 401，token 失效 / 未授权）。
+  /// 页面据此提示并引导用户重新登录。
+  bool _authExpired = false;
+  bool get authExpired => _authExpired;
+
+  /// 清除鉴权失效标记（页面完成登出 / 跳转登录后调用，避免重复触发）。
+  void clearAuthExpired() {
+    if (!_authExpired) return;
+    _authExpired = false;
+    notifyListeners();
+  }
+
   bool _inited = false;
 
   // keep-alive 服务本身不被 UI 重建，用 _syncing 作为并发锁。
@@ -273,7 +285,13 @@ class SyncService extends ChangeNotifier {
     try {
       await fn();
     } catch (e) {
-      _lastError = '同步失败：$e';
+      // token 失效独立分支：不是普通网络错误，标记鉴权失效供页面跳转登录。
+      if (e is TokenInvalidException) {
+        _authExpired = true;
+        _lastError = '登录已失效，请重新登录';
+      } else {
+        _lastError = '同步失败：$e';
+      }
       notifyListeners();
     } finally {
       _syncing = false;

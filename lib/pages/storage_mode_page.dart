@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../api_client.dart';
 import '../constants.dart';
 import '../services/sync_service.dart';
 import '../theme.dart';
@@ -29,6 +32,9 @@ class _StorageModePageState extends State<StorageModePage> {
   String? _syncError;
   int? _lastSyncAt;
 
+  /// 防止 token 失效跳登录在短时间内被重复触发（后台多路同步可能同时失败）。
+  bool _authExpiredHandling = false;
+
   @override
   void initState() {
     super.initState();
@@ -51,77 +57,150 @@ class _StorageModePageState extends State<StorageModePage> {
       _syncError = SyncService.instance.lastError;
       _lastSyncAt = SyncService.instance.lastSyncAt;
     });
+    // token 失效独立分支：同步接口返回 401 时，清除会话并跳转登录。
+    if (SyncService.instance.authExpired) {
+      unawaited(_handleAuthExpired());
+    }
+  }
+
+  /// token 失效统一处理：登出本地会话 → 提示 → 跳转登录页。
+  Future<void> _handleAuthExpired([String? message]) async {
+    if (_authExpiredHandling) return;
+    _authExpiredHandling = true;
+    try {
+      // 清除本地会话（云端 token + 用户缓存），恢复未登录态。
+      await AppState.instance.logout();
+      SyncService.instance.clearAuthExpired();
+    } finally {
+      _authExpiredHandling = false;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message ?? '登录已失效，请重新登录'),
+    ));
+    // 独立分支：直接引导重新登录，而非停留在普通网络错误提示。
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+    );
   }
 
   /// 从含服务器模式切回「仅本地」：两档处理弹窗。
   /// a) 仅切回本地、保留服务器数据（之后切回云端模式可再同步回来）；
   /// b) 切回本地并删除服务器上该账号的全部同步数据（调 DELETE /api/sync/all）。
   /// 「可删可不删」由用户在弹窗中二选一，不默认删除。
+  ///
+  /// 弹窗交互重写（软著改造）：由「底部一列按钮直接选择」改为
+  /// 「选项列表 + 确认」两级交互——默认选中保留项，危险项置于列表尾部
+  /// 并以警示色标注，未登录时删除项置灰不可选，降低误触删除风险。
   Future<void> _onSwitchToLocal(StorageMode target) async {
     final isLoggedIn = AppState.instance.loggedIn;
+    // 默认保留服务器数据（不默认删除）。
+    var keepServer = true;
     final choice = await showDialog<LocalSwitchChoice>(
       context: context,
       builder: (ctx) {
-        return AlertDialog(
-          title: const Text('切换到「仅本地」？'),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+        return StatefulBuilder(builder: (ctx, setDlgState) {
+          return AlertDialog(
+            title: const Row(
               children: [
-                const Text(
-                  '切换后手机端将不再访问云端业务接口，本地数据保持不变。'
-                  '服务器上此前已同步的数据该如何处理？',
-                  style: TextStyle(height: 1.5),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.warn.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: isLoggedIn
-                      ? const Text(
-                          '· 保留服务器数据：之后切回云端模式可再同步回来；\n'
-                          '· 删除服务器数据：清除本账号在服务器上的全部同步数据'
-                          '（仅影响本账号，不影响其他用户），删除前建议先到「数据管理」导出一份备份。',
-                          style: TextStyle(
-                              color: AppTheme.textMain,
-                              fontSize: 13,
-                              height: 1.6),
-                        )
-                      : const Text(
-                          '当前未登录，无法删除服务器数据；将仅切换为「仅本地」模式。',
-                          style: TextStyle(
-                              color: AppTheme.textMain,
-                              fontSize: 13,
-                              height: 1.5),
-                        ),
-                ),
+                Icon(Icons.cloud_off_outlined,
+                    color: AppTheme.warn, size: 22),
+                SizedBox(width: 8),
+                Expanded(child: Text('切换到「仅本地」？')),
               ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, LocalSwitchChoice.cancel),
-              child: const Text('取消'),
-            ),
-            FilledButton.tonal(
-              onPressed: () => Navigator.pop(ctx, LocalSwitchChoice.keepServer),
-              child: const Text('仅切回本地，保留服务器数据'),
-            ),
-            if (isLoggedIn)
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.danger,
-                ),
-                onPressed: () =>
-                    Navigator.pop(ctx, LocalSwitchChoice.deleteServer),
-                child: const Text('切回本地并删除服务器数据'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    '切换后手机端将不再访问云端业务接口，本地数据保持不变。'
+                    '服务器上此前已同步的数据该如何处理？',
+                    style: TextStyle(height: 1.5),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppTheme.bgCard,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.divider),
+                    ),
+                    child: RadioGroup<LocalSwitchChoice>(
+                      groupValue: keepServer
+                          ? LocalSwitchChoice.keepServer
+                          : LocalSwitchChoice.deleteServer,
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setDlgState(
+                            () => keepServer = v == LocalSwitchChoice.keepServer);
+                      },
+                      child: Column(
+                        children: [
+                          // 选项一：保留服务器数据（默认选中，安全）。
+                          RadioListTile<LocalSwitchChoice>(
+                            value: LocalSwitchChoice.keepServer,
+                            title: const Text('仅切回本地，保留服务器数据'),
+                            subtitle: const Text(
+                              '之后切回云端模式时可再同步回来，数据更安全。',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                            secondary: const Icon(Icons.archive_outlined),
+                          ),
+                          const Divider(height: 1),
+                          // 选项二：删除服务器数据（危险项，警示色，未登录置灰）。
+                          RadioListTile<LocalSwitchChoice>(
+                            value: LocalSwitchChoice.deleteServer,
+                            enabled: isLoggedIn,
+                            title: Text(
+                              '切回本地并删除服务器数据',
+                              style: TextStyle(
+                                color: isLoggedIn
+                                    ? AppTheme.danger
+                                    : AppTheme.textSub,
+                              ),
+                            ),
+                            subtitle: Text(
+                              isLoggedIn
+                                  ? '清除本账号在服务器上的全部同步数据（仅影响本账号），删除前建议先到「数据管理」导出一份备份。'
+                                  : '当前未登录，无法删除服务器数据',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            secondary: Icon(
+                              Icons.delete_forever_outlined,
+                              color: isLoggedIn
+                                  ? AppTheme.danger
+                                  : AppTheme.textSub,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-          ],
-        );
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, LocalSwitchChoice.cancel),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                style: keepServer
+                    ? null
+                    : FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+                onPressed: () => Navigator.pop(
+                  ctx,
+                  keepServer
+                      ? LocalSwitchChoice.keepServer
+                      : LocalSwitchChoice.deleteServer,
+                ),
+                child: Text(keepServer ? '确认切换' : '确认删除并切换'),
+              ),
+            ],
+          );
+        });
       },
     );
     if (choice == null || choice == LocalSwitchChoice.cancel) return;
@@ -139,6 +218,11 @@ class _StorageModePageState extends State<StorageModePage> {
                 : '已切换仅本地，并清除服务器同步数据。',
           ),
         ));
+      } on TokenInvalidException {
+        // token 失效独立分支：删除服务器数据失败，引导重新登录。
+        await _handleAuthExpired('切换已完成，但删除服务器数据需重新登录：请重新登录后再操作');
+        setState(() => _selected = SyncService.instance.mode);
+        return;
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -189,29 +273,79 @@ class _StorageModePageState extends State<StorageModePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  m.summary,
-                  style: const TextStyle(height: 1.5),
+                // 摘要行：模式图标 + 一句话简介。
+                Row(
+                  children: [
+                    Icon(_modeIcon(m), color: AppTheme.primary, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        m.summary,
+                        style: const TextStyle(fontSize: 14, height: 1.5),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  m.detail,
-                  style: const TextStyle(
-                      color: AppTheme.textSub, height: 1.5, fontSize: 13),
+                const SizedBox(height: 10),
+                // 数据说明卡片。
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.bgCard,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.divider),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.article_outlined,
+                              size: 16, color: AppTheme.textSub),
+                          SizedBox(width: 6),
+                          Text('数据说明',
+                              style: TextStyle(
+                                  fontSize: 12, color: AppTheme.textSub)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        m.detail,
+                        style: const TextStyle(
+                            color: AppTheme.textSub, height: 1.6, fontSize: 13),
+                      ),
+                    ],
+                  ),
                 ),
                 if (includesServer) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
+                  // 云端模式专属提示。
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: AppTheme.warn.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
+                      border:
+                          Border.all(color: AppTheme.warn.withValues(alpha: 0.3)),
                     ),
-                    child: const Text(
-                      '提示：开启云端后，本地已有数据会一次性全量上传并与云端合并，'
-                      '冲突以服务器最新为准。建议先到「数据管理」导出一份备份，保管好自己的账号密码。',
-                      style:
-                          TextStyle(color: AppTheme.textMain, height: 1.5, fontSize: 13),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.warning_amber_outlined,
+                            size: 16, color: AppTheme.warn),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '开启云端后，本地存量数据会一次性全量上传并与云端合并，'
+                            '冲突以服务器最新为准。建议先到「数据管理」导出一份备份，'
+                            '保管好自己的账号密码。',
+                            style: TextStyle(
+                                color: AppTheme.textMain,
+                                height: 1.6,
+                                fontSize: 13),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -231,7 +365,15 @@ class _StorageModePageState extends State<StorageModePage> {
       },
     );
     if (ok != true) return;
-    final msg = await SyncService.instance.setMode(m);
+    final String msg;
+    try {
+      msg = await SyncService.instance.setMode(m);
+    } on TokenInvalidException {
+      // token 失效独立分支：切换联动同步失败，引导重新登录。
+      await _handleAuthExpired('切换未完成：登录已失效，请重新登录');
+      if (mounted) setState(() => _selected = SyncService.instance.mode);
+      return;
+    }
     setState(() => _selected = SyncService.instance.mode);
     if (mounted) {
       ScaffoldMessenger.of(context)
@@ -241,7 +383,14 @@ class _StorageModePageState extends State<StorageModePage> {
 
   Future<void> _syncNow() async {
     if (_syncing) return;
-    await SyncService.instance.pushNow();
+    try {
+      await SyncService.instance.pushNow();
+    } on TokenInvalidException {
+      // token 失效独立分支：同步失败，引导重新登录。
+      await _handleAuthExpired();
+      if (mounted) setState(() {});
+      return;
+    }
     if (mounted) setState(() {});
   }
 
@@ -352,7 +501,8 @@ class _StorageModePageState extends State<StorageModePage> {
                   ),
                 ),
               if (_serverMode) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: 12),
+                // 云端模式下的同步状态与「立即同步」操作区。
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
