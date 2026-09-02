@@ -7,8 +7,11 @@ class AppTheme {
   static const Color accent = Color(0xFF16A085); // 收入绿
   static const Color warn = Color(0xFFE67E22); // 待收/提醒橙
   static const Color danger = Color(0xFFE74C3C);
+  static const Color success = Color(0xFF27AE60); // 同步成功/健康态
   static const Color bg = Color(0xFFF6F7FB);
   static const Color card = Colors.white;
+  static const Color bgCard = Color(0xFFEFF2F8); // 内嵌灰卡
+  static const Color divider = Color(0xFFE3E7F0); // 分割线
   static const Color textMain = Color(0xFF1B2233);
   static const Color textSub = Color(0xFF8A93A6);
 
