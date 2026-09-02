@@ -331,7 +331,7 @@ class _RecentCard extends StatelessWidget {
     return Card(
       child: ListTile(
         title: Text(project.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text('${project.status.label} · ¥${fmt.format(project.amountTotal)}',
+        subtitle: Text('${project.status.label} · ¥${fmt.format(project.amountTotal / 100)}',
             maxLines: 1, overflow: TextOverflow.ellipsis),
         trailing: _StatusBadge(status: project.status),
       ),
