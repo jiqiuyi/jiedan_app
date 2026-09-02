@@ -424,8 +424,9 @@ class _StorageModePageState extends State<StorageModePage> {
           ],
         ),
         content: const Text(
-          '恢复会用备份文件覆盖本地现有的报价单、客户、项目全部数据，'
-          '覆盖后不可撤销。\n\n为避免误操作丢失数据，建议先执行一次「导出全部备份JSON」。',
+          '恢复会用备份文件覆盖本地现有的报价单、客户、项目、收款记录、'
+          '待收款、里程碑、合同等全部数据，覆盖后不可撤销。\n\n'
+          '为避免误操作丢失数据，建议先执行一次「导出全部备份JSON」。',
           style: TextStyle(height: 1.5),
         ),
         actions: [
@@ -466,8 +467,8 @@ class _StorageModePageState extends State<StorageModePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认覆盖恢复？'),
-        content: const Text('将清空本地现有的报价单、客户、项目数据，'
-            '并替换为所选备份文件内容。确认继续？'),
+        content: const Text('将清空本地现有的报价单、客户、项目、收款记录、'
+            '待收款、里程碑、合同等全部数据，并替换为所选备份文件内容。确认继续？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -493,7 +494,11 @@ class _StorageModePageState extends State<StorageModePage> {
           content: Text(
             '已恢复：客户 ${counts['customers'] ?? 0} 条、'
             '项目 ${counts['projects'] ?? 0} 条、'
-            '报价 ${counts['quotes'] ?? 0} 条。\n\n'
+            '报价 ${counts['quotes'] ?? 0} 条、'
+            '收款 ${counts['payments'] ?? 0} 条、'
+            '待收 ${counts['pending_collections'] ?? 0} 条、'
+            '里程碑 ${counts['milestones'] ?? 0} 条、'
+            '合同 ${counts['contracts'] ?? 0} 条。\n\n'
             '本次恢复仅写入本地数据，不会自动上传或删除服务器数据。'
             '若您开启了云端同步，请手动触发一次「立即同步」。',
             style: const TextStyle(height: 1.6),
@@ -709,7 +714,7 @@ class _StorageModePageState extends State<StorageModePage> {
                   leading: const Icon(Icons.upload_file_outlined,
                       color: AppTheme.primary),
                   title: const Text('导出全部备份JSON'),
-                  subtitle: const Text('将报价、客户、项目全部数据导出为备份文件保存'),
+                  subtitle: const Text('将报价、客户、项目、收款等全部数据导出为备份文件保存'),
                   trailing: const Icon(Icons.chevron_right,
                       color: AppTheme.textSub),
                   onTap: _onExportBackup,
