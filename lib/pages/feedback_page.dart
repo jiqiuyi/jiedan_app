@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
+import '../api_client.dart';
+import '../app_state.dart';
 import '../constants.dart';
 import '../database.dart';
 import '../theme.dart';
+import 'login_page.dart';
 
-/// 开发者反馈接收邮箱
-const _feedbackEmail = '1393180767@qq.com';
-
-/// 意见反馈页：提交 Bug / 更新建议 / 其他。
-/// 无服务器阶段反馈保存在本地，可一键上报到开发者邮箱或复制内容通过邮件/微信发送。
+/// 意见反馈页：在线提交 Bug / 更新建议 / 其他。
+/// v1.15.0：弃用邮箱上报方式，改为实时在线提交到服务器（需登录，token 鉴权），
+/// 成功后立即可在「我的反馈」中看到；后端按 uid 记录提交人。
 class FeedbackPage extends StatefulWidget {
   const FeedbackPage({super.key});
 
@@ -40,71 +39,81 @@ class _FeedbackPageState extends State<FeedbackPage> {
       );
       return;
     }
+    if (!AppState.instance.loggedIn) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('需要先登录'),
+          content: const Text('在线反馈需要登录账号后才能提交（便于我们跟踪与回复）。是否前往登录？'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('去登录'),
+            ),
+          ],
+        ),
+      );
+      if (go == true && mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginPage()),
+        );
+      }
+      return;
+    }
+
     setState(() => _submitting = true);
+    String feedbackId = '';
+    String? err;
+    try {
+      final res = await ApiClient.instance.submitFeedback(
+        type: _type.name,
+        content: content,
+        contact: _contactCtrl.text.trim(),
+      );
+      feedbackId = '${res['feedbackId']}';
+    } catch (e) {
+      err = '$e';
+    }
+    if (!mounted) return;
+    setState(() => _submitting = false);
+
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('提交失败：$err')),
+      );
+      return;
+    }
+
+    // 同步保存到本地反馈箱，方便「我的反馈」列表统一展示
     await AppDb.instance.insertFeedback(
       type: _type.index,
       content: content,
       contact: _contactCtrl.text.trim(),
     );
+
     if (!mounted) return;
-    setState(() => _submitting = false);
-
-    final text =
-        '【${_type.label}】\n版本：v${AppConfig.version}\n内容：$content'
-        '${_contactCtrl.text.trim().isEmpty ? '' : '\n联系方式：${_contactCtrl.text.trim()}'}';
-
-    await showDialog<void>(
+    showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('反馈已记录'),
-        content: const Text('已保存到本地反馈箱。\n点「上报到邮箱」可直接发给开发者；也可以复制内容手动发送。'),
+        title: const Text('反馈已收到'),
+        content: Text(
+          '你的反馈（#$feedbackId）已实时提交到服务器，我们已收到，会尽快查看并处理。',
+        ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('完成'),
-          ),
-          TextButton(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: text));
-              if (ctx.mounted) Navigator.pop(ctx);
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('反馈内容已复制，可粘贴到邮件/微信发送')),
-              );
-            },
-            child: const Text('复制内容'),
-          ),
           FilledButton(
-            onPressed: () async {
-              if (ctx.mounted) Navigator.pop(ctx);
-              await _reportByEmail(text);
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已唤起邮件App，点发送即可送达开发者')),
-              );
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pop(context);
             },
-            child: const Text('上报到邮箱'),
+            child: const Text('完成'),
           ),
         ],
       ),
     );
-  }
-
-  /// 用系统邮件 App 上报反馈到开发者邮箱
-  Future<void> _reportByEmail(String text) async {
-    final uri = Uri(
-      scheme: 'mailto',
-      path: _feedbackEmail,
-      query:
-          'subject=${Uri.encodeQueryComponent('接单管家 反馈（v${AppConfig.version}）')}'
-          '&body=${Uri.encodeQueryComponent('$text\n\n— 来自 接单管家 App')}',
-    );
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('未找到可用的邮件应用，请用「复制内容」手动发送')),
-      );
-    }
   }
 
   @override
@@ -185,7 +194,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
           const SizedBox(height: 12),
           const Center(
             child: Text(
-              '开发者邮箱：1393180767@qq.com',
+              '在线提交后开发者实时收到 · 数据仅用于处理你的反馈',
               style: TextStyle(color: AppTheme.textSub, fontSize: 12),
             ),
           ),

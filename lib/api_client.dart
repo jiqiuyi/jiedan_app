@@ -75,9 +75,13 @@ class ApiClient {
   Future<Map<String, dynamic>> _call(
     String method,
     String path,
-    Map<String, dynamic>? body,
-  ) async {
-    final uri = Uri.parse('${AppConfig.apiBaseUrl}$path');
+    Map<String, dynamic>? body, {
+    Map<String, String>? query,
+  }) async {
+    final uri = Uri.parse('${AppConfig.apiBaseUrl}$path').replace(
+      queryParameters:
+          (query == null || query.isEmpty) ? null : query,
+    );
     final headers = <String, String>{
       'Content-Type': 'application/json',
       // 鉴权统一走 Authorization 头；真实支付接入后此处不变，仅替换 pay 接口
@@ -88,6 +92,10 @@ class ApiClient {
     try {
       if (method == 'GET') {
         resp = await _client.get(uri, headers: headers).timeout(
+              const Duration(seconds: 12),
+            );
+      } else if (method == 'DELETE') {
+        resp = await _client.delete(uri, headers: headers).timeout(
               const Duration(seconds: 12),
             );
       } else {
@@ -176,7 +184,7 @@ class ApiClient {
   Future<Map<String, dynamic>> pullSync(int since) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('POST', '/api/sync/pull', {'since': since});
+    return _call('GET', '/api/sync/pull', null, query: {'since': '$since'});
   }
 
   /// 双向合并：推送本地全部数据，并返回服务器权威快照（含服务器数据与本次
@@ -185,6 +193,32 @@ class ApiClient {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
     return _call('POST', '/api/sync/merge', {'tables': tables});
+  }
+
+  /// 删除本账号在服务器上的全部同步数据（存储方式切回「仅本地」时可选项）。
+  /// 返回 { ok, deletedRows, uid }；不影响其他用户的命名空间。
+  Future<Map<String, dynamic>> deleteServerSync() async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('DELETE', '/api/sync/all', null);
+  }
+
+  // ---------------- 在线意见反馈（v1.15.0）----------------
+
+  /// 在线提交意见反馈到服务器。返回 { ok, feedbackId }。
+  /// [type]：bug / suggestion / other；[content] 必填，[contact] 选填。
+  Future<Map<String, dynamic>> submitFeedback({
+    required String type,
+    required String content,
+    String contact = '',
+  }) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/feedback', {
+      'type': type,
+      'content': content,
+      'contact': contact,
+    });
   }
 
   /// 退出登录：清除本地 token
