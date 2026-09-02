@@ -17,6 +17,15 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+/// 云端鉴权失败（token 失效 / 未授权，HTTP 401）。
+///
+/// 与普通 [ApiException] 区分，业务层捕获后应清除本地会话并引导用户
+/// 重新登录，而不是当作普通网络/服务错误提示。继承 [ApiException]，
+/// 保证既有 `on ApiException` 捕获点仍能兜住。
+class TokenInvalidException extends ApiException {
+  const TokenInvalidException([super.message = '登录已失效，请重新登录']);
+}
+
 /// 云端 API 封装：账号 / 订阅 / 订单 / 推广数据。
 /// 业务数据（客户/项目/收款）仍走本地 AppDb，不经过本类。
 class ApiClient {
@@ -77,6 +86,10 @@ class ApiClient {
     String path,
     Map<String, dynamic>? body, {
     Map<String, String>? query,
+    // 仅限「已登录后才允许调用」的鉴权接口：true 时 HTTP 401 会被识别为
+    // token 失效（TokenInvalidException），而非普通请求失败。登录/注册等
+    // 无需携带 token 的接口保持 false，避免把「密码错误」误判为失效。
+    bool authRequired = false,
   }) async {
     final uri = Uri.parse('${AppConfig.apiBaseUrl}$path').replace(
       queryParameters:
@@ -113,6 +126,10 @@ class ApiClient {
       throw ApiException('服务异常（HTTP ${resp.statusCode}）');
     }
     if (resp.statusCode == 401 || json['ok'] == false) {
+      // 鉴权接口的 401 独立为 token 失效分支，供上层触发登出 / 跳转登录。
+      if (authRequired && resp.statusCode == 401) {
+        throw const TokenInvalidException();
+      }
       throw ApiException((json['error'] as String?) ?? '请求失败');
     }
     return json;
@@ -164,7 +181,7 @@ class ApiClient {
   Future<Map<String, dynamic>> createOrder(String plan) async {
     final json = await _call('POST', '/api/order', {
       'plan': plan,
-    });
+    }, authRequired: true);
     return json;
   }
 
@@ -176,7 +193,8 @@ class ApiClient {
   Future<Map<String, dynamic>> pushSync(Map<String, dynamic> tables) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('POST', '/api/sync/push', {'tables': tables});
+    return _call('POST', '/api/sync/push', {'tables': tables},
+        authRequired: true);
   }
 
   /// 增量拉取云端数据。返回 { ok, serverTs, tables }。
@@ -184,7 +202,8 @@ class ApiClient {
   Future<Map<String, dynamic>> pullSync(int since) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('GET', '/api/sync/pull', null, query: {'since': '$since'});
+    return _call('GET', '/api/sync/pull', null,
+        query: {'since': '$since'}, authRequired: true);
   }
 
   /// 双向合并：推送本地全部数据，并返回服务器权威快照（含服务器数据与本次
@@ -192,7 +211,8 @@ class ApiClient {
   Future<Map<String, dynamic>> mergeSync(Map<String, dynamic> tables) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('POST', '/api/sync/merge', {'tables': tables});
+    return _call('POST', '/api/sync/merge', {'tables': tables},
+        authRequired: true);
   }
 
   /// 删除本账号在服务器上的全部同步数据（存储方式切回「仅本地」时可选项）。
@@ -200,7 +220,7 @@ class ApiClient {
   Future<Map<String, dynamic>> deleteServerSync() async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('DELETE', '/api/sync/all', null);
+    return _call('DELETE', '/api/sync/all', null, authRequired: true);
   }
 
   // ---------------- 在线意见反馈（v1.15.0）----------------
@@ -218,7 +238,7 @@ class ApiClient {
       'type': type,
       'content': content,
       'contact': contact,
-    });
+    }, authRequired: true);
   }
 
   /// 拉取当前用户在服务器上的全部反馈（最新在前）。
@@ -227,7 +247,7 @@ class ApiClient {
   Future<Map<String, dynamic>> fetchMyFeedbacks() async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('GET', '/api/feedback/mine', null);
+    return _call('GET', '/api/feedback/mine', null, authRequired: true);
   }
 
   /// 退出登录：清除本地 token
