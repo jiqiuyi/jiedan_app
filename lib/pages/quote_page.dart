@@ -453,11 +453,7 @@ class _QuotePageState extends State<QuotePage>
                   final q = quotes[i];
                   return ListTile(
                     onTap: () {
-                      if (q.isSimple) {
-                        _loadSimpleQuote(q);
-                      } else {
-                        _loadQuote(q);
-                      }
+                      _openQuoteForEdit(q);
                       Navigator.pop(ctx);
                     },
                     leading: Icon(
@@ -551,11 +547,7 @@ class _QuotePageState extends State<QuotePage>
                               size: 20, color: AppTheme.primary),
                           tooltip: '重新打开编辑',
                           onPressed: () {
-                            if (q.isSimple) {
-                              _loadSimpleQuote(q);
-                            } else {
-                              _loadQuote(q);
-                            }
+                            _openQuoteForEdit(q);
                             Navigator.pop(ctx);
                           },
                         ),
@@ -655,6 +647,27 @@ class _QuotePageState extends State<QuotePage>
   }
 
   // ================= 历史载入 =================
+  /// 统一编辑入口：按报价类型打开对应 Tab（简单→简单 Tab，详细→详细 Tab），
+  /// 并在下一帧兜底锁定 Tab 索引。用于消除历史弹层关闭与 TabBarView 动画
+  /// 并发时，TabController 索引短暂漂移导致简单报价被切到详细 Tab 的竞态。
+  void _openQuoteForEdit(Quote q) {
+    if (q.isSimple) {
+      _loadSimpleQuote(q);
+    } else {
+      _loadQuote(q);
+    }
+    _lockTabTo(q.isSimple ? 0 : 1);
+  }
+
+  /// 兜底：等当前帧（含弹层关闭/切页动画）结束后，再次核对并强制收敛
+  /// 到目标 Tab 索引，保证简单/详细模式与所编辑报价类型严格一致。
+  void _lockTabTo(int target) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _tabController.index == target) return;
+      _tabController.index = target;
+    });
+  }
+
   /// 载入简单报价历史到简单 Tab 编辑态
   void _loadSimpleQuote(Quote q) {
     setState(() {
