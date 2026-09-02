@@ -121,6 +121,9 @@ class AppDb {
         if (oldVersion < 11) {
           await _migrateToV11(db);
         }
+        if (oldVersion < 12) {
+          await _migrateToV12(db);
+        }
       },
     );
   }
@@ -148,7 +151,11 @@ class AppDb {
         type INTEGER,
         content TEXT,
         contact TEXT,
-        created_at INTEGER
+        created_at INTEGER,
+        server_id INTEGER,
+        reply TEXT,
+        replied_at INTEGER,
+        synced INTEGER DEFAULT 1
       )
     ''');
   }
@@ -334,6 +341,26 @@ class AppDb {
       )
     ''');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_tomb_table ON sync_tombstones(table_name)');
+  }
+
+  /// v12 迁移：feedbacks 表新增作者回复字段。
+  /// server_id：服务器反馈 id（用于与 /api/feedback/mine 合并回复）；
+  /// reply / replied_at：作者回复内容与时间；
+  /// synced：1=已同步到服务器，0=仅本地草稿（网络失败）。
+  Future<void> _migrateToV12(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(feedbacks)');
+    if (!cols.any((c) => c['name'] == 'server_id')) {
+      await db.execute('ALTER TABLE feedbacks ADD COLUMN server_id INTEGER');
+    }
+    if (!cols.any((c) => c['name'] == 'reply')) {
+      await db.execute('ALTER TABLE feedbacks ADD COLUMN reply TEXT');
+    }
+    if (!cols.any((c) => c['name'] == 'replied_at')) {
+      await db.execute('ALTER TABLE feedbacks ADD COLUMN replied_at INTEGER');
+    }
+    if (!cols.any((c) => c['name'] == 'synced')) {
+      await db.execute('ALTER TABLE feedbacks ADD COLUMN synced INTEGER DEFAULT 1');
+    }
   }
 
   /// v7 迁移：
@@ -982,10 +1009,15 @@ class AppDb {
   }
 
   // ---------- feedbacks（意见反馈）----------
+  /// 插入一条本地反馈记录。
+  /// [serverId]：提交成功后的服务器反馈 id（便于后续合并作者回复）；
+  /// [synced]：1=已提交服务器，0=仅本地草稿（网络失败自动标记）。
   Future<int> insertFeedback({
     required int type,
     required String content,
     String contact = '',
+    int? serverId,
+    int synced = 1,
   }) async {
     final d = await db;
     return d.insert('feedbacks', {
@@ -993,12 +1025,72 @@ class AppDb {
       'content': content,
       'contact': contact,
       'created_at': DateTime.now().millisecondsSinceEpoch,
+      'server_id': serverId,
+      'synced': synced,
     });
   }
 
   Future<List<Map<String, Object?>>> getFeedbacks() async {
     final d = await db;
     return d.query('feedbacks', orderBy: 'created_at DESC');
+  }
+
+  /// 按服务器反馈 id 更新某条反馈的回复信息与同步状态（离线合并作者回复）。
+  Future<void> updateFeedbackReply({
+    required int serverId,
+    String? reply,
+    int? repliedAt,
+    int? synced,
+  }) async {
+    final d = await db;
+    final data = <String, Object?>{
+      'reply': ?reply,
+      'replied_at': ?repliedAt,
+      'synced': ?synced,
+    };
+    await d.update('feedbacks', data,
+        where: 'server_id=?', whereArgs: [serverId]);
+  }
+
+  /// 将服务器 /api/feedback/mine 返回的一条反馈合并进本地反馈箱：
+  /// - 已存在（按 server_id 匹配）：仅刷新作者回复，不回写用户编辑过的最新内容，
+  ///   以服务器回复为准；
+  /// - 不存在：以服务器数据为准新增记录（并记录 server_id 便于后续匹配）。
+  Future<void> upsertFeedbackFromServer({
+    int? serverId,
+    required int type,
+    required String content,
+    String contact = '',
+    required int createdAt,
+    String? reply,
+    int? repliedAt,
+  }) async {
+    final d = await db;
+    if (serverId != null) {
+      final exist = await d.query('feedbacks',
+          where: 'server_id=?', whereArgs: [serverId], limit: 1);
+      if (exist.isNotEmpty) {
+        final data = <String, Object?>{
+          'reply': ?reply,
+          'replied_at': ?repliedAt,
+          if (reply != null || repliedAt != null) 'synced': 1,
+        };
+        await d.update('feedbacks', data,
+            where: 'server_id=?', whereArgs: [serverId]);
+        return;
+      }
+    }
+    // 新增服务器条目（本地可能没有对应记录，例如跨设备登录后同步）
+    await d.insert('feedbacks', {
+      'type': type,
+      'content': content,
+      'contact': contact,
+      'created_at': createdAt,
+      'server_id': serverId,
+      'reply': reply,
+      'replied_at': repliedAt,
+      'synced': 1,
+    });
   }
 
   // ---------- invitees（推广活动 - 被邀请人）----------

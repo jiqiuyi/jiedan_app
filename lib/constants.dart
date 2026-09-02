@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.15.0';
+  static const String version = '1.16.0';
 
   // ---- 云端后端 ----
   // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）存储方式
@@ -48,7 +48,8 @@ class AppConfig {
   static const String dbName = 'jiedan_guanjia.db';
   // v10：invoices（发票）表废弃，替换为 contracts（合同/协议）表
   // v11：数据存储方式改造 —— 核心表新增 updated_at 列 + sync_tombstones 墓碑表
-  static const int dbVersion = 11;
+  // v12：反馈回复闭环 —— feedbacks 表新增 server_id / reply / replied_at / synced
+  static const int dbVersion = 12;
 
   // ---- 数据存储方式（v1.14.0）----
   // 存储方式的持久化键（settings 表）

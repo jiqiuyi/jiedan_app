@@ -79,6 +79,7 @@ flutter build apk --release   # 产物：build/app/outputs/flutter-apk/app-relea
 | v1.13.0 | 防破解加固（P0-P4）：下线云端模拟支付与 App 模拟收银台、VIP 判定以云端为准并动态过期、备份导入强制重新登录、token 过期/吊销 + 密码 bcrypt + 接口限流、keystore 密码脱库并移出工程、关闭 allowBackup、R8/ProGuard + Flutter 混淆、自签名防重打包校验、HTTPS 证书固定预留 |
 | v1.14.0 | 数据存储方式三选一（均不收费）：仅本地（隐私优先，不访问云端）/ 仅服务器（以云端为权威）/ 本地+服务器（双写双向同步）；后端新增 /api/sync/push | pull | merge 按 uid 命名空间隔离、基于更新时间 _ts 的增量同步与删除墓碑、冲突以服务器最新为准；App 数据层 StorageMode 三态 + 7 表 updated_at / 墓碑追踪、设置页「数据存储方式」入口、存量数据首次切服务器一次性全量上传、仅本地模式完全不上传业务数据 |
 | v1.15.0 | 四项体验优化：1) 从「仅服务器 / 本地+服务器」切回「仅本地」时弹两档确认——仅切回本地保留服务器数据 / 切回本地并删除服务器同步数据（后端新增 DELETE /api/sync/all，按 uid 清除命名空间，可删可不删不默认删）；2)「推广活动」入口移至「升级专业版」正下方；3) 隐私政策全面扩写（信息收集 / 存储方式三选一 / 使用 / 第三方共享 / 安全措施 / 保留与删除 / 用户权利 / 未成年人 / 更新生效 / 联系）；4) 意见反馈改在线实时提交（弃用邮箱）：后端新增 POST /api/feedback（token 鉴权，按 uid 记录），App 新增反馈页（类型 / 内容 / 选填联系方式）与「我的反馈」列表 |
+| v1.16.0 | 反馈回复闭环：作者可在电脑端回复反馈提交者，用户可在 App 「我的反馈」看到作者回复——后端 feedback 记录新增 reply / repliedAt 字段；新增 POST /api/feedback/<id>/reply（管理 token / env ADMIN_TOKEN 鉴权，空回复 400）、GET /api/feedback/all（作者查全部）、GET /api/feedback/mine 扩展返回回复字段；内置 GET /admin 极简管理页（输入管理 token 查看全部反馈并回复）；App「我的反馈」列表在线合并作者回复（下拉刷新 + 顶部同步按钮），离线展示本地并标注「未同步」，feedbacks 表升级 v12（server_id / reply / replied_at / synced） |
 
 ## 设计要点（踩坑沉淀）
 
@@ -88,4 +89,5 @@ flutter build apk --release   # 产物：build/app/outputs/flutter-apk/app-relea
 - **数据存储三态**：业务数据同步范围为客户 / 项目 / 收款 / 报价 / 待收款 / 里程碑 / 合同 7 表；「仅本地」为默认与隐私兜底，绝不访问云端业务接口；「仅服务器 / 本地+服务器」依赖后端 token 鉴权按用户隔离，切换时提示数据合并与导出备份
 - **切回仅本地的两档语义**：删除服务器数据（DELETE /api/sync/all）属不可逆操作，客户端弹两档确认且不默认删除；删除前提示先导出备份，删除仅影响当前账号命名空间
 - **在线反馈替代邮箱**：反馈实现在线提交后立即落盘服务器 feedback 列表（本地 feedbacks 表同步留存），开发者在服务端实时可见，不再依赖邮件客户端；联系方式改为选填
+- **反馈回复闭环合并策略**：服务器 /api/feedback/mine 为作者回复的权威来源，App 拉取后按 server_id 合并进本地 feedbacks 表（更新 reply/repliedAt，不覆盖用户内容）；提交反馈即时保存 server_id，离线提交标记 synced=0 并在列表标注「未同步」，下拉/按钮可重试同步；作者回复在列表内绿色卡片独立展示
 - **上架就绪**：已完成正式签名（release keystore 自持），不依赖 debug 密钥
