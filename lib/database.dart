@@ -18,6 +18,17 @@ class AppDb {
   static final AppDb instance = AppDb._();
   Database? _db;
 
+  /// 业务数据（同步范围表）发生本地写入/删除时回调。
+  /// 由 SyncService 挂接，用于「本地+服务器」模式下的异步推送。
+  static void Function()? onDataChanged;
+
+  void _notify() {
+    onDataChanged?.call();
+  }
+
+  /// 产生一个「当前写入时间戳」，供 updated_at 使用。
+  static int now() => DateTime.now().millisecondsSinceEpoch;
+
   Future<Database> get db async {
     _db ??= await _open();
     return _db!;
@@ -106,6 +117,9 @@ class AppDb {
         }
         if (oldVersion < 10) {
           await _migrateToV10(db);
+        }
+        if (oldVersion < 11) {
+          await _migrateToV11(db);
         }
       },
     );
@@ -298,6 +312,28 @@ class AppDb {
       await b.commit(noResult: true);
     }
     await db.execute('DROP TABLE IF EXISTS invoices');
+  }
+
+  /// v11 迁移：数据存储方式改造。
+  /// 1. 核心同步表新增 updated_at 列（projects 已在 v9 拥有）；
+  /// 2. 新增 sync_tombstones 墓碑表，记录云端同步范围内被删除的行
+  ///    （table + row_id + deleted_at），供增量同步回传删除操作。
+  Future<void> _migrateToV11(Database db) async {
+    for (final t in ['customers', 'payments', 'quotes', 'pending_collections', 'milestones', 'contracts']) {
+      final cols = await db.rawQuery('PRAGMA table_info($t)');
+      if (!cols.any((c) => c['name'] == 'updated_at')) {
+        await db.execute('ALTER TABLE $t ADD COLUMN updated_at INTEGER');
+      }
+    }
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sync_tombstones(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        table_name TEXT NOT NULL,
+        row_id INTEGER NOT NULL,
+        deleted_at INTEGER
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_tomb_table ON sync_tombstones(table_name)');
   }
 
   /// v7 迁移：
@@ -536,12 +572,17 @@ class AppDb {
 
   Future<int> insertCustomer(Customer c) async {
     final d = await db;
-    return d.insert('customers', c.toMap()..remove('id'));
+    final id = await d.insert('customers',
+        {...c.toMap()..remove('id'), 'updated_at': now()});
+    _notify();
+    return id;
   }
 
   Future<void> updateCustomer(Customer c) async {
     final d = await db;
-    await d.update('customers', c.toMap(), where: 'id=?', whereArgs: [c.id]);
+    await d.update('customers',
+        {...c.toMap(), 'updated_at': now()}, where: 'id=?', whereArgs: [c.id]);
+    _notify();
   }
 
   Future<void> deleteCustomer(int id) async {
@@ -552,9 +593,21 @@ class AppDb {
     for (final pr in projects) {
       await deleteProject(pr['id'] as int);
     }
+    final pendings = await d
+        .query('pending_collections', where: 'customer_id=?', whereArgs: [id]);
+    for (final pc in pendings) {
+      await addTombstone('pending_collections', pc['id'] as int);
+    }
+    final quotes = await d
+        .query('quotes', where: 'customer_id=?', whereArgs: [id]);
+    for (final q in quotes) {
+      await addTombstone('quotes', q['id'] as int);
+    }
     await d.delete('pending_collections', where: 'customer_id=?', whereArgs: [id]);
     await d.delete('quotes', where: 'customer_id=?', whereArgs: [id]);
     await d.delete('customers', where: 'id=?', whereArgs: [id]);
+    await addTombstone('customers', id);
+    _notify();
   }
 
   // ---------- projects ----------
@@ -573,16 +626,41 @@ class AppDb {
 
   Future<int> insertProject(Project pr) async {
     final d = await db;
-    return d.insert('projects', pr.toMap()..remove('id'));
+    final id = await d.insert('projects',
+        {...pr.toMap()..remove('id'), 'updated_at': now()});
+    _notify();
+    return id;
   }
 
   Future<void> updateProject(Project pr) async {
     final d = await db;
-    await d.update('projects', pr.toMap(), where: 'id=?', whereArgs: [pr.id]);
+    await d.update('projects',
+        {...pr.toMap(), 'updated_at': now()}, where: 'id=?', whereArgs: [pr.id]);
+    _notify();
   }
 
   Future<void> deleteProject(int id) async {
     final d = await db;
+    final pms = await d.query('payments', where: 'project_id=?', whereArgs: [id]);
+    for (final r in pms) {
+      await addTombstone('payments', r['id'] as int);
+    }
+    final ms = await d.query('milestones', where: 'project_id=?', whereArgs: [id]);
+    for (final r in ms) {
+      await addTombstone('milestones', r['id'] as int);
+    }
+    final pcs = await d.query('pending_collections', where: 'project_id=?', whereArgs: [id]);
+    for (final r in pcs) {
+      await addTombstone('pending_collections', r['id'] as int);
+    }
+    final cts = await d.query('contracts', where: 'project_id=?', whereArgs: [id]);
+    for (final r in cts) {
+      await addTombstone('contracts', r['id'] as int);
+    }
+    final qs = await d.query('quotes', where: 'project_id=?', whereArgs: [id]);
+    for (final r in qs) {
+      await addTombstone('quotes', r['id'] as int);
+    }
     await d.delete('payments', where: 'project_id=?', whereArgs: [id]);
     await d.delete('milestones', where: 'project_id=?', whereArgs: [id]);
     await d.delete('pending_collections', where: 'project_id=?', whereArgs: [id]);
@@ -590,6 +668,8 @@ class AppDb {
     await d.delete('contracts', where: 'project_id=?', whereArgs: [id]);
     await d.delete('quotes', where: 'project_id=?', whereArgs: [id]);
     await d.delete('projects', where: 'id=?', whereArgs: [id]);
+    await addTombstone('projects', id);
+    _notify();
   }
 
   // ---------- payments ----------
@@ -602,12 +682,17 @@ class AppDb {
 
   Future<int> insertPayment(Payment pay) async {
     final d = await db;
-    return d.insert('payments', pay.toMap()..remove('id'));
+    final id = await d.insert('payments',
+        {...pay.toMap()..remove('id'), 'updated_at': now()});
+    _notify();
+    return id;
   }
 
   Future<void> deletePayment(int id) async {
     final d = await db;
     await d.delete('payments', where: 'id=?', whereArgs: [id]);
+    await addTombstone('payments', id);
+    _notify();
   }
 
   // 项目已收总额（分）
@@ -770,17 +855,24 @@ class AppDb {
 
   Future<int> insertQuote(Quote q) async {
     final d = await db;
-    return d.insert('quotes', q.toMap()..remove('id'));
+    final id = await d.insert('quotes',
+        {...q.toMap()..remove('id'), 'updated_at': now()});
+    _notify();
+    return id;
   }
 
   Future<void> updateQuote(Quote q) async {
     final d = await db;
-    await d.update('quotes', q.toMap(), where: 'id=?', whereArgs: [q.id]);
+    await d.update('quotes',
+        {...q.toMap(), 'updated_at': now()}, where: 'id=?', whereArgs: [q.id]);
+    _notify();
   }
 
   Future<void> deleteQuote(int id) async {
     final d = await db;
     await d.delete('quotes', where: 'id=?', whereArgs: [id]);
+    await addTombstone('quotes', id);
+    _notify();
   }
 
   // ---------- pending_collections（待收款，v9）----------
@@ -795,13 +887,18 @@ class AppDb {
 
   Future<int> insertPendingCollection(PendingCollection pc) async {
     final d = await db;
-    return d.insert('pending_collections', pc.toMap()..remove('id'));
+    final id = await d.insert('pending_collections',
+        {...pc.toMap()..remove('id'), 'updated_at': now()});
+    _notify();
+    return id;
   }
 
   Future<void> updatePendingCollection(PendingCollection pc) async {
     final d = await db;
-    await d.update('pending_collections', pc.toMap(),
+    await d.update('pending_collections',
+        {...pc.toMap(), 'updated_at': now()},
         where: 'id=?', whereArgs: [pc.id]);
+    _notify();
   }
 
   Future<void> settlePending(int id) async {
@@ -810,15 +907,19 @@ class AppDb {
         'pending_collections',
         {
           'status': PendingStatus.done.index,
-          'settled_at': DateTime.now().millisecondsSinceEpoch,
+          'settled_at': now(),
+          'updated_at': now(),
         },
         where: 'id=?',
         whereArgs: [id]);
+    _notify();
   }
 
   Future<void> deletePendingCollection(int id) async {
     final d = await db;
     await d.delete('pending_collections', where: 'id=?', whereArgs: [id]);
+    await addTombstone('pending_collections', id);
+    _notify();
   }
 
   // ---------- milestones（项目里程碑，v9）----------
@@ -831,17 +932,24 @@ class AppDb {
 
   Future<int> insertMilestone(Milestone ms) async {
     final d = await db;
-    return d.insert('milestones', ms.toMap()..remove('id'));
+    final id = await d.insert('milestones',
+        {...ms.toMap()..remove('id'), 'updated_at': now()});
+    _notify();
+    return id;
   }
 
   Future<void> updateMilestone(Milestone ms) async {
     final d = await db;
-    await d.update('milestones', ms.toMap(), where: 'id=?', whereArgs: [ms.id]);
+    await d.update('milestones',
+        {...ms.toMap(), 'updated_at': now()}, where: 'id=?', whereArgs: [ms.id]);
+    _notify();
   }
 
   Future<void> deleteMilestone(int id) async {
     final d = await db;
     await d.delete('milestones', where: 'id=?', whereArgs: [id]);
+    await addTombstone('milestones', id);
+    _notify();
   }
 
   // ---------- contracts（合同/协议，v10）----------
@@ -853,17 +961,24 @@ class AppDb {
 
   Future<int> insertContract(Contract c) async {
     final d = await db;
-    return d.insert('contracts', c.toMap()..remove('id'));
+    final id = await d.insert('contracts',
+        {...c.toMap()..remove('id'), 'updated_at': now()});
+    _notify();
+    return id;
   }
 
   Future<void> updateContract(Contract c) async {
     final d = await db;
-    await d.update('contracts', c.toMap(), where: 'id=?', whereArgs: [c.id]);
+    await d.update('contracts',
+        {...c.toMap(), 'updated_at': now()}, where: 'id=?', whereArgs: [c.id]);
+    _notify();
   }
 
   Future<void> deleteContract(int id) async {
     final d = await db;
     await d.delete('contracts', where: 'id=?', whereArgs: [id]);
+    await addTombstone('contracts', id);
+    _notify();
   }
 
   // ---------- feedbacks（意见反馈）----------
@@ -1018,4 +1133,83 @@ class AppDb {
 
   Future<void> setWithdrawAccount(WithdrawAccount acc) =>
       setSetting(AppConfig.withdrawAccountKey, acc.toJson());
+
+  // ---------- 云端同步辅助（v1.14.0，存储方式三选一）----------
+
+  /// 记录一条删除墓碑（不触发数据变更通知，避免同步应用路径回调循环）。
+  Future<void> addTombstone(String table, int id) async {
+    final d = await db;
+    await d.insert('sync_tombstones', {
+      'table_name': table,
+      'row_id': id,
+      'deleted_at': now(),
+    });
+  }
+
+  /// 读取某同步表的全部原始行（供上传 / 合并）。
+  Future<List<Map<String, Object?>>> syncRows(String table) async {
+    final d = await db;
+    return d.query(table);
+  }
+
+  /// 按 id 读取某同步表的一行（供冲突比较）；不存在返回 null。
+  Future<Map<String, Object?>?> syncRowById(String table, int id) async {
+    final d = await db;
+    final rows = await d.query(table, where: 'id=?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  /// 按主键 upsert 一行服务器下发的数据（剥离内部字段 _ts / _deleted）。
+  /// 不触发数据变更通知（属于同步回写，不应再次触发推送）。
+  Future<void> upsertSyncRow(String table, Map<String, Object?> row) async {
+    final clean = Map<String, Object?>.from(row)
+      ..remove('_ts')
+      ..remove('_deleted');
+    final id = clean['id'];
+    if (id == null) return;
+    final d = await db;
+    await d.insert(
+      table,
+      clean,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// 静默删除一行（同步应用服务器删除时使用，不再产生墓碑）。
+  Future<void> deleteRowSilently(String table, int id) async {
+    final d = await db;
+    await d.delete(table, where: 'id=?', whereArgs: [id]);
+  }
+
+  /// 全部待上传墓碑（table_name / row_id / deleted_at）。
+  Future<List<Map<String, Object?>>> getTombstones() async {
+    final d = await db;
+    return d.query('sync_tombstones', orderBy: 'deleted_at ASC');
+  }
+
+  /// 推送成功后清空墓碑。
+  Future<void> clearTombstones() async {
+    final d = await db;
+    await d.delete('sync_tombstones');
+  }
+
+  /// 各同步表行数（切换存储方式 / 首次上传时的数据量展示）。
+  Future<Map<String, int>> syncTableCounts() async {
+    final d = await db;
+    final tables = [
+      'customers',
+      'projects',
+      'payments',
+      'quotes',
+      'pending_collections',
+      'milestones',
+      'contracts',
+    ];
+    final counts = <String, int>{};
+    for (final t in tables) {
+      final rows = await d.rawQuery('SELECT COUNT(*) AS c FROM $t');
+      counts[t] = (rows.first['c'] as num?)?.toInt() ?? 0;
+    }
+    return counts;
+  }
 }

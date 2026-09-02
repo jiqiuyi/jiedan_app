@@ -8,6 +8,7 @@ class Customer {
   final String contact;
   final String note;
   final int createdAt;
+  final int updatedAt; // v11：最后修改时间（ms），云端同步用
 
   const Customer({
     this.id,
@@ -15,6 +16,7 @@ class Customer {
     this.contact = '',
     this.note = '',
     required this.createdAt,
+    this.updatedAt = 0,
   });
 
   Map<String, Object?> toMap() => {
@@ -23,6 +25,7 @@ class Customer {
         'contact': contact,
         'note': note,
         'created_at': createdAt,
+        'updated_at': updatedAt,
       };
 
   factory Customer.fromMap(Map<String, Object?> m) => Customer(
@@ -31,6 +34,7 @@ class Customer {
         contact: (m['contact'] as String?) ?? '',
         note: (m['note'] as String?) ?? '',
         createdAt: (m['created_at'] as int?) ?? 0,
+        updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
       );
 
   Customer copyWith({String? name, String? contact, String? note}) =>
@@ -40,6 +44,7 @@ class Customer {
         contact: contact ?? this.contact,
         note: note ?? this.note,
         createdAt: createdAt,
+        updatedAt: updatedAt,
       );
 }
 
@@ -119,6 +124,7 @@ class Payment {
   final String typeLabel; // 自定义类型名称（type==custom 时有效）
   final int paidAt;
   final String note;
+  final int updatedAt; // v11：最后修改时间（ms），云端同步用
 
   const Payment({
     this.id,
@@ -128,6 +134,7 @@ class Payment {
     this.typeLabel = '',
     required this.paidAt,
     this.note = '',
+    this.updatedAt = 0,
   });
 
   /// 展示用收款类型名：自定义类型显示自定义名称，否则显示枚举 label。
@@ -142,6 +149,7 @@ class Payment {
         'type_label': typeLabel,
         'paid_at': paidAt,
         'note': note,
+        'updated_at': updatedAt,
       };
 
   factory Payment.fromMap(Map<String, Object?> m) => Payment(
@@ -152,6 +160,7 @@ class Payment {
         typeLabel: (m['type_label'] as String?) ?? '',
         paidAt: m['paid_at'] as int,
         note: (m['note'] as String?) ?? '',
+        updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -440,6 +449,7 @@ class Quote {
   final String type; // 'simple' 简单报价 / 'full' 详细报价
   final String note; // 备注（简单报价常用，详细报价可选）
   final bool taxInclude; // 总额是否含税（简单报价恒 true）
+  final int updatedAt; // v11：最后修改时间（ms），云端同步用
 
   const Quote({
     this.id,
@@ -453,6 +463,7 @@ class Quote {
     this.type = 'full',
     this.note = '',
     this.taxInclude = true,
+    this.updatedAt = 0,
   });
 
   bool get isSimple => type == 'simple';
@@ -469,6 +480,7 @@ class Quote {
         'quote_type': type,
         'note': note,
         'tax_include': taxInclude ? 1 : 0,
+        'updated_at': updatedAt,
       };
 
   factory Quote.fromMap(Map<String, Object?> m) {
@@ -493,6 +505,7 @@ class Quote {
       note: (m['note'] as String?) ?? '',
       taxInclude:
           (m['tax_include'] as int?) == null ? true : (m['tax_include'] as int) == 1,
+      updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -509,6 +522,7 @@ class PendingCollection {
   final PendingStatus status;
   final int createdAt;
   final int? settledAt; // 结清时间（ms）
+  final int updatedAt; // v11：最后修改时间（ms），云端同步用
 
   const PendingCollection({
     this.id,
@@ -521,6 +535,7 @@ class PendingCollection {
     this.status = PendingStatus.pending,
     required this.createdAt,
     this.settledAt,
+    this.updatedAt = 0,
   });
 
   Map<String, Object?> toMap() => {
@@ -534,6 +549,7 @@ class PendingCollection {
         'status': status.index,
         'created_at': createdAt,
         'settled_at': settledAt,
+        'updated_at': updatedAt,
       };
 
   factory PendingCollection.fromMap(Map<String, Object?> m) => PendingCollection(
@@ -547,6 +563,7 @@ class PendingCollection {
         status: PendingStatus.values[(m['status'] as int?) ?? 0],
         createdAt: (m['created_at'] as int?) ?? 0,
         settledAt: m['settled_at'] as int?,
+        updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
       );
 
   PendingCollection copyWith({
@@ -567,6 +584,7 @@ class PendingCollection {
         status: status ?? this.status,
         createdAt: createdAt,
         settledAt: settledAt ?? this.settledAt,
+        updatedAt: updatedAt,
       );
 }
 
@@ -578,6 +596,7 @@ class Milestone {
   final int amount; // 阶段金额（分）
   final bool done; // 是否完成
   final int createdAt;
+  final int updatedAt; // v11：最后修改时间（ms），云端同步用
 
   const Milestone({
     this.id,
@@ -586,6 +605,7 @@ class Milestone {
     this.amount = 0,
     this.done = false,
     required this.createdAt,
+    this.updatedAt = 0,
   });
 
   Map<String, Object?> toMap() => {
@@ -595,6 +615,7 @@ class Milestone {
         'amount': amount,
         'done': done ? 1 : 0,
         'created_at': createdAt,
+        'updated_at': updatedAt,
       };
 
   factory Milestone.fromMap(Map<String, Object?> m) => Milestone(
@@ -604,6 +625,7 @@ class Milestone {
         amount: (m['amount'] as num?)?.toInt() ?? 0,
         done: (m['done'] as int?) == 1,
         createdAt: (m['created_at'] as int?) ?? 0,
+        updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
       );
 
   Milestone copyWith({String? name, int? amount, bool? done}) => Milestone(
@@ -613,6 +635,7 @@ class Milestone {
         amount: amount ?? this.amount,
         done: done ?? this.done,
         createdAt: createdAt,
+        updatedAt: updatedAt,
       );
 }
 
@@ -626,6 +649,7 @@ class Contract {
   final int signedAt; // 签订日期（ms）
   final String contractNo; // 合同编号
   final String note; // 备注
+  final int updatedAt; // v11：最后修改时间（ms），云端同步用
 
   const Contract({
     this.id,
@@ -636,6 +660,7 @@ class Contract {
     required this.signedAt,
     this.contractNo = '',
     this.note = '',
+    this.updatedAt = 0,
   });
 
   Map<String, Object?> toMap() => {
@@ -647,6 +672,7 @@ class Contract {
         'signed_at': signedAt,
         'contract_no': contractNo,
         'note': note,
+        'updated_at': updatedAt,
       };
 
   factory Contract.fromMap(Map<String, Object?> m) => Contract(
@@ -658,6 +684,7 @@ class Contract {
         signedAt: (m['signed_at'] as int?) ?? 0,
         contractNo: (m['contract_no'] as String?) ?? '',
         note: (m['note'] as String?) ?? '',
+        updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
       );
 
   Contract copyWith({
@@ -678,6 +705,7 @@ class Contract {
         signedAt: signedAt ?? this.signedAt,
         contractNo: contractNo ?? this.contractNo,
         note: note ?? this.note,
+        updatedAt: updatedAt,
       );
 }
 
