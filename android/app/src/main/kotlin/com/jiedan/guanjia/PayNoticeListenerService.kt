@@ -1,5 +1,7 @@
 package com.jiedan.guanjia
 
+import android.app.NotificationManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -32,14 +34,30 @@ class PayNoticeListenerService : NotificationListenerService() {
         const val KEY_PENDING = "pending_reports"
         const val MAX_PENDING = 200
 
-        /** 监听器是否已被系统授予「通知使用权」（App 侧引导用）。 */
+        /** 监听器是否已被系统真正授予「通知使用权」（App 侧引导用）。
+         *  以系统权威 API 为准（与系统设置页开关完全同步）：
+         *  NotificationManager.getEnabledNotificationListeners() 返回当前应用中
+         *  已被系统启用的监听器，避免「软件读到了设置字符串、但系统其实未启用」的误判。
+         *  个别 ROM/版本权限受限抛异常时，回退到读 settings 字符串做兜底判断。 */
         fun isEnabled(context: Context): Boolean {
-            val flat = Settings.Secure.getString(
-                context.contentResolver, "enabled_notification_listeners")
-            if (flat.isNullOrEmpty()) return false
-            val comp = context.packageName + "/" +
-                    PayNoticeListenerService::class.java.name
-            return flat.split(':').any { it.equals(comp, ignoreCase = true) }
+            val self = ComponentName(context, PayNoticeListenerService::class.java)
+            return try {
+                val nm = context.getSystemService(NotificationManager::class.java)
+                nm.getEnabledNotificationListeners().any { it == self }
+            } catch (e: Exception) {
+                Log.w(TAG, "读取系统授权状态异常，回退 settings", e)
+                val flat = Settings.Secure.getString(
+                    context.contentResolver, "enabled_notification_listeners")
+                if (flat.isNullOrEmpty()) return false
+                flat.split(':').any { entry ->
+                    if (entry.isBlank()) return@any false
+                    try {
+                        ComponentName.unflattenFromString(entry) == self
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+            }
         }
 
         /** 获取 App 内最近暂存的待上报到账记录，取走即清空（Flutter 侧拉取）。 */
