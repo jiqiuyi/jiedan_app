@@ -25,6 +25,13 @@ class AppState extends ChangeNotifier {
   bool _isPro = false;
   bool get isPro => _isPro;
 
+  /// 【开发测试】体验专业版标记（设备级，settings 持久化）。
+  /// 支付正式接入前，供作品集演示与功能验收解锁免费版限制；
+  /// 接入真实购买后应移除本入口，VIP 判定回归纯云端权威。
+  static const String testProKey = 'dev_test_pro';
+  bool _testPro = false;
+  bool get testPro => _testPro;
+
   /// 云端 me() 返回的 user 缓存（订阅 / 首月特惠 / 邀请码 / 邀请人列表）
   Map<String, dynamic>? _cloudMe;
   Map<String, dynamic>? get cloudMe => _cloudMe;
@@ -36,18 +43,20 @@ class AppState extends ChangeNotifier {
   Future<void> load() async {
     await ApiClient.instance.loadToken();
     _currentUser = await AppDb.instance.getCurrentUser();
+    // 读取开发测试解锁标记；此标记独立于云订阅，二者任一成立即视为专业版。
+    _testPro = await AppDb.instance.getSetting(testProKey) == '1';
     // 防破解加固（P0）：VIP 判定以云端为准，本地 SQLite 的 is_pro 仅作展示缓存，
     // 不再作为 VIP 判定依据。未登录或云端不可用时一律按免费版处理（只读降级，
-    // 绝不信任本地标记）。
-    _isPro = false;
+    // 绝不信任本地标记）。开发测试解锁标记除外（本机测试用）。
+    _isPro = _testPro;
     notifyListeners();
-    // 有 token 时拉云端数据刷新订阅/推广状态；云端不可用时保持 _isPro=false
+    // 有 token 时拉云端数据刷新订阅/推广状态；云端不可用时保持现有状态
     if (ApiClient.instance.token != null) {
       try {
         await refreshCloud();
       } catch (_) {
-        // 云端暂不可用：只读降级，保持 _isPro=false（不信任本地标记）
-        _isPro = false;
+        // 云端暂不可用：只读降级，测试解锁标记不被云端覆盖
+        _isPro = _testPro;
         notifyListeners();
       }
     }
@@ -112,7 +121,9 @@ class AppState extends ChangeNotifier {
     await AppDb.instance.updateUser(local);
     await AppDb.instance.setCurrentUser(local.id);
     _currentUser = local;
-    _isPro = isPro;
+    // 云端 isPro 与开发测试解锁标记取并集；测试标记只在云端不可用时兜底之外，
+    // 更多用于本地演示验收，正式支付接入后移除 testPro 相关代码。
+    _isPro = isPro || _testPro;
   }
 
   // ==================== 账号（云端） ====================
@@ -189,7 +200,7 @@ class AppState extends ChangeNotifier {
     await ApiClient.instance.clearToken();
     await AppDb.instance.setCurrentUser(null);
     _currentUser = null;
-    _isPro = false;
+    _isPro = _testPro;
     _cloudMe = null;
     _cloudReady = false;
     notifyListeners();
@@ -215,6 +226,36 @@ class AppState extends ChangeNotifier {
   /// 返回订单信息 { orderId, orderNo, amount, plan, qrPayload }；失败抛异常。
   Future<Map<String, dynamic>> createOrder(String plan) {
     return ApiClient.instance.createOrder(plan);
+  }
+
+  // ==================== 开发测试专用解锁（支付接入前临时方案） ====================
+
+  /// 体验专业版：本地解锁免费版全部限制。
+  /// 仅用于作品集演示与功能验收；接入真实购买后移除，VIP 判定回归纯云端权威。
+  /// 返回 true 表示解锁成功。
+  Future<bool> unlockTestPro() async {
+    await AppDb.instance.setSetting(testProKey, '1');
+    _testPro = true;
+    _isPro = true;
+    notifyListeners();
+    return true;
+  }
+
+  /// 取消开发测试解锁，恢复为云端订阅状态（未登录则回到免费版）。
+  Future<void> clearTestPro() async {
+    await AppDb.instance.setSetting(testProKey, '0');
+    _testPro = false;
+    if (loggedIn) {
+      try {
+        await refreshCloud(); // 以云端权威刷新
+      } catch (_) {
+        _isPro = false;
+        notifyListeners();
+      }
+    } else {
+      _isPro = false;
+      notifyListeners();
+    }
   }
 
   // ==================== 首月特惠（1 元，每人仅一次） ====================

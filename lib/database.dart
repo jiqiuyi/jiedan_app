@@ -852,7 +852,8 @@ class AppDb {
     await _deleteByWhere('milestones', where: 'project_id=?', whereArgs: [id]);
     await _deleteByWhere('pending_collections',
         where: 'project_id=?', whereArgs: [id]);
-    await _deleteByWhere('invoices', where: 'project_id=?', whereArgs: [id]);
+    // v10 起 invoices 表已被 contracts 替代并 DROP，此处不得再引用该表
+    // （否则新版数据库删除项目时会因表不存在抛异常，导致删除中断）。
     await _deleteByWhere('contracts', where: 'project_id=?', whereArgs: [id]);
     await _deleteByWhere('quotes', where: 'project_id=?', whereArgs: [id]);
     await _deleteById('projects', id, strict: false);

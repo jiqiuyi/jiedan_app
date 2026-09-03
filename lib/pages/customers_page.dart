@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 
 import '../models.dart';
+import '../widgets/slidable_action.dart';
 import '../database.dart';
 import '../app_state.dart';
 import '../constants.dart';
+import '../state/ticker.dart';
 import '../theme.dart';
 import 'paywall_page.dart';
 
@@ -20,16 +23,20 @@ class _CustomersPageState extends State<CustomersPage> {
   bool _loading = true;
   String _query = '';
   Timer? _debounce;
+  // 订阅全局数据变更广播（删除/编辑来自本页或项目详情页级联），自动刷新。
+  StreamSubscription<int>? _tickerSub;
 
   @override
   void initState() {
     super.initState();
+    _tickerSub = Ticker.counterStream.listen((_) => _load());
     _load();
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _tickerSub?.cancel();
     super.dispose();
   }
 
@@ -145,19 +152,22 @@ class _CustomersPageState extends State<CustomersPage> {
   Widget build(BuildContext context) {
     final customers = _filtered;
     return Scaffold(
-      appBar: AppBar(title: const Text('客户')),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AppTheme.primary,
-        foregroundColor: Colors.white,
-        onPressed: _addOrEdit,
-        child: const Icon(Icons.add),
+      appBar: AppBar(
+        title: const Text('客户'),
+        actions: [
+          IconButton(
+            tooltip: '新建客户',
+            icon: const Icon(Icons.add),
+            onPressed: _addOrEdit,
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                   child: TextField(
                     onChanged: (v) {
                       // 200ms 防抖
@@ -190,33 +200,49 @@ class _CustomersPageState extends State<CustomersPage> {
                           : ListView.builder(
                               padding: const EdgeInsets.only(top: 8, bottom: 80),
                               itemCount: customers.length,
-                              // 大列表优化：固定行高减少 layout 开销
-                              itemExtent: 72,
+                              // 卡片高度随内容自适应，保证左滑操作区与卡片严格等高
                               itemBuilder: (ctx, i) {
                                 final c = customers[i];
-                                return Card(
-                                  child: ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
-                                      foregroundColor: AppTheme.primary,
-                                      child: Text(c.name.characters.first,
-                                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                                    ),
-                                    title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                                    subtitle: Text(
-                                      [c.contact, c.note].where((e) => e.isNotEmpty).join(' · '),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    trailing: PopupMenuButton<String>(
-                                      onSelected: (v) {
-                                        if (v == 'edit') _addOrEdit(c);
-                                        if (v == 'del') _remove(c);
-                                      },
-                                      itemBuilder: (ctx) => const [
-                                        PopupMenuItem(value: 'edit', child: Text('编辑')),
-                                        PopupMenuItem(value: 'del', child: Text('删除', style: TextStyle(color: Colors.red))),
-                                      ],
+                                return Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: Slidable(
+                                    key: ValueKey('cust_${c.id}'),
+                                  endActionPane: ActionPane(
+                                    motion: const ScrollMotion(),
+                                    extentRatio: 0.34,
+                                    children: [
+                                      CustomSlidableAction(
+                                        onPressed: (_) => _addOrEdit(c),
+                                        backgroundColor: AppTheme.primary,
+                                        foregroundColor: Colors.white,
+                                        borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
+                                        child: const SlidableActionContent(icon: Icons.edit_outlined, label: '编辑'),
+                                      ),
+                                      CustomSlidableAction(
+                                        onPressed: (_) => _remove(c),
+                                        backgroundColor: AppTheme.danger,
+                                        foregroundColor: Colors.white,
+                                        borderRadius: const BorderRadius.horizontal(right: Radius.circular(12)),
+                                        child: const SlidableActionContent(icon: Icons.delete_outline, label: '删除'),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Card(
+                                    margin: EdgeInsets.zero,
+                                    child: ListTile(
+                                      leading: CircleAvatar(
+                                        backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
+                                        foregroundColor: AppTheme.primary,
+                                        child: Text(c.name.characters.first,
+                                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                                      ),
+                                      title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                      subtitle: Text(
+                                        [c.contact, c.note].where((e) => e.isNotEmpty).join(' · '),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      ),
                                     ),
                                   ),
                                 );

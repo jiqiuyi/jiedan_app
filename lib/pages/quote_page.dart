@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 
 import '../constants.dart';
 import '../theme.dart';
+import '../widgets/slidable_action.dart';
 import '../models.dart';
 import '../database.dart';
 
@@ -451,86 +453,17 @@ class _QuotePageState extends State<QuotePage>
                 itemCount: quotes.length,
                 itemBuilder: (ctx, i) {
                   final q = quotes[i];
-                  return ListTile(
-                    onTap: () {
-                      _openQuoteForEdit(q);
-                      Navigator.pop(ctx);
-                    },
-                    leading: Icon(
-                      q.isSimple ? Icons.bolt_outlined : Icons.description_outlined,
-                      color: AppTheme.primary,
-                    ),
-                    title: Row(
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 4),
+                    child: Slidable(
+                      key: ValueKey('quote_${q.id}'),
+                    endActionPane: ActionPane(
+                      motion: const ScrollMotion(),
+                      extentRatio: 0.72,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: (q.isSimple ? AppTheme.primary : AppTheme.accent)
-                                .withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            q.isSimple ? '简单报价' : '详细报价',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: q.isSimple ? AppTheme.primary : AppTheme.accent,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(q.title,
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ),
-                      ],
-                    ),
-                    subtitle: Text(
-                        '¥${_fmt.format(q.total / 100)} · ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(q.createdAt))}'),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        PopupMenuButton<String>(
-                          icon: const Icon(Icons.more_vert,
-                              size: 20, color: AppTheme.textSub),
-                          tooltip: '更多操作',
-                          onSelected: (v) async {
-                            final messenger =
-                                ScaffoldMessenger.of(context);
-                            if (v == 'to_pending') {
-                              await _quoteToPendingCollection(q);
-                              if (!ctx.mounted) return;
-                              Navigator.pop(ctx);
-                              messenger.showSnackBar(
-                                const SnackBar(content: Text('已转为待收款，可在看板查看待收尾款')),
-                              );
-                            } else if (v == 'to_project') {
-                              final projectId =
-                                  await _quoteToProject(q);
-                              if (projectId == null || !ctx.mounted) return;
-                              Navigator.pop(ctx);
-                              messenger.showSnackBar(
-                                const SnackBar(content: Text('已确认成交并创建正式项目')),
-                              );
-                            }
-                          },
-                          itemBuilder: (ctx) => [
-                            const PopupMenuItem<String>(
-                              value: 'to_pending',
-                              child: Text('转为待收款'),
-                            ),
-                            const PopupMenuItem<String>(
-                              value: 'to_project',
-                              child: Text('确认成交转正式项目'),
-                            ),
-                          ],
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.content_copy,
-                              size: 20, color: AppTheme.textSub),
-                          tooltip: '复制文本',
-                          onPressed: () async {
+                        CustomSlidableAction(
+                          onPressed: (_) async {
                             final messenger =
                                 ScaffoldMessenger.of(context);
                             await Clipboard.setData(ClipboardData(
@@ -541,31 +474,84 @@ class _QuotePageState extends State<QuotePage>
                               const SnackBar(content: Text('报价单文本已复制')),
                             );
                           },
+                          backgroundColor: AppTheme.accent,
+                          foregroundColor: Colors.white,
+                          borderRadius: const BorderRadius.horizontal(
+                              left: Radius.circular(12)),
+                          child: const SlidableActionContent(
+                              icon: Icons.content_copy, label: '复制'),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.edit_outlined,
-                              size: 20, color: AppTheme.primary),
-                          tooltip: '重新打开编辑',
-                          onPressed: () {
+                        CustomSlidableAction(
+                          onPressed: (_) {
                             _openQuoteForEdit(q);
                             Navigator.pop(ctx);
                           },
+                          backgroundColor: AppTheme.primary,
+                          foregroundColor: Colors.white,
+                          child: const SlidableActionContent(
+                              icon: Icons.edit_outlined, label: '编辑'),
                         ),
-                        if (q.isSimple)
-                          IconButton(
-                            icon: const Icon(Icons.unfold_more,
-                                size: 20, color: AppTheme.primary),
-                            tooltip: '转为详细报价',
-                            onPressed: () {
+                        CustomSlidableAction(
+                          onPressed: (_) async {
+                            final messenger =
+                                ScaffoldMessenger.of(context);
+                            final action = await showModalBottomSheet<String>(
+                              context: ctx,
+                              builder: (sctx) => SafeArea(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ListTile(
+                                      leading: const Icon(Icons.trending_up,
+                                          color: AppTheme.accent),
+                                      title: const Text('转为待收款'),
+                                      onTap: () =>
+                                          Navigator.pop(sctx, 'to_pending'),
+                                    ),
+                                    ListTile(
+                                      leading: const Icon(Icons.assignment_outlined,
+                                          color: AppTheme.primary),
+                                      title: const Text('确认成交转正式项目'),
+                                      onTap: () =>
+                                          Navigator.pop(sctx, 'to_project'),
+                                    ),
+                                    if (q.isSimple)
+                                      ListTile(
+                                        leading: const Icon(Icons.unfold_more,
+                                            color: AppTheme.accent),
+                                        title: const Text('转为详细报价'),
+                                        onTap: () =>
+                                            Navigator.pop(sctx, 'to_full'),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            );
+                            if (action == null || !ctx.mounted) return;
+                            if (action == 'to_pending') {
+                              await _quoteToPendingCollection(q);
+                              if (!ctx.mounted) return;
+                              Navigator.pop(ctx);
+                              messenger.showSnackBar(const SnackBar(
+                                  content: Text('已转为待收款，可在看板查看待收尾款')));
+                            } else if (action == 'to_project') {
+                              final projectId = await _quoteToProject(q);
+                              if (projectId == null || !ctx.mounted) return;
+                              Navigator.pop(ctx);
+                              messenger.showSnackBar(const SnackBar(
+                                  content: Text('已确认成交并创建正式项目')));
+                            } else if (action == 'to_full') {
                               _convertToFull(q);
                               Navigator.pop(ctx);
-                            },
-                          ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline,
-                              size: 20, color: AppTheme.danger),
-                          tooltip: '删除',
-                          onPressed: () async {
+                            }
+                          },
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                          child: const SlidableActionContent(
+                              icon: Icons.swap_horiz, label: '流转'),
+                        ),
+                        CustomSlidableAction(
+                          onPressed: (_) async {
                             final messenger =
                                 ScaffoldMessenger.of(context);
                             final ok = await showDialog<bool>(
@@ -596,8 +582,80 @@ class _QuotePageState extends State<QuotePage>
                             );
                             _openHistory();
                           },
+                          backgroundColor: AppTheme.danger,
+                          foregroundColor: Colors.white,
+                          borderRadius: const BorderRadius.horizontal(
+                              right: Radius.circular(12)),
+                          child: const SlidableActionContent(
+                              icon: Icons.delete_outline, label: '删除'),
                         ),
                       ],
+                    ),
+                      child: Card(
+                        margin: EdgeInsets.zero,
+                        clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () {
+                          _openQuoteForEdit(q);
+                          Navigator.pop(ctx);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: (q.isSimple
+                                              ? AppTheme.primary
+                                              : AppTheme.accent)
+                                          .withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      q.isSimple ? '简单报价' : '详细报价',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: q.isSimple
+                                            ? AppTheme.primary
+                                            : AppTheme.accent,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(q.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '¥${_fmt.format(q.total / 100)}',
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                DateFormat('yyyy-MM-dd HH:mm').format(
+                                    DateTime.fromMillisecondsSinceEpoch(
+                                        q.createdAt)),
+                                style: const TextStyle(
+                                    fontSize: 12, color: AppTheme.textSub),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ),
+                      ),
                     ),
                   );
                 },
@@ -875,7 +933,10 @@ class _QuotePageState extends State<QuotePage>
           // 大号报价总额输入框（C 位）
           Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 280),
+              constraints: BoxConstraints(
+                maxWidth: (MediaQuery.sizeOf(context).width * 0.66)
+                    .clamp(280.0, 480.0),
+              ),
               child: TextField(
                 controller: _simpleAmountCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
