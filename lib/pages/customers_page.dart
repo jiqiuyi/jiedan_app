@@ -154,13 +154,13 @@ class _CustomersPageState extends State<CustomersPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('客户'),
-        actions: [
-          IconButton(
-            tooltip: '新建客户',
-            icon: const Icon(Icons.add),
-            onPressed: _addOrEdit,
-          ),
-        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        tooltip: '新建客户',
+        backgroundColor: AppTheme.primary,
+        foregroundColor: Colors.white,
+        onPressed: _addOrEdit,
+        child: const Icon(Icons.add),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -268,7 +268,7 @@ class _Empty extends StatelessWidget {
           SizedBox(height: 12),
           Text('还没有客户', style: TextStyle(fontSize: 16, color: AppTheme.textSub)),
           SizedBox(height: 4),
-          Text('点右上角 + 新建一个吧', style: TextStyle(color: AppTheme.textSub)),
+          Text('点右下角 + 新建一个吧', style: TextStyle(color: AppTheme.textSub)),
         ],
       ),
     );
