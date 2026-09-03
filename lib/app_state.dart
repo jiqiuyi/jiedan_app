@@ -36,6 +36,10 @@ class AppState extends ChangeNotifier {
   Map<String, dynamic>? _cloudMe;
   Map<String, dynamic>? get cloudMe => _cloudMe;
 
+  /// 当前账号是否为管理员（云端 role=admin；普通用户恒为 false）。
+  bool get isCurrentAdmin =>
+      (_cloudMe?['role'] ?? 'user').toString() == 'admin';
+
   /// 是否已连上云端（成功拉取过 me 且拿到 token）
   bool _cloudReady = false;
   bool get cloudReady => _cloudReady;

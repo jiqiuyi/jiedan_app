@@ -175,7 +175,7 @@ class ApiClient {
 
   // ---------------- 订阅 / 支付 ----------------
 
-  /// 创建订单，返回 { orderId, orderNo, amount, plan, qrPayload }
+  /// 创建订单，返回 { orderId, orderNo, amount, plan, qrPayload, qrcode }
   /// [plan] 取值：firstMonth / month / year / forever
   /// 【真实支付接入点】拿到商户号后，此处改为调用真实下单接口。
   Future<Map<String, dynamic>> createOrder(String plan) async {
@@ -183,6 +183,141 @@ class ApiClient {
       'plan': plan,
     }, authRequired: true);
     return json;
+  }
+
+  /// 付款确认：客户点「是的」→ 订单标记为待确认（不直接开通）。
+  /// 真正的开通由后端收到监听上报（金额 + 时间）匹配后才执行。
+  Future<Map<String, dynamic>> confirmOrder(int orderId) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/order/confirm', {'orderId': orderId},
+        authRequired: true);
+  }
+
+  /// 监听上报：由通知解析侧（原生组件 / Flutter 兜底）上报到账金额 + 时间。
+  /// [amount] 到账金额（元）；[ts] 到账时间戳（毫秒）；[source] 渠道标识
+  /// （wechat / alipay / manual）；[deviceId] 设备标识（风控 / 拉黑用）。
+  Future<Map<String, dynamic>> reportListener({
+    required double amount,
+    required int ts,
+    required String source,
+    String deviceId = '',
+  }) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/listener/report', {
+      'amount': amount,
+      'ts': ts,
+      'source': source,
+      'deviceId': deviceId,
+    }, authRequired: true);
+  }
+
+  // ---------------- 管理员接口（role=admin 鉴权）---------------
+
+  /// 待确认/抽查/已支付/全部订单：GET /api/admin/orders?status=...
+  Future<List<Map<String, dynamic>>> adminOrders(String status) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    final json = await _call('GET', '/api/admin/orders', null,
+        query: {'status': status}, authRequired: true);
+    return (json['orders'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+  }
+
+  /// 抽查单列表。
+  Future<List<Map<String, dynamic>>> adminSpotchecks() async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    final json = await _call('GET', '/api/admin/spotchecks', null,
+        authRequired: true);
+    return (json['spotchecks'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+  }
+
+  /// 抽查复核：{ spotcheckId, action: approve | reject }
+  Future<Map<String, dynamic>> adminSpotcheckReview(
+      int spotcheckId, String action) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/admin/spotcheck/review',
+        {'spotcheckId': spotcheckId, 'action': action},
+        authRequired: true);
+  }
+
+  /// 返现明细：{ details, totals }。
+  Future<Map<String, dynamic>> adminRebates() async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('GET', '/api/admin/rebates', null, authRequired: true);
+  }
+
+  /// 待打款：{ payouts, totalRebate }。
+  Future<Map<String, dynamic>> adminPayouts() async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('GET', '/api/admin/payouts', null, authRequired: true);
+  }
+
+  /// 收款码配置：GET 查询 / POST 保存 { wechat, alipay }。
+  Future<Map<String, dynamic>> adminQrcode(
+      {String? wechat, String? alipay}) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call(
+        'POST', '/api/admin/qrcode', {'wechat': wechat, 'alipay': alipay},
+        authRequired: true);
+  }
+
+  /// 读取当前收款码配置（管理后台回显用）。
+  Future<Map<String, dynamic>> adminQrcodeGet() async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('GET', '/api/admin/qrcode', null, authRequired: true);
+  }
+
+  /// 监听状态汇总。
+  Future<Map<String, dynamic>> adminListener() async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('GET', '/api/admin/listener', null, authRequired: true);
+  }
+
+  /// 吊销专业版权限。
+  Future<Map<String, dynamic>> adminRevoke(int userId) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/admin/revoke', {'userId': userId},
+        authRequired: true);
+  }
+
+  /// 设备拉黑。
+  Future<Map<String, dynamic>> adminBlock(
+      String deviceId, String note) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/admin/block',
+        {'deviceId': deviceId, 'note': note}, authRequired: true);
+  }
+
+  /// 管理操作日志。
+  Future<List<Map<String, dynamic>>> adminLogs() async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    final json = await _call('GET', '/api/admin/logs', null,
+        authRequired: true);
+    return (json['logs'] as List<dynamic>? ?? [])
+        .cast<Map<String, dynamic>>();
+  }
+
+  /// 当前账号是否为管理员（role == admin）。
+  Future<bool> isAdmin() async {
+    try {
+      final data = await me();
+      return (data['role'] ?? 'user').toString() == 'admin';
+    } on ApiException {
+      return false;
+    }
   }
 
   // ---------------- 业务数据同步（v1.14.0，存储方式三选一）----------------
