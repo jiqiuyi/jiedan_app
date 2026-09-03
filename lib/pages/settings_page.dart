@@ -8,6 +8,8 @@ import 'login_page.dart';
 import 'paywall_page.dart';
 import 'feedback_page.dart';
 import 'invite_page.dart';
+import 'admin_page.dart';
+import 'pay_notice_guide_page.dart';
 import 'payment_code_settings_page.dart';
 import 'data_management_page.dart';
 import 'storage_mode_page.dart';
@@ -220,9 +222,41 @@ class _SettingsPageState extends State<SettingsPage> {
                             builder: (_) => const PaymentCodeSettingsPage()),
                       ),
                     ),
+                    const Divider(height: 1, indent: 56, endIndent: 16),
+                    ListTile(
+                      leading: const Icon(Icons.notifications_active_outlined,
+                          color: AppTheme.primary),
+                      title: const Text('付款到账核对'),
+                      subtitle: const Text('开启后到账可自动识别，开通专业版更快捷'),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const PayNoticeGuidePage()),
+                      ),
+                    ),
                   ],
                 ),
               ),
+              // ---- 管理员（仅 role=admin 可见） ----
+              if (st.isCurrentAdmin) ...[
+                const _SectionHeader(title: '管理'),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.admin_panel_settings,
+                        color: AppTheme.primary),
+                    title: const Text('后台管理'),
+                    subtitle: const Text('待确认 / 抽查 / 返现 / 收款配置'),
+                    trailing: const Icon(Icons.chevron_right,
+                        color: AppTheme.textSub),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AdminPage()),
+                    ),
+                  ),
+                ),
+              ],
               // ---- 经营分析 ----
               const _SectionHeader(title: '经营分析'),
               Card(
