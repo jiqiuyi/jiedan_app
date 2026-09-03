@@ -222,20 +222,6 @@ class _SettingsPageState extends State<SettingsPage> {
                             builder: (_) => const PaymentCodeSettingsPage()),
                       ),
                     ),
-                    const Divider(height: 1, indent: 56, endIndent: 16),
-                    ListTile(
-                      leading: const Icon(Icons.notifications_active_outlined,
-                          color: AppTheme.primary),
-                      title: const Text('付款到账核对'),
-                      subtitle: const Text('开启后到账可自动识别，开通专业版更快捷'),
-                      trailing: const Icon(Icons.chevron_right,
-                          color: AppTheme.textSub),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const PayNoticeGuidePage()),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -243,17 +229,36 @@ class _SettingsPageState extends State<SettingsPage> {
               if (st.isCurrentAdmin) ...[
                 const _SectionHeader(title: '管理'),
                 Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.admin_panel_settings,
-                        color: AppTheme.primary),
-                    title: const Text('后台管理'),
-                    subtitle: const Text('待确认 / 抽查 / 返现 / 收款配置'),
-                    trailing: const Icon(Icons.chevron_right,
-                        color: AppTheme.textSub),
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const AdminPage()),
-                    ),
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.admin_panel_settings,
+                            color: AppTheme.primary),
+                        title: const Text('后台管理'),
+                        subtitle: const Text('待确认 / 抽查 / 返现 / 收款配置'),
+                        trailing: const Icon(Icons.chevron_right,
+                            color: AppTheme.textSub),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const AdminPage()),
+                        ),
+                      ),
+                      const Divider(height: 1, indent: 56, endIndent: 16),
+                      ListTile(
+                        leading: const Icon(Icons.notifications_active_outlined,
+                            color: AppTheme.primary),
+                        title: const Text('到账监听状态'),
+                        subtitle: const Text('仅运维：查看本机通知监听是否生效'),
+                        trailing: const Icon(Icons.chevron_right,
+                            color: AppTheme.textSub),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const PayNoticeGuidePage()),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
