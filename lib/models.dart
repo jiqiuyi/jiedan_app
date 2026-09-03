@@ -119,6 +119,7 @@ class Project {
       title.trim().isNotEmpty && customerId > 0;
 
   Project copyWith({
+    int? customerId,
     String? title,
     ProjectStatus? status,
     int? amountTotal,
@@ -128,7 +129,7 @@ class Project {
   }) =>
       Project(
         id: id,
-        customerId: customerId,
+        customerId: customerId ?? this.customerId,
         title: title ?? this.title,
         status: status ?? this.status,
         amountTotal: amountTotal ?? this.amountTotal,

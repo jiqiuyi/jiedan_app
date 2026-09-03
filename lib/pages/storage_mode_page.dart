@@ -158,7 +158,7 @@ class _StorageModePageState extends State<StorageModePage> {
                             value: LocalSwitchChoice.deleteServer,
                             enabled: isLoggedIn,
                             title: Text(
-                              '切回本地并删除服务器数据',
+                              '删除服务器数据',
                               style: TextStyle(
                                 color: isLoggedIn
                                     ? AppTheme.danger
@@ -167,9 +167,10 @@ class _StorageModePageState extends State<StorageModePage> {
                             ),
                             subtitle: Text(
                               isLoggedIn
-                                  ? '清除本账号在服务器上的全部同步数据（仅影响本账号），删除前建议先到「数据管理」导出一份备份。'
+                                  ? '切回本地，并清除本账号在服务器上的全部同步数据（仅影响本账号），删除前建议先到「数据管理」导出一份备份。'
                                   : '当前未登录，无法删除服务器数据',
-                              style: const TextStyle(fontSize: 12),
+                              style: const TextStyle(
+                                  fontSize: 12, height: 1.5),
                             ),
                             secondary: Icon(
                               Icons.delete_forever_outlined,

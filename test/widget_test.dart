@@ -7,8 +7,8 @@ void main() {
     expect(AppConfig.appName, '接单管家');
     expect(AppConfig.freeCustomerLimit, 1);
     expect(AppConfig.freeProjectLimit, 3);
-    expect(AppConfig.monthlyPrice, 12.0);
-    expect(AppConfig.yearlyPrice, 88.0);
+    expect(AppConfig.monthlyPrice, 10.0);
+    expect(AppConfig.yearlyPrice, 68.0);
   });
 
   test('项目状态流转有序', () {

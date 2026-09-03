@@ -177,6 +177,62 @@ class _PaywallPageState extends State<PaywallPage> {
                   style: TextStyle(color: AppTheme.textSub, fontSize: 12),
                 ),
               ),
+              const SizedBox(height: 20),
+              if (AppState.instance.testPro)
+                Column(
+                  children: [
+                    const Center(
+                      child: Text(
+                        '当前处于「体验专业版」（开发测试解锁），全部免费版限制已解除',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppTheme.warn, fontSize: 12),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        await AppState.instance.clearTestPro();
+                      },
+                      child: const Text('退出体验，恢复免费版'),
+                    ),
+                  ],
+                )
+              else
+                Center(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      final ok = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('体验专业版'),
+                          content: const Text(
+                            '开发测试用：在本机直接解锁免费版全部限制（无限客户 / 项目）。\n\n'
+                            '正式支付接入后此入口将移除，请放心用于功能验收与作品集演示。',
+                          ),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('取消')),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('立即体验'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (ok == true) {
+                        await AppState.instance.unlockTestPro();
+                        messenger.showSnackBar(
+                          const SnackBar(
+                              content:
+                                  Text('已解锁专业版，可自由管理多个客户与项目')),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.science_outlined, size: 18),
+                    label: const Text('体验专业版（开发测试）'),
+                  ),
+                ),
             ],
           );
         },

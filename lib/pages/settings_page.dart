@@ -173,7 +173,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ),
                     ),
-                    const Divider(height: 1, indent: 16),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
                     ListTile(
                       leading: const Icon(Icons.card_giftcard,
                           color: AppTheme.primary),
@@ -206,7 +206,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         MaterialPageRoute(builder: (_) => const WalletPage()),
                       ),
                     ),
-                    const Divider(height: 1, indent: 56),
+                    const Divider(height: 1, indent: 56, endIndent: 16),
                     ListTile(
                       leading: const Icon(Icons.qr_code_2,
                           color: AppTheme.primary),
@@ -241,7 +241,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             builder: (_) => const IncomeStatsPage()),
                       ),
                     ),
-                    const Divider(height: 1, indent: 56),
+                    const Divider(height: 1, indent: 56, endIndent: 16),
                     ListTile(
                       leading: const Icon(Icons.rule_outlined,
                           color: AppTheme.primary),
@@ -281,7 +281,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             builder: (_) => const StorageModePage()),
                       ),
                     ),
-                    const Divider(height: 1, indent: 56),
+                    const Divider(height: 1, indent: 56, endIndent: 16),
                     ListTile(
                       leading: const Icon(Icons.manage_search_outlined,
                           color: AppTheme.primary),
@@ -315,7 +315,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         MaterialPageRoute(builder: (_) => const FeedbackPage()),
                       ),
                     ),
-                    const Divider(height: 1, indent: 56),
+                    const Divider(height: 1, indent: 56, endIndent: 16),
                     ListTile(
                       leading: const Icon(Icons.privacy_tip_outlined,
                           color: AppTheme.primary),
