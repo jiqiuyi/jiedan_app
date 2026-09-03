@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -6,6 +8,7 @@ import 'app_state.dart';
 import 'theme.dart';
 import 'pages/home_shell.dart';
 import 'services/notify_service.dart';
+import 'services/pay_notice_reporter.dart';
 import 'services/signature_guard.dart';
 import 'services/sync_service.dart';
 
@@ -25,6 +28,9 @@ Future<void> main() async {
   // 仅本地模式不访问云端；含服务器模式会在后台执行一次启动同步。
   await SyncService.instance.init();
   runApp(const JieDanApp());
+  // 启动后静默核对一次到账记录（失败进重试队列，不阻塞启动）
+  unawaited(PayNoticeReporter.instance.retryPending());
+  unawaited(PayNoticeReporter.instance.uploadPending());
 }
 
 /// 签名被篡改（重打包/二次签名）时的拒绝进入页。
