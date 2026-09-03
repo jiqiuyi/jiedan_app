@@ -22,7 +22,7 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
   final _fmt = NumberFormat('#,##0.00');
 
   _RangeMode _mode = _RangeMode.month;
-  double _total = 0;
+  int _total = 0; // 单位分，展示时统一 /100
   List<_IncomeRow> _rows = [];
   String _summaryTitle = '';
 
@@ -95,7 +95,7 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
       db.paidTotalInRange(s, e),
       db.paymentsInRange(s, e),
     ]);
-    final total = results[0] as double;
+    final total = results[0] as int; // paidTotalInRange 返回分，非 double
     final raw = results[1] as List<Map<String, Object?>>;
     if (!mounted) return;
     setState(() {
@@ -416,7 +416,7 @@ class _ModeChip extends StatelessWidget {
 class _IncomeRow {
   final int projectId;
   final String projectTitle;
-  final double amount;
+  final int amount; // 分
   final PayType type;
   final String typeLabel;
   final int paidAt;
@@ -435,12 +435,19 @@ class _IncomeRow {
   factory _IncomeRow.fromMap(Map<String, Object?> m) => _IncomeRow(
         projectId: m['project_id'] as int,
         projectTitle: m['project_title'] as String,
-        amount: ((m['amount'] as num?) ?? 0).toDouble(),
-        type: PayType.values[m['type'] as int],
+        amount: ((m['amount'] as num?) ?? 0).toInt(),
+        type: _payTypeOf(m['type']),
         typeLabel: (m['type_label'] as String?) ?? '',
         paidAt: m['paid_at'] as int,
         note: (m['note'] as String?) ?? '',
       );
+
+  /// 收款类型安全解析：库里脏值或越界一律回退到「全额」，不抛 RangeError
+  static PayType _payTypeOf(Object? v) {
+    final i = v is num ? v.toInt() : -1;
+    if (i < 0 || i >= PayType.values.length) return PayType.full;
+    return PayType.values[i];
+  }
 
   /// 展示用的类型名（自定义类型回退到 type_label，再回退到枚举 label）
   String get displayType {
@@ -491,7 +498,7 @@ class _IncomeRowTile extends StatelessWidget {
           style: const TextStyle(color: AppTheme.textSub, fontSize: 12),
         ),
         trailing: Text(
-          '+¥${fmt.format(row.amount)}',
+          '+¥${fmt.format(row.amount / 100)}',
           style: const TextStyle(
             color: AppTheme.primary,
             fontSize: 15,
@@ -504,7 +511,7 @@ class _IncomeRowTile extends StatelessWidget {
 }
 
 class _SummaryCard extends StatelessWidget {
-  final double amount;
+  final int amount; // 分
   final String title;
   final int count;
   final NumberFormat fmt;
@@ -534,7 +541,7 @@ class _SummaryCard extends StatelessWidget {
           Text(title,
               style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 13)),
           const SizedBox(height: 8),
-          Text('¥${fmt.format(amount)}',
+          Text('¥${fmt.format(amount / 100)}',
               style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w700)),
           const SizedBox(height: 14),
           Text('$count 笔收款合计', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),

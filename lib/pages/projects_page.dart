@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 
 import '../database.dart';
+import '../widgets/slidable_action.dart';
 import '../models.dart';
 import '../constants.dart';
 import '../app_state.dart';
@@ -31,15 +33,21 @@ class _ProjectsPageState extends State<ProjectsPage> {
 
   final _tabs = ['全部', '接单', '制作中', '待收尾款', '完结'];
 
+  // 订阅全局数据变更广播（删除/新增/状态流转来自详情页等），
+  // 返回本列表时自动刷新，避免删除后残留旧数据。
+  StreamSubscription<int>? _tickerSub;
+
   @override
   void initState() {
     super.initState();
+    _tickerSub = Ticker.counterStream.listen((_) => _load());
     _load();
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _tickerSub?.cancel();
     super.dispose();
   }
 
@@ -157,6 +165,85 @@ class _ProjectsPageState extends State<ProjectsPage> {
     }
   }
 
+  // 左滑「编辑」：改项目名称 / 所属客户 / 约定总额
+  Future<void> _editProject(Project pr) async {
+    final titleCtrl = TextEditingController(text: pr.title);
+    final amountCtrl = TextEditingController(
+        text: pr.amountTotal > 0 ? (pr.amountTotal / 100).toStringAsFixed(2) : '');
+    int selectedCustomer = pr.customerId;
+    final customers = await AppDb.instance.getCustomers();
+    if (!mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          title: const Text('编辑项目'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: '项目名称 *')),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                initialValue: selectedCustomer,
+                decoration: const InputDecoration(labelText: '所属客户'),
+                items: customers.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
+                onChanged: (v) => setDlg(() => selectedCustomer = v!),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: amountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                decoration: const InputDecoration(labelText: '约定总额（元）'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(
+              onPressed: () => titleCtrl.text.trim().isEmpty ? null : Navigator.pop(ctx, true),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) {
+      await AppDb.instance.updateProject(pr.copyWith(
+        customerId: selectedCustomer,
+        title: titleCtrl.text.trim(),
+        amountTotal: Money.parseYuanToFen(amountCtrl.text.trim()),
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      ));
+      Ticker.ping();
+      await _load();
+    }
+  }
+
+  // 左滑「删除」：级联删除项目及其收款记录
+  Future<void> _removeProject(Project pr) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除项目'),
+        content: Text('确定删除项目「${pr.title}」吗？\n其名下全部收款记录将一并删除，不可恢复。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await AppDb.instance.deleteProject(pr.id!);
+      Ticker.ping();
+      await _load();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = _filtered;
@@ -171,7 +258,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: TextField(
               onChanged: (v) {
                 // 200ms 防抖
@@ -199,7 +286,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
           SizedBox(
             height: 46,
             child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               scrollDirection: Axis.horizontal,
               itemCount: _tabs.length,
               separatorBuilder: (_, _) => const SizedBox(width: 6),
@@ -233,88 +320,114 @@ class _ProjectsPageState extends State<ProjectsPage> {
                     : ListView.builder(
                         padding: const EdgeInsets.only(top: 4, bottom: 90),
                         itemCount: items.length,
-                        // 大列表优化：固定行高减少 layout 开销
-                        itemExtent: 104,
+                        // 卡片高度随内容自适应，保证左滑操作区与卡片严格等高
                         itemBuilder: (ctx, i) {
                           final pr = items[i];
                           final paid = _paidTotals[pr.id] ?? 0;
                           final remaining =
                               pr.amountTotal - paid < 0 ? 0 : pr.amountTotal - paid;
-                          return Card(
-                            child: ListTile(
-                              onTap: () async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (_) => ProjectDetailPage(project: pr, customerName: _customerName(pr.customerId))),
-                                );
-                                await _load();
-                              },
-                              title: Text(pr.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${_customerName(pr.customerId)} · 约定 ¥${NumberFormat('#,##0.00').format(pr.amountTotal / 100)}',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(color: AppTheme.textSub)),
-                                  const SizedBox(height: 4),
-                                  // 金额行：FittedBox 自动缩放适应宽度，永不换行、不截断
-                                  FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
-                                    child: Text.rich(
-                                      TextSpan(
-                                        children: [
-                                          const TextSpan(text: '已收 ', style: TextStyle(color: AppTheme.textSub)),
-                                          TextSpan(
-                                            text: '¥${NumberFormat('#,##0.00').format(paid / 100)}',
-                                            style: TextStyle(
-                                                color: AppTheme.accent,
-                                                fontWeight: FontWeight.w700),
-                                          ),
-                                          const TextSpan(text: '　待收 ', style: TextStyle(color: AppTheme.textSub)),
-                                          TextSpan(
-                                            text: remaining <= 0
-                                                ? '已结清'
-                                                : '¥${NumberFormat('#,##0.00').format(remaining / 100)}',
-                                            style: TextStyle(
-                                                color: remaining <= 0 ? AppTheme.accent : AppTheme.warn,
-                                                fontWeight: FontWeight.w700),
-                                          ),
-                                        ],
-                                      ),
-                                      style: const TextStyle(fontSize: 13),
-                                      maxLines: 1,
-                                      softWrap: false,
-                                      overflow: TextOverflow.visible,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              isThreeLine: true,
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.payments_outlined, size: 22),
-                                    color: AppTheme.primary,
-                                    tooltip: '登记收款',
-                                    visualDensity: VisualDensity.compact,
-                                    onPressed: () async {
-                                      final ok = await showPaymentDialog(
-                                        context,
-                                        projectId: pr.id!,
-                                        amountTotal: pr.amountTotal,
-                                        paidTotal: paid,
-                                      );
-                                      if (ok) await _load();
-                                    },
-                                  ),
-                                  _StatusBadge(status: pr.status),
-                                ],
-                              ),
+                          return Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Slidable(
+                              key: ValueKey('prj_${pr.id}'),
+                            endActionPane: ActionPane(
+                              motion: const ScrollMotion(),
+                              extentRatio: 0.34,
+                              children: [
+                                CustomSlidableAction(
+                                  onPressed: (_) => _editProject(pr),
+                                  backgroundColor: AppTheme.primary,
+                                  foregroundColor: Colors.white,
+                                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
+                                  child: const SlidableActionContent(icon: Icons.edit_outlined, label: '编辑'),
+                                ),
+                                CustomSlidableAction(
+                                  onPressed: (_) => _removeProject(pr),
+                                  backgroundColor: AppTheme.danger,
+                                  foregroundColor: Colors.white,
+                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(12)),
+                                  child: const SlidableActionContent(icon: Icons.delete_outline, label: '删除'),
+                                ),
+                              ],
                             ),
-                          );
+                            child: Card(
+                              margin: EdgeInsets.zero,
+                              child: ListTile(
+                                onTap: () async {
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => ProjectDetailPage(project: pr, customerName: _customerName(pr.customerId))),
+                                  );
+                                  await _load();
+                                },
+                                title: Text(pr.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('${_customerName(pr.customerId)} · 约定 ¥${NumberFormat('#,##0.00').format(pr.amountTotal / 100)}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(color: AppTheme.textSub)),
+                                    const SizedBox(height: 4),
+                                    // 金额行：FittedBox 自动缩放适应宽度，永不换行、不截断
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text.rich(
+                                        TextSpan(
+                                          children: [
+                                            const TextSpan(text: '已收 ', style: TextStyle(color: AppTheme.textSub)),
+                                            TextSpan(
+                                              text: '¥${NumberFormat('#,##0.00').format(paid / 100)}',
+                                              style: TextStyle(
+                                                  color: AppTheme.accent,
+                                                  fontWeight: FontWeight.w700),
+                                            ),
+                                            const TextSpan(text: '　待收 ', style: TextStyle(color: AppTheme.textSub)),
+                                            TextSpan(
+                                              text: remaining <= 0
+                                                  ? '已结清'
+                                                  : '¥${NumberFormat('#,##0.00').format(remaining / 100)}',
+                                              style: TextStyle(
+                                                  color: remaining <= 0 ? AppTheme.accent : AppTheme.warn,
+                                                  fontWeight: FontWeight.w700),
+                                            ),
+                                          ],
+                                        ),
+                                        style: const TextStyle(fontSize: 13),
+                                        maxLines: 1,
+                                        softWrap: false,
+                                        overflow: TextOverflow.visible,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                isThreeLine: true,
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.payments_outlined, size: 22),
+                                      color: AppTheme.primary,
+                                      tooltip: '登记收款',
+                                      visualDensity: VisualDensity.compact,
+                                      onPressed: () async {
+                                        final ok = await showPaymentDialog(
+                                          context,
+                                          projectId: pr.id!,
+                                          amountTotal: pr.amountTotal,
+                                          paidTotal: paid,
+                                        );
+                                        if (ok) await _load();
+                                      },
+                                    ),
+                                    _StatusBadge(status: pr.status),
+                                  ],
+                                ),
+                                  ),
+                                ),
+                              ),
+                            );
                         },
                       ),
           ),
