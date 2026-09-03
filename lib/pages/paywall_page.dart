@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../api_client.dart';
+import '../app_state.dart';
 import '../constants.dart';
 import '../theme.dart';
-import '../app_state.dart';
+import '../widgets/pay_sheet.dart';
 import 'login_page.dart';
 
 class PaywallPage extends StatefulWidget {
@@ -15,7 +17,7 @@ class PaywallPage extends StatefulWidget {
 }
 
 class _PaywallPageState extends State<PaywallPage> {
-  final bool _paying = false;
+  bool _paying = false;
   bool _firstMonthUsed = false; // 当前账号是否已用过首月特惠
   int _selected = 1; // 默认选中档位（年付）
 
@@ -27,6 +29,7 @@ class _PaywallPageState extends State<PaywallPage> {
             price: '¥${AppConfig.firstMonthPrice}',
             desc: '仅限首次开通，每人一次',
             months: 1,
+            planKey: 'firstMonth',
             isFirstMonth: true,
             highlight: true,
           ),
@@ -35,18 +38,21 @@ class _PaywallPageState extends State<PaywallPage> {
           price: '¥${AppConfig.monthlyPrice}/月',
           desc: '按月订阅，随时可续',
           months: 1,
+          planKey: 'month',
         ),
         const _Plan(
           name: '年付',
           price: '¥${AppConfig.yearlyPrice}/年',
           desc: '相当于每月不到 ¥6',
           months: 12,
+          planKey: 'year',
         ),
         const _Plan(
           name: '永久',
           price: '¥${AppConfig.foreverPrice}',
           desc: '一次买断，永久使用',
           months: -1,
+          planKey: 'forever',
           lifetime: true,
         ),
       ];
@@ -68,7 +74,7 @@ class _PaywallPageState extends State<PaywallPage> {
     if (_selected >= plans.length) return;
     final plan = plans[_selected];
 
-    // 未登录：先引导登录，登录成功后自动完成解锁
+    // 未登录：先引导登录，登录成功后继续下单
     if (!AppState.instance.loggedIn) {
       final ok = await showDialog<bool>(
         context: context,
@@ -93,29 +99,39 @@ class _PaywallPageState extends State<PaywallPage> {
         MaterialPageRoute(builder: (_) => const LoginPage()),
       );
       if (logged != true || !mounted) return;
-      // 登录成功后刷新首月特惠状态与套餐列表
       await _loadFirstMonthState();
       if (!mounted) return;
     }
 
-    // 确认下单
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('开通专业版'),
-        content: Text(
-          '${plan.name} · ${plan.price}\n'
-          '${plan.desc}\n\n'
-          '支付功能待接入，当前无法完成购买。正式版将接入支付宝 / 微信支付。',
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('知道了')),
-        ],
-      ),
-    );
-    if (confirm != true || !mounted) return;
+    // 创建订单（后端生成随机金额 9.00~11.00）
+    setState(() => _paying = true);
+    try {
+      final order = await AppState.instance.createOrder(plan.planKey);
+      if (!mounted) return;
+      final done = await showPaySheet(
+        context,
+        order: order,
+        planName: plan.name,
+      );
+      if (!mounted) return;
+      if (done) {
+        // 提交待确认后刷新云端订阅状态
+        try {
+          await AppState.instance.refreshCloud();
+        } catch (_) {}
+      }
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('下单失败，请稍后重试')),
+      );
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
   }
 
   @override
@@ -172,7 +188,7 @@ class _PaywallPageState extends State<PaywallPage> {
               const SizedBox(height: 12),
               const Center(
                 child: Text(
-                  '支付功能正在接入中，暂不支持在线开通。\n正式版上线后将接入支付宝/微信支付。',
+                  '本单金额随机生成，付款后等待收款确认，确认后自动开通。',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppTheme.textSub, fontSize: 12),
                 ),
@@ -247,6 +263,7 @@ class _Plan {
   final String price;
   final String desc;
   final int months; // 订阅月数（lifetime 时忽略）
+  final String planKey; // 对应后端套餐标识
   final bool isFirstMonth; // 是否首月特惠档
   final bool lifetime; // 是否永久买断
   final bool highlight; // 是否高亮推荐
@@ -256,6 +273,7 @@ class _Plan {
     required this.price,
     required this.desc,
     required this.months,
+    required this.planKey,
     this.isFirstMonth = false,
     this.lifetime = false,
     this.highlight = false,
