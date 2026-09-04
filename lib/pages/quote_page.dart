@@ -9,6 +9,7 @@ import '../widgets/slidable_action.dart';
 import '../models.dart';
 import '../database.dart';
 import '../services/quote_pdf_service.dart';
+import '../utils/money_input.dart';
 
 /// 报价单双 Tab 管理（v8 起支持 简单报价 / 详细报价）：
 /// - 简单报价 Tab：一口价快速报价（客户/项目二选一 + 大号金额 + 备注），一屏内完成；
@@ -431,7 +432,7 @@ class _QuotePageState extends State<QuotePage>
       );
       return;
     }
-    await showModalBottomSheet<void>(
+    final editQuote = await showModalBottomSheet<Quote>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -484,8 +485,9 @@ class _QuotePageState extends State<QuotePage>
                         ),
                         CustomSlidableAction(
                           onPressed: (_) {
-                            _openQuoteForEdit(q);
-                            Navigator.pop(ctx);
+                            // 关闭弹层并带回待编辑报价；等弹层动画结束后由 _openHistory
+                            // 统一装载编辑态，从机制上避免与 TabBarView 动画并发导致 Tab 漂移。
+                            Navigator.pop(ctx, q);
                           },
                           backgroundColor: AppTheme.primary,
                           foregroundColor: Colors.white,
@@ -559,7 +561,7 @@ class _QuotePageState extends State<QuotePage>
                               context: ctx,
                               builder: (dctx) => AlertDialog(
                                 title: const Text('删除报价单'),
-                                content: Text('确定删除「${q.title}」吗？'),
+                                content: Text('确定删除「${q.title}」吗？\n\n删除后该报价单将从历史与所有统计中移除，不可恢复。'),
                                 actions: [
                                   TextButton(
                                       onPressed: () =>
@@ -597,8 +599,8 @@ class _QuotePageState extends State<QuotePage>
                         clipBehavior: Clip.antiAlias,
                       child: InkWell(
                         onTap: () {
-                          _openQuoteForEdit(q);
-                          Navigator.pop(ctx);
+                          // 关闭弹层并带回待编辑报价（同编辑 action，防 Tab 漂移）
+                          Navigator.pop(ctx, q);
                         },
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -666,6 +668,9 @@ class _QuotePageState extends State<QuotePage>
         ),
       ),
     );
+    // 弹层完全关闭后再装入编辑态（返回值非空 = 用户在历史里点了编辑/卡片）。
+    // 彻底规避弹层关闭动画与 TabBarView 滚动动画并发导致的简单报价误切详细 Tab 竞态。
+    if (editQuote != null && mounted) _openQuoteForEdit(editQuote);
   }
 
   /// 按历史报价单生成文本（不依赖当前编辑态），简单/详细分别处理
@@ -941,9 +946,7 @@ class _QuotePageState extends State<QuotePage>
               child: TextField(
                 controller: _simpleAmountCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                ],
+                inputFormatters: moneyInputFormatters,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                     fontSize: 40,
@@ -1116,7 +1119,7 @@ class _QuotePageState extends State<QuotePage>
                   child: TextField(
                     controller: _taxCtrl,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                    inputFormatters: moneyInputFormatters,
                     textAlign: TextAlign.right,
                     decoration: const InputDecoration(
                       suffixText: '%',
@@ -1570,7 +1573,8 @@ class _LineCardState extends State<_LineCard> {
                       const SizedBox(height: 6),
                       TextField(
                         controller: rateCtrl,
-                        keyboardType: TextInputType.number,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: moneyInputFormatters,
                         onChanged: (_) => _emit(),
                         decoration: _dec(),
                       ),
@@ -1586,7 +1590,8 @@ class _LineCardState extends State<_LineCard> {
                       const SizedBox(height: 6),
                       TextField(
                         controller: matCtrl,
-                        keyboardType: TextInputType.number,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: moneyInputFormatters,
                         onChanged: (_) => _emit(),
                         decoration: _dec(),
                       ),
