@@ -1167,12 +1167,14 @@ class _QuotePageState extends State<QuotePage>
     });
   }
 
+  // v1.22.0：简单报价 Tab 改为可滚动容器，底部预留操作区高度，
+  // 修复小屏手机上底部常驻按钮遮挡表单内容的问题；滚动即收起键盘，
+  // 缓解键盘弹出导致的焦点错位。
   Widget _buildSimpleTab() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      children: [
           const Text('报价对象',
               style: TextStyle(
                   fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
@@ -1336,14 +1338,16 @@ class _QuotePageState extends State<QuotePage>
             ),
           ),
         ],
-      ),
     );
   }
 
   // ================= 详细报价 Tab（保留原有逻辑） =================
   Widget _buildDetailTab() {
+    // v1.22.0：底部预留操作区高度，避免小屏上被常驻按钮遮挡；
+    // 滚动即收起键盘，缓解表单焦点错位。
     return ListView(
-      padding: const EdgeInsets.only(top: 8, bottom: 24),
+      padding: const EdgeInsets.only(top: 8, bottom: 96),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
         Card(
           child: Padding(
