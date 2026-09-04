@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../constants.dart';
 import '../database.dart';
@@ -10,6 +9,7 @@ import '../state/ticker.dart';
 import '../theme.dart';
 import '../services/pay_service.dart';
 import '../pages/payment_code_settings_page.dart';
+import '../utils/money_input.dart';
 
 /// 出示收款码底部弹层（方案A：个人收款码 + 手动确认到账）。
 /// 展示已配置的微信 / 支付宝收款码，供客户扫码付款。
@@ -387,7 +387,7 @@ class _ProjectCollectSheetState extends State<_ProjectCollectSheet> {
               TextField(
                 controller: _amountCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                inputFormatters: moneyInputFormatters,
                 decoration: InputDecoration(
                   labelText: '实收金额（元） *',
                   hintText: widget.amountTotal > 0
