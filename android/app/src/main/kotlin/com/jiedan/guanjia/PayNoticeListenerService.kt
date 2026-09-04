@@ -36,14 +36,14 @@ class PayNoticeListenerService : NotificationListenerService() {
 
         /** 监听器是否已被系统真正授予「通知使用权」（App 侧引导用）。
          *  以系统权威 API 为准（与系统设置页开关完全同步）：
-         *  NotificationManager.getEnabledNotificationListeners() 返回当前应用中
-         *  已被系统启用的监听器，避免「软件读到了设置字符串、但系统其实未启用」的误判。
-         *  个别 ROM/版本权限受限抛异常时，回退到读 settings 字符串做兜底判断。 */
+         *  NotificationManager.isNotificationListenerAccessGranted() 直接判定本应用
+         *  监听器是否已被系统启用，避免「软件读到了设置字符串、但系统其实未启用」的误判。
+         *  个别 ROM/低版本 API 受限抛异常时，回退到读 settings 字符串做兜底判断。 */
         fun isEnabled(context: Context): Boolean {
             val self = ComponentName(context, PayNoticeListenerService::class.java)
             return try {
                 val nm = context.getSystemService(NotificationManager::class.java)
-                nm.getEnabledNotificationListeners().any { it == self }
+                nm.isNotificationListenerAccessGranted(self)
             } catch (e: Exception) {
                 Log.w(TAG, "读取系统授权状态异常，回退 settings", e)
                 val flat = Settings.Secure.getString(
