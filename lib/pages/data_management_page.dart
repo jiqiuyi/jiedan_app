@@ -32,7 +32,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
     setState(() => _busy = true);
     try {
       final path = await BackupService.instance.exportBackup();
-      _toast('备份文件已生成，正在弹出分享');
+      _toast('备份文件已生成（$path），正在弹出分享');
       await BackupService.instance.shareBackup(path);
     } catch (e) {
       _toast('导出失败：$e');

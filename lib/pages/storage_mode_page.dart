@@ -11,6 +11,7 @@ import '../constants.dart';
 import '../services/sync_service.dart';
 import '../theme.dart';
 import '../utils/backup_util.dart';
+import '../widgets/conflict_resolver_sheet.dart';
 import 'login_page.dart';
 
 /// 从含服务器模式切回「仅本地」时，用户在弹窗中的两档处理选择（+ 取消）。
@@ -388,8 +389,17 @@ class _StorageModePageState extends State<StorageModePage> {
 
   // ---------- JSON 全量备份 / 恢复（BackupUtil，纯本地） ----------
 
+  /// 备份/恢复进行中的可视反馈状态。
+  bool _backupBusy = false;
+  String _backupHint = '';
+
   /// 导出全部业务数据为 JSON 备份，生成后弹系统分享面板保存到下载/网盘/微信。
   Future<void> _onExportBackup() async {
+    if (_backupBusy) return;
+    setState(() {
+      _backupBusy = true;
+      _backupHint = '正在导出备份数据…';
+    });
     try {
       final path = await BackupUtil.instance.exportAll();
       if (!mounted) return;
@@ -406,6 +416,13 @@ class _StorageModePageState extends State<StorageModePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('导出备份失败：$e')),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _backupBusy = false;
+          _backupHint = '';
+        });
       }
     }
   }
@@ -485,6 +502,10 @@ class _StorageModePageState extends State<StorageModePage> {
     );
     if (second != true || !mounted) return;
 
+    setState(() {
+      _backupBusy = true;
+      _backupHint = '正在从备份恢复数据，请稍候…';
+    });
     try {
       final counts = await BackupUtil.instance.restoreFromFile(path);
       if (!mounted) return;
@@ -516,6 +537,13 @@ class _StorageModePageState extends State<StorageModePage> {
       _toast('恢复失败：${e.message}');
     } catch (e) {
       _toast('恢复失败：$e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _backupBusy = false;
+          _backupHint = '';
+        });
+      }
     }
   }
 
@@ -555,6 +583,60 @@ class _StorageModePageState extends State<StorageModePage> {
 
   bool get _serverMode => (_selected ?? SyncService.instance.mode).involvesServer;
 
+  /// 打开待处理同步冲突的解决弹层。
+  void _showConflicts() => showConflictResolverSheet(context);
+
+  /// 选择同步冲突处理策略：自动保留较新 / 有冲突时先问我。
+  Future<void> _showConflictPolicyDialog() async {
+    final sync = SyncService.instance;
+    final cur = sync.conflictPolicy;
+    final picked = await showModalBottomSheet<SyncConflictPolicy>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 14, 16, 6),
+              child: Text(
+                '同步冲突处理策略',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '云端与本地对同一条数据都有了修改时该怎么处理：',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSub),
+              ),
+            ),
+            for (final p in SyncConflictPolicy.values)
+              ListTile(
+                leading: Icon(
+                  cur == p
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                  color: cur == p ? AppTheme.primary : AppTheme.textSub,
+                ),
+                title: Text(p.label),
+                subtitle: Text(p.desc,
+                    style: const TextStyle(
+                        fontSize: 12, color: AppTheme.textSub)),
+                onTap: () => Navigator.pop(ctx, p),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || picked == cur) return;
+    sync.conflictPolicy = picked;
+    _toast('已切换冲突处理策略：${picked.label}');
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -565,6 +647,30 @@ class _StorageModePageState extends State<StorageModePage> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              // 备份/恢复进行中的进度反馈。
+              if (_backupBusy)
+                Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _backupHint,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               const Text(
                 '选择业务数据的存放位置：仅本地 / 仅服务器 / 本地+服务器，'
                 '三种模式均不收费，可随时切换。',
@@ -691,6 +797,74 @@ class _StorageModePageState extends State<StorageModePage> {
                           onPressed: _syncing ? null : _syncNow,
                           icon: const Icon(Icons.sync, size: 18),
                           label: const Text('立即同步'),
+                        ),
+                      ),
+                      // 待处理冲突提示（askMe 策略收集到冲突时）。
+                      if (SyncService.instance.hasPendingConflicts) ...[
+                        const SizedBox(height: 10),
+                        Material(
+                          color: AppTheme.danger.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(10),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () => _showConflicts(),
+                            child: Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.warning_amber_rounded,
+                                      color: AppTheme.danger, size: 20),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      '${SyncService.instance.pendingConflicts.length} 条数据存在同步冲突，需要您决定采用哪一版',
+                                      style: const TextStyle(
+                                          fontSize: 13,
+                                          color: AppTheme.danger,
+                                          height: 1.4),
+                                    ),
+                                  ),
+                                  const Icon(Icons.chevron_right,
+                                      color: AppTheme.danger, size: 20),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                      // 同步冲突处理策略（v1.20.0）。
+                      const SizedBox(height: 10),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: _showConflictPolicyDialog,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 6),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.tune, size: 16,
+                                  color: AppTheme.textSub),
+                              const SizedBox(width: 8),
+                              const Text('同步冲突处理：',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      color: AppTheme.textSub)),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  SyncService
+                                      .instance.conflictPolicy.label,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.primary),
+                                ),
+                              ),
+                              const Icon(Icons.chevron_right,
+                                  size: 18, color: AppTheme.textSub),
+                            ],
+                          ),
                         ),
                       ),
                     ],
