@@ -10,6 +10,7 @@ import '../widgets/payment_dialog.dart';
 import '../widgets/show_payment_code.dart';
 import '../services/notify_service.dart';
 import 'quote_page.dart';
+import '../utils/money_input.dart';
 
 class ProjectDetailPage extends StatefulWidget {
   final Project project;
@@ -160,6 +161,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
             TextField(
               controller: amountCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: moneyInputFormatters,
               decoration: const InputDecoration(labelText: '阶段金额（元）'),
             ),
           ],
@@ -198,7 +200,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除阶段'),
-        content: Text('确定删除阶段「${ms.name}」吗？'),
+        content: Text('确定删除阶段「${ms.name}」吗？\n\n删除后该阶段进度标记将一并清除，不可恢复。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           FilledButton(
