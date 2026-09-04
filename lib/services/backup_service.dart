@@ -27,6 +27,8 @@ class BackupService {
   ];
 
   /// 导出全部本地数据，生成 JSON 备份文件，返回文件路径。
+  /// 优先写入系统「下载」目录（文件名带日期）；Android 不支持下载目录时
+  /// 回退到应用文档目录 backups/，再由 UI 分享，保证免存储权限、不闪退。
   Future<String> exportBackup() async {
     final db = await AppDb.instance.db;
     final data = <String, dynamic>{};
@@ -46,13 +48,33 @@ class BackupService {
       'data': data,
     };
 
-    final dir = await getApplicationDocumentsDirectory();
-    final backupDir = Directory(p.join(dir.path, 'backups'));
-    if (!backupDir.existsSync()) backupDir.createSync(recursive: true);
-    final stamp = DateTime.now().millisecondsSinceEpoch;
-    final file = File(p.join(backupDir.path, 'jiedan-backup-$stamp.json'));
+    final dir = await _pickTargetDir();
+    final file = File(p.join(dir.path, '接单管家_备份_${_timestamp()}.json'));
     file.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(payload));
     return file.path;
+  }
+
+  /// 选定备份文件存放目录：优先系统「下载」目录；不可用时回退到
+  /// 应用文档目录 backups/（Android 旧版本不支持 getDownloadsDirectory）。
+  Future<Directory> _pickTargetDir() async {
+    try {
+      final d = await getDownloadsDirectory();
+      if (d != null) return d;
+    } catch (_) {
+      // 下载目录不可用，走应用文档目录兜底。
+    }
+    final appDoc = await getApplicationDocumentsDirectory();
+    final backupDir = Directory(p.join(appDoc.path, 'backups'));
+    if (!backupDir.existsSync()) backupDir.createSync(recursive: true);
+    return backupDir;
+  }
+
+  /// 生成 yyyyMMdd_HHmmss 时间戳（纯数字，兼容各平台文件名）。
+  static String _timestamp() {
+    String two(int v) => v.toString().padLeft(2, '0');
+    final t = DateTime.now();
+    return '${t.year}${two(t.month)}${two(t.day)}_'
+        '${two(t.hour)}${two(t.minute)}${two(t.second)}';
   }
 
   /// 分享备份文件（用户自行选择保存位置：网盘/文件管理器/微信等）。
