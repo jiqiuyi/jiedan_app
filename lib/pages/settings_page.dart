@@ -157,7 +157,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         ],
                       ),
                     ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    const Divider(height: 1, indent: 56, endIndent: 16),
                     ListTile(
                       leading: const Icon(Icons.workspace_premium_outlined,
                           color: AppTheme.primary),
@@ -175,7 +175,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ),
                     ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    const Divider(height: 1, indent: 56, endIndent: 16),
                     ListTile(
                       leading: const Icon(Icons.card_giftcard,
                           color: AppTheme.primary),
@@ -309,8 +309,6 @@ class _SettingsPageState extends State<SettingsPage> {
                       subtitle: Text(
                         '${SyncService.instance.mode.label} · '
                         '${SyncService.instance.mode.summary}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                       trailing: const Icon(Icons.chevron_right,
                           color: AppTheme.textSub),
