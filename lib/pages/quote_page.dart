@@ -526,6 +526,14 @@ class _QuotePageState extends State<QuotePage>
                                         onTap: () =>
                                             Navigator.pop(sctx, 'to_full'),
                                       ),
+                                    ListTile(
+                                      leading: const Icon(
+                                          Icons.bookmarks_outlined,
+                                          color: AppTheme.primary),
+                                      title: const Text('另存为报价模板'),
+                                      onTap: () => Navigator.pop(
+                                          sctx, 'save_template'),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -545,6 +553,10 @@ class _QuotePageState extends State<QuotePage>
                                   content: Text('已确认成交并创建正式项目')));
                             } else if (action == 'to_full') {
                               _convertToFull(q);
+                              Navigator.pop(ctx);
+                            } else if (action == 'save_template') {
+                              _saveAsTemplate(q);
+                              if (!ctx.mounted) return;
                               Navigator.pop(ctx);
                             }
                           },
@@ -630,6 +642,7 @@ class _QuotePageState extends State<QuotePage>
                                       ),
                                     ),
                                   ),
+                                  _quoteStatusChip(ctx, q),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(q.title,
@@ -671,6 +684,337 @@ class _QuotePageState extends State<QuotePage>
     // 弹层完全关闭后再装入编辑态（返回值非空 = 用户在历史里点了编辑/卡片）。
     // 彻底规避弹层关闭动画与 TabBarView 滚动动画并发导致的简单报价误切详细 Tab 竞态。
     if (editQuote != null && mounted) _openQuoteForEdit(editQuote);
+  }
+
+  // ================= v1.21.0 报价状态流转 =================
+  Color _quoteStatusColor(QuoteStatus s) {
+    switch (s) {
+      case QuoteStatus.draft:
+        return AppTheme.textSub;
+      case QuoteStatus.sent:
+        return AppTheme.accent;
+      case QuoteStatus.confirmed:
+        return Colors.blue;
+      case QuoteStatus.deal:
+        return Colors.green;
+      case QuoteStatus.voided:
+        return AppTheme.danger;
+    }
+  }
+
+  IconData _quoteStatusIcon(QuoteStatus s) {
+    switch (s) {
+      case QuoteStatus.draft:
+        return Icons.edit_note;
+      case QuoteStatus.sent:
+        return Icons.send_outlined;
+      case QuoteStatus.confirmed:
+        return Icons.thumb_up_alt_outlined;
+      case QuoteStatus.deal:
+        return Icons.check_circle_outline;
+      case QuoteStatus.voided:
+        return Icons.block;
+    }
+  }
+
+  /// 历史列表中的状态标签；点击弹出快速状态切换。
+  Widget _quoteStatusChip(BuildContext ctx, Quote q) {
+    return GestureDetector(
+      onTap: () async {
+        final ns = await _quoteStatusPicker(ctx, q.status);
+        if (ns == null || ns == q.status) return;
+        await AppDb.instance.updateQuoteStatus(q.id!, ns);
+        if (!ctx.mounted) return;
+        // 关闭当前历史弹层并重建，让状态标签与统计即时刷新
+        Navigator.pop(ctx);
+        _openHistory();
+      },
+      child: Container(
+        margin: const EdgeInsets.only(left: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: _quoteStatusColor(q.status).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_quoteStatusIcon(q.status),
+                size: 12, color: _quoteStatusColor(q.status)),
+            const SizedBox(width: 3),
+            Text(
+              q.status.label,
+              style: TextStyle(
+                fontSize: 11,
+                color: _quoteStatusColor(q.status),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 报价状态快速切换选择器
+  Future<QuoteStatus?> _quoteStatusPicker(
+      BuildContext ctx, QuoteStatus current) {
+    return showModalBottomSheet<QuoteStatus>(
+      context: ctx,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(14),
+              child: Text('报价状态',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            ),
+            for (final s in QuoteStatus.values)
+              ListTile(
+                leading: Icon(_quoteStatusIcon(s),
+                    color: _quoteStatusColor(s)),
+                title: Text(
+                  s.label,
+                  style: TextStyle(
+                    fontWeight:
+                        s == current ? FontWeight.w700 : FontWeight.w400,
+                  ),
+                ),
+                trailing:
+                    s == current ? const Icon(Icons.check) : null,
+                onTap: () => Navigator.pop(sctx, s),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ================= v1.21.0 报价模板 =================
+
+  /// 把历史报价另存为模板（解绑客户/项目，仅保留明细/单价/税率/备注等）
+  Future<void> _saveAsTemplate(Quote q) async {
+    final ctrl = TextEditingController(text: '${q.title}（模板）');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: const Text('另存为报价模板'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: '模板名称',
+            hintText: '填写模板名称，之后可一键套用',
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dctx, false),
+              child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(dctx, true),
+            child: const Text('保存模板'),
+          ),
+        ],
+      ),
+    );
+    final name = ctrl.text.trim();
+    ctrl.dispose();
+    if (ok != true || name.isEmpty || !mounted) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final t = Quote(
+      title: name,
+      taxRate: q.taxRate,
+      lines: List.of(q.lines),
+      total: q.total,
+      createdAt: now,
+      type: q.type,
+      note: q.note,
+      taxInclude: q.taxInclude,
+      status: QuoteStatus.draft,
+      isTemplate: true,
+      updatedAt: now,
+    );
+    await AppDb.instance.insertQuote(t);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已保存为报价模板，可在报价页右上角「模板」中套用')),
+    );
+  }
+
+  /// 打开模板列表：选择套用或删除模板
+  Future<void> _openTemplateSheet() async {
+    final templates = await AppDb.instance.getQuoteTemplates();
+    if (!mounted) return;
+    if (templates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('还没有模板，可在报价历史中把报价「另存为模板」')),
+      );
+      return;
+    }
+    final picked = await showModalBottomSheet<Quote>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        maxChildSize: 0.92,
+        builder: (ctx, scrollCtrl) => Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(14),
+              child: Text('报价模板',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text('选择模板后自动填入，可修改后保存',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
+            ),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollCtrl,
+                itemCount: templates.length,
+                itemBuilder: (ctx, i) {
+                  final t = templates[i];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 4),
+                    child: Card(
+                      margin: EdgeInsets.zero,
+                      clipBehavior: Clip.antiAlias,
+                      child: ListTile(
+                        onTap: () => Navigator.pop(ctx, t),
+                        leading: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: (t.isSimple
+                                    ? AppTheme.primary
+                                    : AppTheme.accent)
+                                .withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            t.isSimple ? '简单' : '详细',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: t.isSimple
+                                  ? AppTheme.primary
+                                  : AppTheme.accent,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        title: Text(t.title,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text('¥${_fmt.format(t.total / 100)}'),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline,
+                              color: AppTheme.danger),
+                          tooltip: '删除模板',
+                          onPressed: () async {
+                            final messenger =
+                                ScaffoldMessenger.of(ctx);
+                            final ok = await showDialog<bool>(
+                              context: ctx,
+                              builder: (dctx) => AlertDialog(
+                                title: const Text('删除模板'),
+                                content: Text(
+                                    '确定删除模板「${t.title}」吗？删除后不可恢复。'),
+                                actions: [
+                                  TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(dctx, false),
+                                      child: const Text('取消')),
+                                  FilledButton(
+                                    style: FilledButton.styleFrom(
+                                        backgroundColor: AppTheme.danger),
+                                    onPressed: () =>
+                                        Navigator.pop(dctx, true),
+                                    child: const Text('删除'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (ok != true || !ctx.mounted) return;
+                            await AppDb.instance.deleteQuote(t.id!);
+                            if (!ctx.mounted) return;
+                            Navigator.pop(ctx);
+                            messenger.showSnackBar(
+                                const SnackBar(content: Text('模板已删除')));
+                            _openTemplateSheet();
+                          },
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    // 套用模板到新建编辑态（不覆盖任何历史）
+    if (picked.isSimple) {
+      _applySimpleTemplate(picked);
+    } else {
+      _applyDetailTemplate(picked);
+    }
+    _lockTabTo(picked.isSimple ? 0 : 1);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已套用模板，可修改后保存为新的报价单')),
+    );
+  }
+
+  /// 模板套用到简单报价（全新编辑态）
+  void _applySimpleTemplate(Quote t) {
+    setState(() {
+      _tabController.index = 0;
+      _simpleQuoteId = null;
+      _simpleCreatedAt = null;
+      _simpleProjectId = null;
+      _simpleCustomerId = null;
+      _simpleNameCtrl.text = t.title;
+      _simpleAmountCtrl.text = _numText(t.total / 100);
+      _simpleNoteCtrl.text = t.note;
+    });
+  }
+
+  /// 模板套用到详细报价（全新编辑态）
+  void _applyDetailTemplate(Quote t) {
+    setState(() {
+      _tabController.index = 1;
+      _quoteId = null;
+      _quoteCreatedAt = null;
+      _projectId = null;
+      _detailCustomerId = null;
+      _titleCtrl.text = t.title;
+      _clientCtrl.text = t.title;
+      _taxRate = t.taxRate / 100;
+      _taxCtrl.text = t.taxRate.toStringAsFixed(0);
+      _detailNoteCtrl.text = t.note;
+      _lines
+        ..clear()
+        ..addAll(t.lines.isEmpty
+            ? [
+                const QuoteLine(
+                    itemName: '设计服务',
+                    hours: 8,
+                    hourRate: AppConfig.defaultHourRate)
+              ]
+            : t.lines);
+    });
   }
 
   /// 按历史报价单生成文本（不依赖当前编辑态），简单/详细分别处理
@@ -1355,6 +1699,11 @@ class _QuotePageState extends State<QuotePage>
           ],
         ),
         actions: [
+          TextButton.icon(
+            onPressed: _openTemplateSheet,
+            icon: const Icon(Icons.bookmarks_outlined, size: 18),
+            label: const Text('模板'),
+          ),
           TextButton.icon(
             onPressed: _editSignature,
             icon: const Icon(Icons.edit_note, size: 18),
