@@ -233,7 +233,12 @@ class AppDb {
             name TEXT NOT NULL,
             contact TEXT,
             note TEXT,
-            created_at INTEGER
+            industry TEXT,
+            source TEXT,
+            location TEXT,
+            last_contact_at INTEGER DEFAULT 0,
+            created_at INTEGER,
+            updated_at INTEGER
           )
         ''');
         await db.execute('''
@@ -312,6 +317,9 @@ class AppDb {
         }
         if (oldVersion < 12) {
           await _migrateToV12(db);
+        }
+        if (oldVersion < 13) {
+          await _migrateToV13(db);
         }
       },
     );
@@ -396,7 +404,8 @@ class AppDb {
     ''');
   }
 
-  // v7 新增：报价单历史表；v8 扩展 simple/full 类型三列；v9 新增 customer_id 列 + 金额改分。
+  // v7 新增：报价单历史表；v8 扩展 simple/full 类型三列；v9 新增 customer_id 列 + 金额改分；
+  // v1.21.0 状态流转（status）+ 模板（is_template）+ 同步 updated_at。
   Future<void> _createQuotes(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS quotes(
@@ -410,7 +419,10 @@ class AppDb {
         created_at INTEGER,
         quote_type TEXT DEFAULT 'full',
         note TEXT,
-        tax_include INTEGER DEFAULT 1
+        tax_include INTEGER DEFAULT 1,
+        status INTEGER DEFAULT 0,
+        is_template INTEGER DEFAULT 0,
+        updated_at INTEGER
       )
     ''');
   }
@@ -544,6 +556,39 @@ class AppDb {
     }
     if (!cols.any((c) => c['name'] == 'synced')) {
       await db.execute('ALTER TABLE feedbacks ADD COLUMN synced INTEGER DEFAULT 1');
+    }
+  }
+
+  // v13 迁移（v1.21.0）：客户档案补全 + 报价状态流转与模板。
+  // customers 补 industry/source/location/last_contact_at/updated_at；
+  // quotes 补 status/is_template/updated_at。均 PRAGMA 探测防重复。
+  Future<void> _migrateToV13(Database db) async {
+    final custCols = await db.rawQuery('PRAGMA table_info(customers)');
+    if (!custCols.any((c) => c['name'] == 'industry')) {
+      await db.execute('ALTER TABLE customers ADD COLUMN industry TEXT');
+    }
+    if (!custCols.any((c) => c['name'] == 'source')) {
+      await db.execute('ALTER TABLE customers ADD COLUMN source TEXT');
+    }
+    if (!custCols.any((c) => c['name'] == 'location')) {
+      await db.execute('ALTER TABLE customers ADD COLUMN location TEXT');
+    }
+    if (!custCols.any((c) => c['name'] == 'last_contact_at')) {
+      await db.execute('ALTER TABLE customers ADD COLUMN last_contact_at INTEGER DEFAULT 0');
+    }
+    if (!custCols.any((c) => c['name'] == 'updated_at')) {
+      await db.execute('ALTER TABLE customers ADD COLUMN updated_at INTEGER');
+    }
+
+    final quoteCols = await db.rawQuery('PRAGMA table_info(quotes)');
+    if (!quoteCols.any((c) => c['name'] == 'updated_at')) {
+      await db.execute('ALTER TABLE quotes ADD COLUMN updated_at INTEGER');
+    }
+    if (!quoteCols.any((c) => c['name'] == 'status')) {
+      await db.execute('ALTER TABLE quotes ADD COLUMN status INTEGER DEFAULT 0');
+    }
+    if (!quoteCols.any((c) => c['name'] == 'is_template')) {
+      await db.execute('ALTER TABLE quotes ADD COLUMN is_template INTEGER DEFAULT 0');
     }
   }
 
@@ -776,6 +821,38 @@ class AppDb {
 
   Future<void> updateCustomer(Customer c) async {
     await _updateSyncById('customers', c.toMap(), c.id!);
+  }
+
+  // v1.21.0 客户累计收款统计（payments join projects 按客户聚合）。
+  // 返回 Map<customerId, 累计收款额(分)>；无项目或未入款的客户不计入。
+  Future<Map<int, int>> customerPaidTotals() async {
+    final d = await db;
+    final rows = await d.rawQuery('''
+      SELECT pr.customer_id AS cid, COALESCE(SUM(py.amount), 0) AS amt
+      FROM payments py
+      JOIN projects pr ON py.project_id = pr.id
+      WHERE pr.customer_id IS NOT NULL
+      GROUP BY pr.customer_id
+    ''');
+    final result = <int, int>{};
+    for (final r in rows) {
+      final cid = r['cid'] as int?;
+      final amt = r['amt'] as num?;
+      if (cid != null) result[cid] = amt?.toInt() ?? 0;
+    }
+    return result;
+  }
+
+  // 单个客户累计收款（分）。
+  Future<int> customerPaidTotal(int customerId) async {
+    final d = await db;
+    final rows = await d.rawQuery('''
+      SELECT COALESCE(SUM(py.amount), 0) AS amt
+      FROM payments py
+      JOIN projects pr ON py.project_id = pr.id
+      WHERE pr.customer_id = ?
+    ''', [customerId]);
+    return ((rows.isNotEmpty ? rows.first['amt'] : 0) as num?)?.toInt() ?? 0;
   }
 
   // 级联删除：先删该客户全部项目（deleteProject 已级联子表），再删待收/报价，最后删客户。
@@ -1022,8 +1099,10 @@ class AppDb {
   }
 
   // ---------- quotes（报价单历史 v7，同步表）----------
+  // v1.21.0 起业务列表与统计默认不含模板（is_template=1 的仅用于模板套用）。
   Future<List<Quote>> getQuotes() async {
-    final rows = await _all('quotes', orderBy: 'created_at DESC');
+    final rows = await _all('quotes',
+        where: 'is_template=?', whereArgs: [0], orderBy: 'created_at DESC');
     return rows.map(Quote.fromMap).toList();
   }
 
@@ -1041,6 +1120,27 @@ class AppDb {
         whereArgs: [projectId],
         orderBy: 'created_at DESC');
     return rows.map(Quote.fromMap).toList();
+  }
+
+  // v1.21.0 模板列表：仅返回 is_template=1 的模板（不含普通报价单）。
+  Future<List<Quote>> getQuoteTemplates() async {
+    final rows = await _all('quotes',
+        where: 'is_template=?', whereArgs: [1], orderBy: 'created_at DESC');
+    return rows.map(Quote.fromMap).toList();
+  }
+
+  // v1.21.0 快速状态流转：仅改 status 与 updated_at，走同步通道通知刷新。
+  Future<void> updateQuoteStatus(int id, QuoteStatus status) async {
+    await _updateByWhere(
+      'quotes',
+      {
+        'status': status.index,
+        'updated_at': now(),
+      },
+      where: 'id=?',
+      whereArgs: [id],
+    );
+    _notify();
   }
 
   Future<int> insertQuote(Quote q) async {
