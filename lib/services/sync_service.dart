@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,52 @@ import 'package:flutter/foundation.dart';
 import '../api_client.dart';
 import '../constants.dart';
 import '../database.dart';
+import 'error_reporter.dart';
+
+/// 同步冲突处理策略（v1.20.0）。
+enum SyncConflictPolicy {
+  autoNewest(
+    '自动保留较新的数据',
+    '同步时自动以「更新时间较新」的一方为准，无需手动处理',
+  ),
+  askMe(
+    '有冲突时先问我',
+    '云端与本地对同一条数据都有修改时，先停下来由您选择采用哪一方',
+  );
+
+  const SyncConflictPolicy(this.label, this.desc);
+  final String label;
+  final String desc;
+}
+
+/// 一条待用户决策的同步冲突（云端更新将与本地不同版本冲突）。
+class SyncConflict {
+  const SyncConflict({
+    required this.table,
+    required this.id,
+    required this.title,
+    required this.localTs,
+    required this.serverTs,
+    required this.serverRow,
+  });
+
+  final String table;
+  final int id;
+
+  /// 面向用户展示的条目名称（客户名 / 项目名 / 报价标题等）。
+  final String title;
+
+  /// 本地更新时间（毫秒）。
+  final int localTs;
+
+  /// 服务器更新时间（毫秒）。
+  final int serverTs;
+
+  /// 服务器侧待采用的行数据（采用云端时直接落地）。
+  final Map<String, Object?> serverRow;
+
+  String get key => '$table:$id';
+}
 
 /// 云端业务数据同步服务（v1.14.0，存储方式三选一）。
 ///
@@ -54,6 +101,37 @@ class SyncService extends ChangeNotifier {
   bool _authExpired = false;
   bool get authExpired => _authExpired;
 
+  /// 冲突处理策略（v1.20.0）：autoNewest 自动保留较新；askMe 收集冲突由用户决策。
+  SyncConflictPolicy _policy = SyncConflictPolicy.autoNewest;
+  SyncConflictPolicy get conflictPolicy => _policy;
+  set conflictPolicy(SyncConflictPolicy v) {
+    if (_policy == v) return;
+    _policy = v;
+    AppDb.instance
+        .setSetting(
+          AppConfig.syncConflictPolicyKey,
+          v == SyncConflictPolicy.askMe ? 'ask_me' : 'auto_newest',
+        );
+    notifyListeners();
+    // 切回「自动保留较新」后，把仍在等待的冲突按较新策略自动收尾。
+    if (v == SyncConflictPolicy.autoNewest && _pending.isNotEmpty) {
+      unawaited(_runMutex(() async {
+        for (final c in List.of(_pending)) {
+          await _resolveAuto(c);
+        }
+      }));
+    }
+  }
+
+  /// 待用户决策的冲突列表（askMe 策略下收集）。
+  final List<SyncConflict> _pending = [];
+  List<SyncConflict> get pendingConflicts => List.unmodifiable(_pending);
+  bool get hasPendingConflicts => _pending.isNotEmpty;
+
+  /// 用户「保留本地」的忽略集缓存：键 <表名>:<云端id> -> 当时的服务器时间戳。
+  final Map<String, int> _keepLocalCache = {};
+  bool _keepLocalLoaded = false;
+
   /// 清除鉴权失效标记（页面完成登出 / 跳转登录后调用，避免重复触发）。
   void clearAuthExpired() {
     if (!_authExpired) return;
@@ -82,6 +160,12 @@ class SyncService extends ChangeNotifier {
       default:
         _mode = StorageMode.local;
     }
+    // 读取冲突处理策略（默认自动保留较新）。
+    final policy =
+        await AppDb.instance.getSetting(AppConfig.syncConflictPolicyKey);
+    _policy = policy == 'ask_me'
+        ? SyncConflictPolicy.askMe
+        : SyncConflictPolicy.autoNewest;
     notifyListeners();
     // 仅本地模式：绝不访问云端业务接口。
     if (_mode.involvesServer) {
@@ -146,7 +230,9 @@ class SyncService extends ChangeNotifier {
       final res = await ApiClient.instance.mergeSync(tables);
       final serverTables = res['tables'];
       if (serverTables is Map) {
-        await _applyServerTables(serverTables);
+        // 首次合并不收集冲突（刚上传的本地快照与服务器快照时间戳一致，
+        // 视为同一版本），直接以服务器权威快照落地。
+        await _applyServerTables(serverTables, collectConflicts: false);
       }
       await AppDb.instance.clearTombstones();
       await _setLwm((res['serverTs'] as num?)?.toInt() ?? now());
@@ -226,9 +312,16 @@ class SyncService extends ChangeNotifier {
     return out;
   }
 
-  /// 落地服务器数据到本地：同一行比较 `_ts`，服务器更新才覆盖；墓碑按更晚时间删除。
-  /// 本地更新更晚（尚未推送）的行保留，等待下一轮推送合并（避免覆盖本地新改动）。
-  Future<void> _applyServerTables(Map<dynamic, dynamic> serverTables) async {
+  /// 落地服务器数据到本地。冲突处理：
+  /// - 同一行比较 `_ts`，服务器更新才覆盖；
+  /// - 本地更新更晚（尚未推送）的行保留，等待下一轮推送合并；
+  /// - 墓碑按更晚时间删除；
+  /// - [collectConflicts]：askMe 策略下把「将被覆盖」的行收集为待决策冲突，
+  ///   由用户选择采用云端还是保留本地（默认开启；首次全量合并关闭）。
+  Future<void> _applyServerTables(
+    Map<dynamic, dynamic> serverTables, {
+    bool collectConflicts = true,
+  }) async {
     for (final entry in serverTables.entries) {
       final t = '${entry.key}';
       if (!tables.contains(t)) continue;
@@ -250,9 +343,138 @@ class SyncService extends ChangeNotifier {
         if (local != null && _rowTs(t, local) > serverTs) {
           continue; // 本地更新，保留并在下一轮推送
         }
+        if (_policy == SyncConflictPolicy.askMe &&
+            collectConflicts &&
+            local != null &&
+            !await _wasDismissed(t, id, serverTs)) {
+          // 云端版本更新、本地也有版本：收集为待决策冲突，本轮先不覆盖本地。
+          await _queueConflict(
+            t,
+            id,
+            local,
+            serverTs,
+            Map<String, Object?>.from(raw),
+          );
+          continue;
+        }
         await AppDb.instance.upsertSyncRow(t, Map<String, Object?>.from(raw));
       }
     }
+  }
+
+  /// 收集一条冲突（同一行去重：后到的同类冲突覆盖先前的）。
+  Future<void> _queueConflict(
+    String t,
+    int id,
+    Map<String, Object?> local,
+    int serverTs,
+    Map<String, Object?> serverRow,
+  ) async {
+    await _ensureKeepLocalCache();
+    SyncConflict item = SyncConflict(
+      table: t,
+      id: id,
+      title: _titleOf(t, local),
+      localTs: _rowTs(t, local),
+      serverTs: serverTs,
+      serverRow: serverRow,
+    );
+    final idx = _pending.indexWhere((c) => c.key == item.key);
+    if (idx >= 0) {
+      _pending[idx] = item;
+    } else {
+      _pending.add(item);
+    }
+    notifyListeners();
+  }
+
+  /// 采用云端版本（覆盖本地）：批量解决给定冲突。
+  Future<void> applyServerVersions(List<SyncConflict> items) => _runMutex(() async {
+    if (items.isEmpty) return;
+    for (final c in items) {
+      await AppDb.instance.upsertSyncRow(c.table, c.serverRow);
+    }
+    _pending.removeWhere((x) => items.any((i) => i.key == x.key));
+    notifyListeners();
+  });
+
+  /// 保留本地版本：批量解决给定冲突，并把该行加入忽略集（同版本不再重复提示）。
+  Future<void> keepLocalVersions(List<SyncConflict> items) => _runMutex(() async {
+    if (items.isEmpty) return;
+    for (final c in items) {
+      _keepLocalCache[c.key] = c.serverTs;
+    }
+    await _persistKeepLocalCache();
+    _pending.removeWhere((x) => items.any((i) => i.key == x.key));
+    notifyListeners();
+  });
+
+  /// 清空待处理冲突（不做数据变更，仅丢弃提示）。
+  void clearPendingConflicts() {
+    if (_pending.isEmpty) return;
+    _pending.clear();
+    notifyListeners();
+  }
+
+  /// 按「保留较新」策略自动解决一条冲突（autoNewest 收尾用）。
+  Future<void> _resolveAuto(SyncConflict c) async {
+    final local = await AppDb.instance.syncRowById(c.table, c.id);
+    if (local == null || _rowTs(c.table, local) <= c.serverTs) {
+      await AppDb.instance.upsertSyncRow(c.table, c.serverRow);
+    }
+    _pending.removeWhere((x) => x.key == c.key);
+    notifyListeners();
+  }
+
+  /// 该行是否命中用户「保留本地」忽略集（同服务器版本不再重复收集）。
+  Future<bool> _wasDismissed(String t, int id, int serverTs) async {
+    await _ensureKeepLocalCache();
+    return _keepLocalCache['$t:$id'] == serverTs;
+  }
+
+  Future<void> _ensureKeepLocalCache() async {
+    if (_keepLocalLoaded) return;
+    _keepLocalLoaded = true;
+    try {
+      final s = await AppDb.instance.getSetting(AppConfig.syncKeepLocalKey);
+      if (s != null && s.isNotEmpty) {
+        final m = jsonDecode(s);
+        if (m is Map) {
+          for (final e in m.entries) {
+            _keepLocalCache['${e.key}'] = (e.value as num).toInt();
+          }
+        }
+      }
+    } catch (_) {
+      // 忽略集解析失败按空处理。
+    }
+  }
+
+  Future<void> _persistKeepLocalCache() async {
+    await AppDb.instance.setSetting(
+      AppConfig.syncKeepLocalKey,
+      jsonEncode(_keepLocalCache),
+    );
+  }
+
+  /// 表的中文名（面向用户展示用）。
+  static String _tableLabel(String t) => switch (t) {
+    'customers' => '客户',
+    'projects' => '项目',
+    'payments' => '收款',
+    'quotes' => '报价',
+    'pending_collections' => '待收款',
+    'milestones' => '里程碑',
+    'contracts' => '合同',
+    _ => t,
+  };
+
+  /// 冲突条目的展示名称：客户名 / 项目名 / 报价标题等；无名称时回退为「表名 #id」。
+  static String _titleOf(String t, Map<String, Object?> row) {
+    final name = row['name'] ?? row['title'] ?? '';
+    final s = '$name'.trim();
+    if (s.isNotEmpty) return s;
+    return '${_tableLabel(t)} #${row['id']}';
   }
 
   /// 行时间戳：updated_at 与业务时间（paid_at/settled_at/signed_at/created_at）
@@ -291,6 +513,8 @@ class SyncService extends ChangeNotifier {
         _lastError = '登录已失效，请重新登录';
       } else {
         _lastError = '同步失败：$e';
+        // 全局友好提示（错误文本变化时才提示一次，避免刷屏）：指向页面重试。
+        ErrorReporter.instance.notify('云端数据同步失败，请稍后在设置中重试');
       }
       notifyListeners();
     } finally {
