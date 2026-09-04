@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../widgets/slidable_action.dart';
 import '../models.dart';
 import '../database.dart';
+import '../services/quote_pdf_service.dart';
 
 /// 报价单双 Tab 管理（v8 起支持 简单报价 / 详细报价）：
 /// - 简单报价 Tab：一口价快速报价（客户/项目二选一 + 大号金额 + 备注），一屏内完成；
@@ -1151,6 +1152,190 @@ class _QuotePageState extends State<QuotePage>
     );
   }
 
+  // ================= 报价单 PDF 导出（简单 / 详细统一） =================
+  String _projectTitle(int? id) {
+    if (id == null) return '';
+    for (final pr in _projects) {
+      if (pr.id == id) return pr.title;
+    }
+    return '';
+  }
+
+  /// 自定义落款：个人 / 工作室名称 + 联系方式（本地持久化，导出时自动带上）。
+  Future<void> _editSignature() async {
+    final sig = await QuotePdfService.readSignature();
+    if (!mounted) return;
+    final nameCtrl = TextEditingController(text: sig.name);
+    final contactCtrl = TextEditingController(text: sig.contact);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('报价单落款'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '显示在报价单底部，PDF 导出时自动带上。',
+                style: TextStyle(color: AppTheme.textSub, fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: '落款名称',
+                  hintText: '如：李工 / 某某工作室',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: contactCtrl,
+                decoration: const InputDecoration(
+                  labelText: '联系方式',
+                  hintText: '电话 / 微信 / 邮箱',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (saved == true) {
+      await QuotePdfService.saveSignature(
+        name: nameCtrl.text,
+        contact: contactCtrl.text,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('落款已保存')),
+      );
+    }
+  }
+
+  Future<void> _exportSimplePdf() async {
+    final objectName = _simpleObjectName;
+    if (objectName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写报价对象（客户名称或选择关联项目）')),
+      );
+      return;
+    }
+    final amount = double.tryParse(_simpleAmountCtrl.text.trim()) ?? 0;
+    if (amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写报价金额')),
+      );
+      return;
+    }
+    final sig = await QuotePdfService.readSignature();
+    final name = _simpleNameCtrl.text.trim();
+    final projTitle = _projectTitle(_simpleProjectId);
+    await _sharePdf(QuotePdfData(
+      title: name.isNotEmpty ? name : projTitle,
+      type: 'simple',
+      total: Money.parseYuanToFen(amount.toStringAsFixed(2)),
+      note: _simpleNoteCtrl.text.trim(),
+      customerName: name.isNotEmpty ? name : projTitle,
+      projectName: name.isNotEmpty ? projTitle : '',
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+      signName: sig.name,
+      signContact: sig.contact,
+    ));
+  }
+
+  Future<void> _exportFullPdf() async {
+    final title = _titleCtrl.text.trim();
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写客户 / 项目名称')),
+      );
+      return;
+    }
+    if (_lines.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请至少添加一项报价明细')),
+      );
+      return;
+    }
+    final sig = await QuotePdfService.readSignature();
+    String customerName = '';
+    if (_detailCustomerId != null) {
+      for (final c in _customers) {
+        if (c.id == _detailCustomerId) {
+          customerName = c.name;
+          break;
+        }
+      }
+    }
+    await _sharePdf(QuotePdfData(
+      title: title,
+      type: 'full',
+      total: _total.round(),
+      subtotal: _subtotal.toDouble(),
+      tax: _tax,
+      taxRate: _taxRate,
+      lines: List.of(_lines),
+      note: _detailNoteCtrl.text.trim(),
+      customerName: customerName.isEmpty ? title : customerName,
+      projectName: _projectTitle(_projectId),
+      createdAt: DateTime.now().millisecondsSinceEpoch,
+      signName: sig.name,
+      signContact: sig.contact,
+    ));
+  }
+
+  /// 生成 PDF 并拉起系统分享（带轻量生成中提示）。
+  Future<void> _sharePdf(QuotePdfData data) async {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Dialog(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+              SizedBox(width: 16),
+              Text('正在生成报价单 PDF…'),
+            ],
+          ),
+        ),
+      ),
+    );
+    try {
+      await QuotePdfService.export(context, data);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('PDF 导出失败：$e')),
+      );
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1167,6 +1352,11 @@ class _QuotePageState extends State<QuotePage>
           ],
         ),
         actions: [
+          TextButton.icon(
+            onPressed: _editSignature,
+            icon: const Icon(Icons.edit_note, size: 18),
+            label: const Text('落款'),
+          ),
           TextButton.icon(
             onPressed: _openHistory,
             icon: const Icon(Icons.history, size: 18),
@@ -1207,6 +1397,16 @@ class _QuotePageState extends State<QuotePage>
                         isSimple
                             ? (_simpleQuoteId == null ? '保存到历史' : '更新保存')
                             : (_quoteId == null ? '保存到历史' : '更新保存'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: isSimple ? _exportSimplePdf : _exportFullPdf,
+                      icon: const Icon(Icons.picture_as_pdf),
+                      label: Text(
+                        isSimple ? '导出PDF' : '导出PDF',
                       ),
                     ),
                   ),
