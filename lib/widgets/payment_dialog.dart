@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../constants.dart';
 import '../database.dart';
 import '../models.dart';
 import '../state/ticker.dart';
+import '../utils/money_input.dart';
 
 /// 弹出「登记收款」对话框（项目详情页与项目列表页共用）。
 ///
@@ -61,7 +61,7 @@ Future<bool> showPaymentDialog(
             TextField(
               controller: amountCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+              inputFormatters: moneyInputFormatters,
               autofocus: true,
               decoration: InputDecoration(
                 labelText: '金额（元） *',

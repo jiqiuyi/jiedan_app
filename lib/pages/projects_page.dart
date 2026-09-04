@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 
@@ -14,6 +13,7 @@ import '../state/ticker.dart';
 import 'project_detail_page.dart';
 import 'paywall_page.dart';
 import '../widgets/payment_dialog.dart';
+import '../utils/money_input.dart';
 
 class ProjectsPage extends StatefulWidget {
   const ProjectsPage({super.key});
@@ -133,7 +133,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
               TextField(
                 controller: amountCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                inputFormatters: moneyInputFormatters,
                 decoration: const InputDecoration(labelText: '约定总额（元）', hintText: '0.00'),
               ),
             ],
@@ -193,7 +193,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
               TextField(
                 controller: amountCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+                inputFormatters: moneyInputFormatters,
                 decoration: const InputDecoration(labelText: '约定总额（元）'),
               ),
             ],

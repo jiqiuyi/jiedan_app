@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../constants.dart';
@@ -10,6 +9,7 @@ import '../theme.dart';
 import '../services/pay_service.dart';
 import '../widgets/show_payment_code.dart';
 import 'payment_code_settings_page.dart';
+import '../utils/money_input.dart';
 
 /// 钱包页：余额（收款 + 充值 - 提现）、充值、提现、往来记录。
 /// MVP：收款码手动确认入账，真实通道接入后由回调自动处理。
@@ -121,9 +121,7 @@ class _WalletPageState extends State<WalletPage> {
                 autofocus: true,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                ],
+                inputFormatters: moneyInputFormatters,
                 decoration: const InputDecoration(
                   labelText: '充值金额（元）',
                   hintText: '如 100',
@@ -269,9 +267,7 @@ class _WalletPageState extends State<WalletPage> {
               autofocus: true,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-              ],
+              inputFormatters: moneyInputFormatters,
               decoration: const InputDecoration(
                 labelText: '提现金额（元） *',
                 hintText: '可提现 ¥',
