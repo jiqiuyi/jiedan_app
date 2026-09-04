@@ -10,6 +10,10 @@ class Customer {
   final String name;
   final String contact;
   final String note;
+  final String industry; // 行业（v1.21.0 档案补全）
+  final String source; // 客户来源（v1.21.0 档案补全）
+  final String location; // 所在地（v1.21.0 档案补全）
+  final int lastContactAt; // 最近联系时间（ms，v1.21.0）
   final int createdAt;
   final int updatedAt; // 最后修改时间（ms），同步用
 
@@ -18,6 +22,10 @@ class Customer {
     required this.name,
     this.contact = '',
     this.note = '',
+    this.industry = '',
+    this.source = '',
+    this.location = '',
+    this.lastContactAt = 0,
     required this.createdAt,
     this.updatedAt = 0,
   });
@@ -27,6 +35,10 @@ class Customer {
         'name': name,
         'contact': contact,
         'note': note,
+        'industry': industry,
+        'source': source,
+        'location': location,
+        'last_contact_at': lastContactAt,
         'created_at': createdAt,
         'updated_at': updatedAt,
       };
@@ -37,12 +49,19 @@ class Customer {
       'name': (m['name'] as String?) ?? '',
       'contact': (m['contact'] as String?) ?? '',
       'note': (m['note'] as String?) ?? '',
+      'industry': (m['industry'] as String?) ?? '',
+      'source': (m['source'] as String?) ?? '',
+      'location': (m['location'] as String?) ?? '',
     };
     return Customer(
       id: m['id'] as int?,
       name: fields['name']!,
       contact: fields['contact']!,
       note: fields['note']!,
+      industry: fields['industry']!,
+      source: fields['source']!,
+      location: fields['location']!,
+      lastContactAt: (m['last_contact_at'] as num?)?.toInt() ?? 0,
       createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
       updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
     );
@@ -51,12 +70,24 @@ class Customer {
   // 业务合法性：客户名不能为空或纯空白。
   bool isValidCustomer() => name.trim().isNotEmpty;
 
-  Customer copyWith({String? name, String? contact, String? note}) =>
+  Customer copyWith({
+    String? name,
+    String? contact,
+    String? note,
+    String? industry,
+    String? source,
+    String? location,
+    int? lastContactAt,
+  }) =>
       Customer(
         id: id,
         name: name ?? this.name,
         contact: contact ?? this.contact,
         note: note ?? this.note,
+        industry: industry ?? this.industry,
+        source: source ?? this.source,
+        location: location ?? this.location,
+        lastContactAt: lastContactAt ?? this.lastContactAt,
         createdAt: createdAt,
         updatedAt: updatedAt,
       );
@@ -460,7 +491,8 @@ class QuoteLine {
       );
 }
 
-// 报价单（v7 落库历史；v8 扩展 simple/full；v9 关联客户 + 金额改分为整数分）。
+// 报价单（v7 落库历史；v8 扩展 simple/full；v9 关联客户 + 金额改分为整数分；
+// v1.21.0 状态流转 + 模板）。
 // type='simple'：简单报价（一口价含税，无明细/税率）；type='full'：详细报价（明细+税率）。
 class Quote {
   final int? id;
@@ -474,6 +506,8 @@ class Quote {
   final String type; // 'simple' 简单 / 'full' 详细
   final String note; // 备注（简单报价常用，详细报价可选）
   final bool taxInclude; // 总额是否含税（简单报价恒 true）
+  final QuoteStatus status; // 状态流转（v1.21.0）
+  final bool isTemplate; // 是否为模板（v1.21.0）
   final int updatedAt; // 最后修改时间（ms），同步用
 
   const Quote({
@@ -488,6 +522,8 @@ class Quote {
     this.type = 'full',
     this.note = '',
     this.taxInclude = true,
+    this.status = QuoteStatus.draft,
+    this.isTemplate = false,
     this.updatedAt = 0,
   });
 
@@ -505,6 +541,8 @@ class Quote {
         'quote_type': type,
         'note': note,
         'tax_include': taxInclude ? 1 : 0,
+        'status': status.index,
+        'is_template': isTemplate ? 1 : 0,
         'updated_at': updatedAt,
       };
 
@@ -513,6 +551,8 @@ class Quote {
     final lines = _parseLines(m['lines_json']);
     final title = (m['title'] as String?) ?? '';
     final taxIncludeRaw = m['tax_include'] as int?;
+    // status 越界（旧库无列时为 null 取 0 草稿）时 clamp，防止崩溃。
+    final statusRaw = (m['status'] as num?)?.toInt() ?? 0;
     return Quote(
       id: m['id'] as int?,
       projectId: m['project_id'] as int?,
@@ -525,12 +565,32 @@ class Quote {
       type: (m['quote_type'] as String?) ?? 'full',
       note: (m['note'] as String?) ?? '',
       taxInclude: taxIncludeRaw == null ? true : taxIncludeRaw == 1,
+      status: QuoteStatus.values[
+          statusRaw < 0 || statusRaw >= QuoteStatus.values.length ? 0 : statusRaw],
+      isTemplate: ((m['is_template'] as num?)?.toInt() ?? 0) == 1,
       updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
     );
   }
 
   // 业务合法性：报价总额不能为负；标题（客户/项目名）不能为空或纯空白。
   bool isValidQuote() => total >= 0 && title.trim().isNotEmpty;
+
+  /// 复制为一份「新建草稿」：清 id / 重置状态与模板标记 / 时间置空，
+  /// 供「从模板新建」或已有报价复制时装载到编辑态。
+  Quote asNewDraft() => Quote(
+        projectId: projectId,
+        customerId: customerId,
+        title: title,
+        taxRate: taxRate,
+        lines: lines,
+        total: total,
+        createdAt: 0, // 占位，保存时重写
+        type: type,
+        note: note,
+        taxInclude: taxInclude,
+        status: QuoteStatus.draft,
+        isTemplate: false,
+      );
 }
 
 // lines_json 反序列化 helper（解析失败返回空行）。
