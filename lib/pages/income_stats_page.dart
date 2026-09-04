@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../constants.dart';
 import '../database.dart';
-import '../models.dart';
 import '../theme.dart';
 
-/// 收入统计页（v1.10.0 新增）：
-/// 近 12 个月收入柱状图、客户贡献排行、应收款项/报价与收入口径汇总。
+/// 统计看板（v1.10.0 新增，v1.22.0 增强）：
+/// 收入/应收统计支持时间范围筛选（本月/上月/近12个月/自定义起止日期）与月度对比、
+/// 分类汇总（按客户 / 按报价类型 / 按项目阶段）。
+/// 统计口径自动排除草稿(draft)、作废(voided) 报价与报价模板(is_template=1)。
 /// 数据全部来自本机 SQLite，不涉及任何云端。
 class IncomeStatsPage extends StatefulWidget {
   const IncomeStatsPage({super.key});
@@ -15,15 +17,38 @@ class IncomeStatsPage extends StatefulWidget {
   State<IncomeStatsPage> createState() => _IncomeStatsPageState();
 }
 
+/// 时间范围模式
+enum _RangeMode {
+  month, // 本月
+  lastMonth, // 上月
+  last12, // 近12个月
+  custom, // 自定义起止日期
+}
+
+/// 分类汇总维度
+enum _GroupMode { customer, quoteType, projectStatus }
+
 class _IncomeStatsPageState extends State<IncomeStatsPage> {
   bool _loading = true;
+  _RangeMode _mode = _RangeMode.last12;
+  _GroupMode _group = _GroupMode.customer;
+  final _fmt = NumberFormat('#,##0.00');
+
+  // 各统计口径（单位均为分，展示时统一 /100）：
+  int _paidTotal = 0; // 范围内实际已收款
+  int _quoteTotal = 0; // 范围内有效报价总额（排除草稿/作废）
+  int _receivable = 0; // 应收欠款（当前存量，不对时间过滤）
+  int _lastMonthIncome = 0; // 上月收入（用于月度对比）
+  String _rangeTitle = '近12个月';
+
+  // 自定义起止日期（当天）：
+  DateTime _rStart = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  DateTime _rEnd = DateTime.now();
+
   List<Map<String, int>> _monthly = [];
   List<Map<String, Object?>> _contrib = [];
-  // 三个统计口径各自独立保存（单位均为分），避免平铺在一个 map 里互相污染：
-  int _quoteTotal = 0; // 口径一：全部报价总金额
-  int _received = 0; // 口径二：实际已收款
-  int _receivable = 0; // 口径三：尚未收回应收欠款
-  final _fmt = NumberFormat('#,##0.00');
+  List<Map<String, Object?>> _byType = [];
+  List<Map<String, Object?>> _byStatus = [];
 
   @override
   void initState() {
@@ -31,29 +56,76 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
     _load();
   }
 
+  /// 当前模式的时间范围 [startMs, endMs) 与范围标题
+  (int, int) _rangeOf() {
+    final now = DateTime.now();
+    switch (_mode) {
+      case _RangeMode.month:
+        final s = DateTime(now.year, now.month, 1);
+        return (s.millisecondsSinceEpoch, now.millisecondsSinceEpoch + 1);
+      case _RangeMode.lastMonth:
+        final s = DateTime(now.year, now.month - 1, 1);
+        final e = DateTime(now.year, now.month, 1);
+        return (s.millisecondsSinceEpoch, e.millisecondsSinceEpoch);
+      case _RangeMode.last12:
+        final s = DateTime(now.year, now.month - 11, 1);
+        return (s.millisecondsSinceEpoch, now.millisecondsSinceEpoch + 1);
+      case _RangeMode.custom:
+        final e = DateTime(_rEnd.year, _rEnd.month, _rEnd.day + 1);
+        return (_rStart.millisecondsSinceEpoch, e.millisecondsSinceEpoch);
+    }
+  }
+
   Future<void> _load() async {
     final db = AppDb.instance;
+    final (startMs, endMs) = _rangeOf();
+    final now = DateTime.now();
+    _rangeTitle = _titleOf();
+    // 并行取数：全部本地 SQLite，一次刷新完成
+    final summary = await db.paidVsPendingSummary(); // 应收欠款（存量）
+    final paid = await db.paidTotalInRange(startMs, endMs);
+    final quoteTotal = await db.quotesTotalInRange(startMs: startMs, endMs: endMs);
+    final lastMonth = await db.monthPaidTotal(
+        now.month == 1 ? now.year - 1 : now.year, now.month == 1 ? 12 : now.month - 1);
     final monthly = await db.monthlyIncomeLast12();
-    final contrib = await db.customerContribution();
-    final summary = await db.paidVsPendingSummary();
-    // 报价总额需要读取全量报价记录后自行求和，避免在 DB 层新增聚合 SQL。
-    final quotes = await db.getQuotes();
+    final contrib = await db.customerContributionInRange(startMs, endMs);
+    final byType = await db.quotesByTypeInRange(startMs: startMs, endMs: endMs);
+    final byStatus = await db.incomeByProjectStatus(startMs, endMs);
     if (!mounted) return;
     setState(() {
+      _receivable = calcReceivableAmount(summary);
+      _paidTotal = paid < 0 ? 0 : paid;
+      _quoteTotal = quoteTotal < 0 ? 0 : quoteTotal;
+      _lastMonthIncome = lastMonth;
       _monthly = monthly;
       _contrib = contrib;
-      // 三种口径分开计算，互不影响：
-      _quoteTotal = calcTotalQuoteAmount(quotes);
-      _received = calcReceivedAmount(summary);
-      _receivable = calcReceivableAmount(summary);
+      _byType = byType;
+      _byStatus = byStatus;
       _loading = false;
     });
+  }
+
+  String _titleOf() {
+    final now = DateTime.now();
+    switch (_mode) {
+      case _RangeMode.month:
+        return '${now.year}年${now.month}月';
+      case _RangeMode.lastMonth:
+        final m = now.month == 1 ? 12 : now.month - 1;
+        final y = now.month == 1 ? now.year - 1 : now.year;
+        return '$y年$m月';
+      case _RangeMode.last12:
+        return '近12个月';
+      case _RangeMode.custom:
+        final f = NumberFormat('yyyy-MM-dd');
+        return '${f.format(_rStart)} 至 ${f.format(_rEnd)}';
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('收入统计')),
+      appBar: AppBar(title: const Text('统计看板')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -61,33 +133,100 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
               child: ListView(
                 padding: const EdgeInsets.only(top: 8, bottom: 32),
                 children: [
+                  _buildRangeSelector(),
+                  const SizedBox(height: 6),
                   _buildReceivableCard(),
                   const SizedBox(height: 6),
-                  _buildAmountOverviewCard(),
+                  _buildRangeSummaryCard(),
+                  if (_mode == _RangeMode.last12) ...[
+                    const SizedBox(height: 6),
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(18, 14, 18, 6),
+                      child: Text('近 12 个月收入',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textMain)),
+                    ),
+                    _MonthlyBarChart(data: _monthly),
+                  ],
                   const SizedBox(height: 6),
+                  _buildGroupSummary(),
                   const Padding(
-                    padding: EdgeInsets.fromLTRB(18, 14, 18, 6),
-                    child: Text('近 12 个月收入',
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textMain)),
+                    padding: EdgeInsets.fromLTRB(18, 12, 18, 4),
+                    child: Text(
+                      '口径说明：统计默认排除「草稿」「作废」状态的报价及报价模板；'
+                      '应收欠款为当前未回款存量，不随时间范围过滤。',
+                      style: TextStyle(
+                          fontSize: 11, color: AppTheme.textSub),
+                    ),
                   ),
-                  _MonthlyBarChart(data: _monthly),
-                  const SizedBox(height: 12),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(18, 14, 18, 6),
-                    child: Text('客户贡献排行',
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textMain)),
-                  ),
-                  _buildContributionCard(),
                 ],
               ),
             ),
     );
+  }
+
+  // 时间范围筛选条：本月 / 上月 / 近12个月 / 自定义
+  Widget _buildRangeSelector() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          for (final (m, label) in [
+            (_RangeMode.month, '本月'),
+            (_RangeMode.lastMonth, '上月'),
+            (_RangeMode.last12, '近12个月'),
+            (_RangeMode.custom, '自定义'),
+          ])
+            ChoiceChip(
+              label: Text(label),
+              selected: _mode == m,
+              onSelected: (_) {
+                if (_mode == m) return;
+                setState(() => _mode = m);
+                _load();
+              },
+              visualDensity: VisualDensity.compact,
+            ),
+          if (_mode == _RangeMode.custom)
+            TextButton.icon(
+              onPressed: _pickCustomRange,
+              icon: const Icon(Icons.date_range, size: 16),
+              label: Text(_titleOf(),
+                  style: const TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickCustomRange() async {
+    final now = DateTime.now();
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 10, 1),
+      lastDate: now,
+      initialDateRange: DateTimeRange(
+        start: _rStart.isBefore(_rEnd) ? _rStart : _rEnd,
+        end: _rEnd,
+      ),
+      helpText: '选择统计起止日期',
+      saveText: '确定',
+    );
+    if (range == null || !mounted) return;
+    setState(() {
+      _rStart = DateTime(range.start.year, range.start.month, range.start.day);
+      _rEnd = DateTime(range.end.year, range.end.month, range.end.day);
+    });
+    _load();
   }
 
   // 应收欠款独立高亮卡片：自由职业最关心「还有多少钱没收回来」，单独成块突出展示。
@@ -117,7 +256,9 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
           Row(
             children: [
               Icon(
-                cleared ? Icons.check_circle_outline : Icons.notifications_active_outlined,
+                cleared
+                    ? Icons.check_circle_outline
+                    : Icons.notifications_active_outlined,
                 size: 18,
                 color: Colors.white,
               ),
@@ -136,7 +277,6 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
                 color: Colors.white, fontSize: 30, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
-          // 业务口径说明：应收欠款 = 待收余额（部分收款或全款未收时的未回款金额）
           Text(
             cleared
                 ? '无未回款，所有收款均已结清'
@@ -148,12 +288,12 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
     );
   }
 
-  // 报价总金额 / 实际已收款 口径汇总卡片：区分「全部报价」「实际到手收入」两类业务口径。
-  Widget _buildAmountOverviewCard() {
-    final quoteTotal = _quoteTotal < 0 ? 0 : _quoteTotal;
-    final received = _received < 0 ? 0 : _received;
-    final receivedRatio =
-        quoteTotal <= 0 ? 0.0 : (received / quoteTotal).clamp(0.0, 1.0);
+  // 范围摘要卡：范围内实际收入 / 有效报价总额 + 与上月对比。
+  Widget _buildRangeSummaryCard() {
+    final delta = _paidTotal - _lastMonthIncome;
+    final deltaRatio = _lastMonthIncome <= 0
+        ? 0.0
+        : (delta / _lastMonthIncome).clamp(-1.0, 1.0);
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Padding(
@@ -161,73 +301,172 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('报价与收入口径',
-                style: TextStyle(
+            Text('$_rangeTitle 统计',
+                style: const TextStyle(
                     fontSize: 15, fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
             Row(
               children: [
-                // 口径一：全部报价总金额（含税一口价 / 详细报价合计）
-                _Legend(
-                    color: AppTheme.primary,
-                    label: '全部报价 ¥${_fmt.format(quoteTotal / 100)}'),
-                const SizedBox(width: 16),
-                // 口径二：累计实际到账收入
-                _Legend(
+                Expanded(
+                  child: _Metric(
                     color: AppTheme.accent,
-                    label: '已收入 ¥${_fmt.format(received / 100)}'),
+                    label: '$_rangeTitle 已收入',
+                    value: '¥${_fmt.format(_paidTotal / 100)}',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _Metric(
+                    color: AppTheme.primary,
+                    label: '$_rangeTitle 有效报价',
+                    value: '¥${_fmt.format(_quoteTotal / 100)}',
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: receivedRatio,
-                minHeight: 10,
-                backgroundColor: AppTheme.primary.withValues(alpha: 0.15),
-                color: AppTheme.accent,
+            if (_mode == _RangeMode.month ||
+                _mode == _RangeMode.lastMonth) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(
+                    delta >= 0
+                        ? Icons.trending_up
+                        : Icons.trending_down,
+                    size: 16,
+                    color: delta >= 0
+                        ? const Color(0xFF27AE60)
+                        : const Color(0xFFE74C3C),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _mode == _RangeMode.month
+                        ? '较上月 ${delta >= 0 ? '+' : ''}'
+                            '${_fmt.format(delta / 100)}'
+                            '（${(deltaRatio * 100).toStringAsFixed(1)}%）'
+                        : '上月收入较本月 ${delta >= 0 ? '+' : ''}'
+                            '${_fmt.format(delta / 100)}',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: delta >= 0
+                            ? const Color(0xFF27AE60)
+                            : const Color(0xFFE74C3C),
+                        fontWeight: FontWeight.w600),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              quoteTotal <= 0
-                  ? '暂无报价数据，先去「报价」页创建报价单'
-                  : '已收入占报价总额 ${(receivedRatio * 100).toStringAsFixed(1)}%',
-              style: const TextStyle(color: AppTheme.textSub, fontSize: 12),
-            ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _buildContributionCard() {
-    if (_contrib.isEmpty) {
+  // 分类汇总：维度切换 + 列表。
+  Widget _buildGroupSummary() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(18, 14, 18, 6),
+          child: Text('分类汇总',
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textMain)),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Wrap(
+            spacing: 8,
+            children: [
+              for (final (g, label) in [
+                (_GroupMode.customer, '按客户'),
+                (_GroupMode.quoteType, '按报价类型'),
+                (_GroupMode.projectStatus, '按项目阶段'),
+              ])
+                ChoiceChip(
+                  label: Text(label),
+                  selected: _group == g,
+                  onSelected: (_) => setState(() => _group = g),
+                  visualDensity: VisualDensity.compact,
+                ),
+            ],
+          ),
+        ),
+        _buildGroupList(),
+      ],
+    );
+  }
+
+  Widget _buildGroupList() {
+    switch (_group) {
+      case _GroupMode.customer:
+        return _buildRankList(
+          rows: _contrib,
+          emptyText: '所选时间范围内还没有收款记录',
+        );
+      case _GroupMode.quoteType:
+        final rows = [
+          for (final e in _byType)
+            {
+              'name': ((e['type'] as String?) == 'simple' ? '简单报价' : '详细报价'),
+              'total': (e['total'] as num?)?.toInt() ?? 0,
+            },
+        ];
+        return _buildRankList(
+          rows: rows,
+          emptyText: '所选时间范围内还没有有效报价',
+        );
+      case _GroupMode.projectStatus:
+        final rows = [
+          for (final e in _byStatus)
+            {
+              'name': _statusLabel(e['status']),
+              'total': (e['total'] as num?)?.toInt() ?? 0,
+            },
+        ];
+        return _buildRankList(
+          rows: rows,
+          emptyText: '所选时间范围内还没有收款记录',
+        );
+    }
+  }
+
+  String _statusLabel(Object? status) {
+    if (status == null) return '其他 / 已删除项目';
+    final idx = (status as num).toInt();
+    if (idx >= 0 && idx < ProjectStatus.values.length) {
+      return ProjectStatus.values[idx].label;
+    }
+    return '其他';
+  }
+
+  Widget _buildRankList({
+    required List<Map<String, Object?>> rows,
+    required String emptyText,
+  }) {
+    if (rows.isEmpty) {
       return const Card(
+        margin: EdgeInsets.symmetric(horizontal: 16),
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Center(
-            child: Text('还没有收款记录，暂无客户贡献数据',
+            child: Text('暂无数据',
                 style: TextStyle(color: AppTheme.textSub)),
           ),
         ),
       );
     }
-    final maxTotal =
-        (_contrib.first['total'] as num?)?.toInt() ?? 1;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         children: [
-          for (int i = 0; i < _contrib.length; i++)
+          for (int i = 0; i < rows.length; i++)
             _ContribRow(
               rank: i + 1,
-              name: (_contrib[i]['customer_name'] as String?) ?? '',
-              total: (_contrib[i]['total'] as num?)?.toInt() ?? 0,
-              ratio: maxTotal <= 0
-                  ? 0.0
-                  : (((_contrib[i]['total'] as num?)?.toInt() ?? 0) /
-                      maxTotal),
+              name: (rows[i]['name'] as String?) ?? '',
+              total: (rows[i]['total'] as num?)?.toInt() ?? 0,
             ),
         ],
       ),
@@ -235,24 +474,40 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
   }
 }
 
-class _Legend extends StatelessWidget {
+// 单指标数值展示
+class _Metric extends StatelessWidget {
   final Color color;
   final String label;
-  const _Legend({required this.color, required this.label});
+  final String value;
+  const _Metric({
+    required this.color,
+    required this.label,
+    required this.value,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 6),
-        Text(label, style: const TextStyle(fontSize: 13)),
-      ],
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(fontSize: 11, color: AppTheme.textSub)),
+          const SizedBox(height: 4),
+          Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: color)),
+        ],
+      ),
     );
   }
 }
@@ -261,12 +516,10 @@ class _ContribRow extends StatelessWidget {
   final int rank;
   final String name;
   final int total;
-  final double ratio;
   const _ContribRow({
     required this.rank,
     required this.name,
     required this.total,
-    required this.ratio,
   });
 
   @override
@@ -294,26 +547,11 @@ class _ContribRow extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 14)),
-                const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: LinearProgressIndicator(
-                    value: ratio.clamp(0.0, 1.0),
-                    minHeight: 6,
-                    backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
-                    color: AppTheme.primary,
-                  ),
-                ),
-              ],
-            ),
+            child: Text(name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600, fontSize: 14)),
           ),
           const SizedBox(width: 12),
           Text('¥${fmt.format(total / 100)}',
@@ -411,25 +649,16 @@ class _MonthlyBarChart extends StatelessWidget {
 }
 
 // ---- 业务统计口径计算（纯函数，便于单元测试与复用）----
-// 三个口径互相独立：报价总额、实际已收、应收欠款，单位均为「分」。
-// 所有入参负数一律按 0 处理，防止脏数据扭曲统计结果。
+// 统计看板口径：草稿/作废报价不参与（已由 DB 层过滤），待收余额即应收欠款。
+// 数值非法（负数）一律按 0 处理，防止脏数据扭曲统计结果。
 
-// 口径一：全部报价总金额（分）。遍历全部报价记录求和，负数视为非法值按 0 计。
-int calcTotalQuoteAmount(List<Quote> quotes) {
-  var total = 0;
-  for (final q in quotes) {
-    total += q.total < 0 ? 0 : q.total;
-  }
-  return total;
-}
-
-// 口径二：实际已收款（分）。负数兜底置 0。
+// 实际已收款（分）。负数兜底置 0。
 int calcReceivedAmount(Map<String, int> summary) {
   final paid = summary['paid'] ?? 0;
   return paid < 0 ? 0 : paid;
 }
 
-// 口径三：应收欠款（分）。按业务状态区分：
+// 应收欠款（分）。按业务状态区分：
 //  - 待收余额为 0：全款已结清，无应收欠款；
 //  - 待收余额 > 0：部分收款或全款未收，应收欠款即为待收余额；
 //  - 数值非法（<0）一律兜底为 0。
