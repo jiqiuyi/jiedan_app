@@ -82,6 +82,7 @@ flutter build apk --release   # 产物：build/app/outputs/flutter-apk/app-relea
 | v1.16.0 | 反馈回复闭环：作者可在电脑端回复反馈提交者，用户可在 App 「我的反馈」看到作者回复——后端 feedback 记录新增 reply / repliedAt 字段；新增 POST /api/feedback/<id>/reply（管理 token / env ADMIN_TOKEN 鉴权，空回复 400）、GET /api/feedback/all（作者查全部）、GET /api/feedback/mine 扩展返回回复字段；内置 GET /admin 极简管理页（输入管理 token 查看全部反馈并回复）；App「我的反馈」列表在线合并作者回复（下拉刷新 + 顶部同步按钮），离线展示本地并标注「未同步」，feedbacks 表升级 v12（server_id / reply / replied_at / synced） |
 | v1.17.0 | 作者后台数据看板（仅后端 + 管理页，无 App 改动）：新增 GET /api/admin/stats（管理 token 鉴权，未授权 401）聚合经营统计——总用户 / 今日新增注册（按 createdAt 当天，服务器本地时区）/ 付费用户数（is_pro 为真 ∪ 存在 status=paid 订单的 uid 去重）/ 今日收入 / 总收入（口径与支付回调一致，基于 paid 订单 amount 汇总）/ 近 7 日新增趋势 / VIP 用户数 / 邀请注册数 / 反馈总数与待回复数 / 存储模式分布（后端未持久化 StorageMode 字段，available=false 并说明以 server 同步过的用户数为下限参考）；GET /admin 管理页新增「数据看板」区块，输入管理 token 后以大数字卡片展示关键指标 |
 | v1.18.0 | 支付闭环与管理员体系：客户点「开通专业版」→ 随机金额（9.00~11.00）拉起微信/支付宝付款 → 秒开通，后端订单对账（通知监听抓金额+时间匹配，未匹配进抽查单）；用户 role 字段 + 管理后台（仅管理员可见数据看板/到账监听状态/订单复核）；客户页新建入口移回右下角 FAB（主题蓝）、注册页手机号 11 位校验、到账核对改用系统权威判定 |
+| v1.19.0 | 报价单 PDF 导出：简单 / 详细报价均支持一键导出 PDF（内置中文字体），报价单含客户 / 关联项目 / 编号 / 日期基本信息表、明细表格与金额块（小计 / 税费 / 合计）、备注，支持自定义落款（个人/工作室名称 + 联系方式，本地持久化）；新增 pdf / printing 依赖，版本号升至 1.19.0+26 |
 
 ## 设计要点（踩坑沉淀）
 
