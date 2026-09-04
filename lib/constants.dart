@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.20.1';
+  static const String version = '1.21.0';
 
   // ---- 云端后端 ----
   // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）存储方式
@@ -49,7 +49,8 @@ class AppConfig {
   // v10：invoices（发票）表废弃，替换为 contracts（合同/协议）表
   // v11：数据存储方式改造 —— 核心表新增 updated_at 列 + sync_tombstones 墓碑表
   // v12：反馈回复闭环 —— feedbacks 表新增 server_id / reply / replied_at / synced
-  static const int dbVersion = 12;
+  // v13：客户档案补全（行业/来源/所在地/最近联系时间）+ 报价状态流转 + 报价模板
+  static const int dbVersion = 13;
 
   // ---- 数据存储方式（v1.14.0）----
   // 存储方式的持久化键（settings 表）
@@ -166,6 +167,30 @@ enum ContractStatus {
         return '已签';
       case ContractStatus.done:
         return '完成';
+    }
+  }
+}
+
+/// 报价状态（v1.21.0 报价状态流转）。
+enum QuoteStatus {
+  draft, // 草稿
+  sent, // 已发送
+  confirmed, // 客户确认
+  deal, // 已成交
+  voided; // 已作废
+
+  String get label {
+    switch (this) {
+      case QuoteStatus.draft:
+        return '草稿';
+      case QuoteStatus.sent:
+        return '已发送';
+      case QuoteStatus.confirmed:
+        return '客户确认';
+      case QuoteStatus.deal:
+        return '已成交';
+      case QuoteStatus.voided:
+        return '已作废';
     }
   }
 }
