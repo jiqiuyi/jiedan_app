@@ -1070,6 +1070,91 @@ class AppDb {
     return {'paid': paid, 'pending': pending};
   }
 
+  // v1.22.0 有效报价总额（分）：仅统计 已发送/客户确认/已成交 三个业务态，
+  // 草稿(draft)与作废(voided)不参与收入统计，模板(is_template=1)也不参与。
+  // 可选时间范围（按报价创建时间 created_at，startMs/endMs 传 0 表示不限）。
+  Future<int> quotesTotalInRange({int startMs = 0, int endMs = 0}) async {
+    final d = await db;
+    final cond = StringBuffer('WHERE is_template=0 AND status IN (?,?,?)');
+    final args = <Object?>[
+      QuoteStatus.sent.index,
+      QuoteStatus.confirmed.index,
+      QuoteStatus.deal.index,
+    ];
+    if (startMs > 0) {
+      cond.write(' AND created_at>=?');
+      args.add(startMs);
+    }
+    if (endMs > 0) {
+      cond.write(' AND created_at<?');
+      args.add(endMs);
+    }
+    final rows = await _guard(() => d.rawQuery(
+          'SELECT COALESCE(SUM(total),0) AS t FROM quotes $cond',
+          args,
+        ));
+    return (rows.first['t'] as num?)?.toInt() ?? 0;
+  }
+
+  // v1.22.0 按报价类型分类汇总有效报价金额（简单 simple / 详细 full），
+  // 分类汇总口径同 quotesTotalInRange：排除草稿/作废/模板。
+  Future<List<Map<String, Object?>>> quotesByTypeInRange(
+      {int startMs = 0, int endMs = 0}) async {
+    final d = await db;
+    final cond = StringBuffer('is_template=0 AND status IN (?,?,?)');
+    final args = <Object?>[
+      QuoteStatus.sent.index,
+      QuoteStatus.confirmed.index,
+      QuoteStatus.deal.index,
+    ];
+    if (startMs > 0) {
+      cond.write(' AND created_at>=?');
+      args.add(startMs);
+    }
+    if (endMs > 0) {
+      cond.write(' AND created_at<?');
+      args.add(endMs);
+    }
+    return _guard(() => d.rawQuery(
+          'SELECT quote_type AS type, COALESCE(SUM(total),0) AS total '
+          'FROM quotes WHERE $cond GROUP BY quote_type',
+          args,
+        ));
+  }
+
+  // v1.22.0 指定时间段内收入按客户分类汇总（分）。
+  // 基于 payments.paid_at 过滤，客户归属沿用「收款→项目→客户」链路。
+  Future<List<Map<String, Object?>>> customerContributionInRange(
+      int startMs, int endMs) async {
+    final d = await db;
+    return _guard(() => d.rawQuery('''
+      SELECT COALESCE(c.name, '未关联客户') AS customer_name,
+             COALESCE(SUM(p.amount),0) AS total
+      FROM payments p
+      LEFT JOIN projects pr ON pr.id = p.project_id
+      LEFT JOIN customers c ON c.id = pr.customer_id
+      WHERE p.paid_at>=? AND p.paid_at<?
+      GROUP BY COALESCE(c.name, '未关联客户')
+      ORDER BY total DESC
+    ''', [startMs, endMs]));
+  }
+
+  // v1.22.0 指定时间段内收入按项目阶段分类汇总（分）。
+  // 项目阶段取 projects.status（接单/制作中/待收尾款/完结），已删除项目归「其他」，
+  // 作为统计看板「按项目」分类汇总维度（项目目前无独立类型字段）。
+  Future<List<Map<String, Object?>>> incomeByProjectStatus(
+      int startMs, int endMs) async {
+    final d = await db;
+    return _guard(() => d.rawQuery('''
+      SELECT pr.status AS status, COALESCE(SUM(p.amount),0) AS total
+      FROM payments p
+      LEFT JOIN projects pr ON pr.id = p.project_id
+      WHERE p.paid_at>=? AND p.paid_at<?
+      GROUP BY pr.status
+      ORDER BY total DESC
+    ''', [startMs, endMs]));
+  }
+
   // 对账汇总：每个项目 约定总额/已收/待收（均分）
   Future<List<Map<String, Object?>>> reconciliationSummary() async {
     final d = await db;
