@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.19.1';
+  static const String version = '1.20.0';
 
   // ---- 云端后端 ----
   // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）存储方式
@@ -56,6 +56,12 @@ class AppConfig {
   static const String storageModeKey = 'storage_mode';
   // 同步水位键（settings 表）：记录上次成功拉取增量后服务器时间戳
   static const String syncLwmKey = 'sync_lwm';
+  // 同步冲突处理策略键（settings 表，v1.20.0）：
+  //   auto_newest 自动保留时间较新一方；ask_me 有冲突时先由用户选择。
+  static const String syncConflictPolicyKey = 'sync_conflict_policy';
+  // 用户选择「保留本地」的忽略集键（settings 表）：JSON Snapshot
+  // {"<表名>:<云端id>": <当时服务器时间戳>}；命中时该轮冲突不再重复提示。
+  static const String syncKeepLocalKey = 'sync_keep_local';
 
   // ---- 钱包 / 提现 ----
   // 提现账户保存键（settings）：值为 JSON {"method":0,"name":"","no":""}
