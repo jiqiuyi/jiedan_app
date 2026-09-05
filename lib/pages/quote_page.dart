@@ -447,6 +447,87 @@ class _QuotePageState extends State<QuotePage>
     ));
   }
 
+  /// 第17批：基于 quote_id 精确联动——从报价单查看已收流水与已收合计。
+  Future<void> _showQuoteFlows(Quote q) async {
+    final id = q.id;
+    if (id == null) return;
+    final total = await AppDb.instance.quotePaidTotal(id);
+    final flows = await AppDb.instance.paymentsByQuote(id);
+    if (!mounted) return;
+    final fmt = NumberFormat('#,##0.00');
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.receipt_long_outlined,
+                  color: AppTheme.primary),
+              title: Text('已收合计  ¥${fmt.format(total / 100)}',
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w700)),
+              subtitle: Text('报价：${q.title}',
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: flows.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('该报价单暂无关联收款流水',
+                          style: TextStyle(color: AppTheme.textSub)),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: flows.length,
+                      separatorBuilder: (_, _) =>
+                          const Divider(height: 1, indent: 16, endIndent: 16),
+                      itemBuilder: (_, i) {
+                        final f = flows[i];
+                        final amt =
+                            ((f['amount'] as num?)?.toInt() ?? 0);
+                        final t =
+                            ((f['type'] as num?)?.toInt() ?? 0);
+                        final fl =
+                            ((f['type_label'] as String?)?.trim() ?? '');
+                        final typeName = fl.isNotEmpty
+                            ? fl
+                            : (t >= 0 && t < PayType.values.length
+                                ? PayType.values[t].label
+                                : '收款');
+                        final paidAt = DateTime.fromMillisecondsSinceEpoch(
+                            ((f['paid_at'] as num?)?.toInt() ?? 0));
+                        final note =
+                            ((f['note'] as String?)?.trim() ?? '');
+                        final reconciled =
+                            ((f['reconciled'] as num?)?.toInt() ?? 0) == 1;
+                        return ListTile(
+                          dense: true,
+                          title: Text(
+                              '+${fmt.format(amt / 100)}  $typeName'
+                              '${note.isEmpty ? '' : '  ·  $note'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                          trailing: Text(
+                              reconciled ? '已对账' : '未对账',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: reconciled
+                                      ? AppTheme.accent
+                                      : AppTheme.warn)),
+                          subtitle: Text(
+                              DateFormat('yyyy-MM-dd HH:mm').format(paidAt)),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// 报价确认成交转正式项目：需关联客户（无则弹窗选/建客户），
   /// 创建项目后回写报价的 projectId 关联
   Future<int?> _quoteToProject(Quote q) async {
@@ -752,6 +833,14 @@ class _QuotePageState extends State<QuotePage>
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     ListTile(
+                                      leading: const Icon(
+                                          Icons.account_balance_wallet_outlined,
+                                          color: AppTheme.accent),
+                                      title: const Text('查看已收流水'),
+                                      onTap: () =>
+                                          Navigator.pop(sctx, 'pay_flows'),
+                                    ),
+                                    ListTile(
                                       leading: const Icon(Icons.trending_up,
                                           color: AppTheme.accent),
                                       title: const Text('转为待收款'),
@@ -786,7 +875,11 @@ class _QuotePageState extends State<QuotePage>
                               ),
                             );
                             if (action == null || !ctx.mounted) return;
-                            if (action == 'to_pending') {
+                            if (action == 'pay_flows') {
+                              await _showQuoteFlows(q);
+                              if (!ctx.mounted) return;
+                              Navigator.pop(ctx);
+                            } else if (action == 'to_pending') {
                               await _quoteToPendingCollection(q);
                               if (!ctx.mounted) return;
                               Navigator.pop(ctx);
