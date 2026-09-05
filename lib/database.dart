@@ -251,7 +251,9 @@ class AppDb {
             created_at INTEGER,
             updated_at INTEGER,
             due_date INTEGER DEFAULT 0,
-            remind_at INTEGER DEFAULT 0
+            remind_at INTEGER DEFAULT 0,
+            progress INTEGER DEFAULT 0,
+            deliver_date INTEGER DEFAULT 0
           )
         ''');
         await db.execute('''
@@ -323,6 +325,7 @@ class AppDb {
       if (oldVersion < 12) await _migrateToV12(db);
       if (oldVersion < 13) await _migrateToV13(db);
       if (oldVersion < 14) await _migrateToV14(db);
+      if (oldVersion < 15) await _migrateToV15(db);
       await _appendMigrationLog(db, '成功 v$oldVersion -> v$newVersion @ $now()');
     } catch (e, st) {
       // 记录失败日志后抛出统一中文异常；平台事务回滚后数据库保持旧版本与全部数据，
@@ -442,7 +445,8 @@ class AppDb {
         tax_include INTEGER DEFAULT 1,
         status INTEGER DEFAULT 0,
         is_template INTEGER DEFAULT 0,
-        updated_at INTEGER
+        updated_at INTEGER,
+        image_path TEXT
       )
     ''');
   }
@@ -625,6 +629,23 @@ class AppDb {
         'CREATE INDEX IF NOT EXISTS idx_pending_collections_project ON pending_collections(project_id)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_milestones_project ON milestones(project_id)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_contracts_project ON contracts(project_id)');
+  }
+
+  // v15 迁移（v1.24.0）：任务/项目跟进 + 报价参考图。
+  // projects 补 progress（进度 %）/ deliver_date（交付时间）；quotes 补 image_path（本地参考图路径，
+  // 业务数据不上传）。均用 PRAGMA table_info 探测后 ALTER，旧库跨版本升级不重删不丢数。
+  Future<void> _migrateToV15(Database db) async {
+    final projCols = await db.rawQuery('PRAGMA table_info(projects)');
+    if (!projCols.any((c) => c['name'] == 'progress')) {
+      await db.execute('ALTER TABLE projects ADD COLUMN progress INTEGER DEFAULT 0');
+    }
+    if (!projCols.any((c) => c['name'] == 'deliver_date')) {
+      await db.execute('ALTER TABLE projects ADD COLUMN deliver_date INTEGER DEFAULT 0');
+    }
+    final quoteCols = await db.rawQuery('PRAGMA table_info(quotes)');
+    if (!quoteCols.any((c) => c['name'] == 'image_path')) {
+      await db.execute('ALTER TABLE quotes ADD COLUMN image_path TEXT');
+    }
   }
 
   // v7 迁移：payments 补 type_label 列（存量置空）+ 新增 quotes 表。
@@ -1732,7 +1753,7 @@ const Map<String, Set<String>> expectedColumns = {
   },
   'projects': {
     'id', 'customer_id', 'title', 'status', 'amount_total', 'created_at',
-    'updated_at', 'due_date', 'remind_at',
+    'updated_at', 'due_date', 'remind_at', 'progress', 'deliver_date',
   },
   'payments': {
     'id', 'project_id', 'amount', 'type', 'type_label', 'paid_at', 'note',
@@ -1758,7 +1779,7 @@ const Map<String, Set<String>> expectedColumns = {
   'quotes': {
     'id', 'project_id', 'customer_id', 'title', 'tax_rate', 'lines_json',
     'total', 'created_at', 'quote_type', 'note', 'tax_include', 'status',
-    'is_template', 'updated_at',
+    'is_template', 'updated_at', 'image_path',
   },
   'pending_collections': {
     'id', 'project_id', 'quote_id', 'customer_id', 'title', 'amount',

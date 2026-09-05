@@ -141,6 +141,127 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     }
   }
 
+  // ================= 项目跟进：进度 % / 交付时间（v1.24.0） =================
+  Future<void> _editProgress() async {
+    var progress = _project.progress;
+    var deliverDate = _project.deliverDate;
+    final progressCtrl = TextEditingController(text: progress.toString());
+    final fmt = DateFormat('yyyy-MM-dd');
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => StatefulBuilder(
+        builder: (dctx, setDlg) => AlertDialog(
+          title: const Text('项目进度'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('进度（%）', style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: Slider(
+                      value: progress.toDouble().clamp(0, 100),
+                      min: 0,
+                      max: 100,
+                      divisions: 100,
+                      label: '$progress%',
+                      onChanged: (v) {
+                        setDlg(() {
+                          progress = v.round();
+                          progressCtrl.text = progress.toString();
+                        });
+                      },
+                    ),
+                  ),
+                  SizedBox(
+                    width: 76,
+                    child: TextField(
+                      controller: progressCtrl,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.center,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        suffixText: '%',
+                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                      ),
+                      onChanged: (v) {
+                        final n = int.tryParse(v);
+                        setDlg(() => progress = (n ?? 0).clamp(0, 100));
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('交付时间', style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final now = DateTime.now();
+                      final initial = deliverDate > 0
+                          ? DateTime.fromMillisecondsSinceEpoch(deliverDate)
+                          : DateTime(now.year, now.month, now.day);
+                      final picked = await showDatePicker(
+                        context: dctx,
+                        initialDate: initial,
+                        firstDate: DateTime(now.year - 1, 1, 1),
+                        lastDate: DateTime(now.year + 5, 12, 31),
+                        helpText: '选择交付时间',
+                      );
+                      if (picked != null) setDlg(() => deliverDate = picked.millisecondsSinceEpoch);
+                    },
+                    icon: const Icon(Icons.event_outlined, size: 18),
+                    label: Text(
+                      deliverDate > 0 ? fmt.format(DateTime.fromMillisecondsSinceEpoch(deliverDate)) : '未设置',
+                    ),
+                  ),
+                  if (deliverDate > 0)
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.close, size: 16, color: AppTheme.textSub),
+                      onPressed: () => setDlg(() => deliverDate = 0),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Text('列表会展示进度条；交付时间临近或超期时将标记提醒。',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dctx, false), child: const Text('取消')),
+            FilledButton(
+              onPressed: () {
+                final n = int.tryParse(progressCtrl.text.trim());
+                if (n != null) progress = n.clamp(0, 100);
+                Navigator.pop(dctx, true);
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+    progressCtrl.dispose();
+    if (saved != true || !mounted) return;
+    final updated = _project.copyWith(
+      progress: progress,
+      deliverDate: deliverDate,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    await AppDb.instance.updateProject(updated);
+    Ticker.ping();
+    if (!mounted) return;
+    setState(() => _project = updated);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('项目进度已更新')),
+    );
+  }
+
   // ================= 里程碑 / 阶段管理（v1.10.0） =================
   Future<void> _addMilestone() async {
     final nameCtrl = TextEditingController();
@@ -267,6 +388,55 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
   }
 
   // ================= 里程碑 / 催款提醒 UI =================
+  Widget _buildProgressBody() {
+    final hasDeliver = _project.deliverDate > 0;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final isOverdue = hasDeliver && _project.deliverDate < nowMs;
+    final isNear =
+        hasDeliver && !isOverdue && (_project.deliverDate - nowMs) < 3 * 24 * 3600 * 1000;
+    final deliverColor = isOverdue ? AppTheme.danger : (isNear ? AppTheme.warn : AppTheme.textMain);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text('进度', style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
+            const Spacer(),
+            Text('${_project.progress}%',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+          ],
+        ),
+        const SizedBox(height: 6),
+        LinearProgressIndicator(
+          value: (_project.progress / 100).clamp(0.0, 1.0),
+          minHeight: 6,
+          backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
+          color: AppTheme.primary,
+          borderRadius: BorderRadius.circular(3),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            const Icon(Icons.event_outlined, size: 16, color: AppTheme.textSub),
+            const SizedBox(width: 6),
+            Text(
+              hasDeliver
+                  ? '交付时间：${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(_project.deliverDate))}${isOverdue ? '（已超期）' : (isNear ? '（临近）' : '')}'
+                  : '未设置交付时间',
+              style: TextStyle(fontSize: 13, color: deliverColor),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: _editProgress,
+          icon: const Icon(Icons.tune, size: 18),
+          label: const Text('编辑进度 / 交付'),
+        ),
+      ],
+    );
+  }
+
   Widget _buildMilestoneBody() {
     if (_milestones.isEmpty) {
       return const Row(
@@ -463,6 +633,21 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: _buildMilestoneBody(),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
+                  child: Row(
+                    children: [
+                      const Expanded(child: Text('项目进度 / 交付', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+                      const Icon(Icons.flag_outlined, size: 18, color: AppTheme.textSub),
+                    ],
+                  ),
+                ),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: _buildProgressBody(),
                   ),
                 ),
                 Padding(
