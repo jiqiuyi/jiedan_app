@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../api_client.dart';
 import '../app_state.dart';
+import '../database.dart';
 import '../services/backup_service.dart';
 import '../theme.dart';
 
@@ -179,8 +180,105 @@ class _DataManagementPageState extends State<DataManagementPage> {
               onTap: _import,
             ),
           ),
+          const SizedBox(height: 12),
+          // ---- 数据库自检（v1.23.0）----
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.health_and_safety_outlined,
+                  color: AppTheme.primary),
+              title: const Text('数据库自检'),
+              subtitle: const Text('检查表结构完整性与数据可恢复性'),
+              trailing: const Icon(Icons.chevron_right, color: AppTheme.textSub),
+              onTap: _healthCheck,
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  // 数据库自检（v1.23.0）：只读检查表结构完整性 / 库文件完整性 / 外键引用，
+  // 并给出数据可恢复性提示，全程不修改任何数据。
+  Future<void> _healthCheck() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final report = await AppDb.instance.healthCheck();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(report.healthy ? '数据库自检通过' : '数据库自检发现异常'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _row('检查时间', _fmtTime(report.checkedAt)),
+                _row('文件完整性',
+                    report.integrityCheck == 'ok' ? '正常' : '异常：${report.integrityCheck}'),
+                _row('外键引用校验',
+                    report.foreignKeyIssues.isEmpty
+                        ? '正常'
+                        : '发现 ${report.foreignKeyIssues.length} 处问题'),
+                _row('表结构完整性', report.tables.isEmpty
+                    ? '全部完整'
+                    : '${report.tables.length} 张表异常'),
+                _row('数据量', '共 ${report.totalRows} 条记录'),
+                if (report.tables.isNotEmpty)
+                  for (final t in report.tables)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text('• ${t.table}：${t.describe}',
+                          style: const TextStyle(color: AppTheme.danger)),
+                    ),
+                const SizedBox(height: 12),
+                Text(
+                  report.healthy
+                      ? '数据完整可正常使用。为防手机丢失 / 卸载清空，建议定期到「导出备份」将数据另存到网盘或微信。'
+                      : '检测到异常，当前不影响继续使用；为稳妥建议先「导出备份」，必要时可在本页做一次恢复演练，并联系开发者排查。',
+                  style: const TextStyle(
+                      color: AppTheme.textSub, fontSize: 13, height: 1.5),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      _toast('自检失败：$e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Widget _row(String key, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 118,
+            child: Text(key,
+                style: const TextStyle(color: AppTheme.textSub, fontSize: 14)),
+          ),
+          Expanded(
+            child: Text(value, style: const TextStyle(fontSize: 14)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmtTime(DateTime t) {
+    String p(int n) => n.toString().padLeft(2, '0');
+    return '${t.year}-${p(t.month)}-${p(t.day)} ${p(t.hour)}:${p(t.minute)}';
   }
 }

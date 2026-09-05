@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app_state.dart';
+import 'database.dart';
 import 'theme.dart';
 import 'pages/home_shell.dart';
 import 'services/error_reporter.dart';
@@ -36,6 +37,9 @@ Future<void> main() async {
     // 启动后静默核对一次到账记录（失败进重试队列，不阻塞启动）
     unawaited(PayNoticeReporter.instance.retryPending());
     unawaited(PayNoticeReporter.instance.uploadPending());
+    // 启动后静默执行一次数据库自检（表结构完整性 / 数据可恢复性），结果留痕，
+    // 可在「数据管理」页查看；失败不阻断启动。
+    unawaited(AppDb.instance.backgroundHealthCheck());
   }, (Object error, StackTrace stack) {
     ErrorReporter.instance.logError('zone', error, stack);
     ErrorReporter.instance.notify();
