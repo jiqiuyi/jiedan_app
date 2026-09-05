@@ -53,7 +53,10 @@ class AppConfig {
   // v12：反馈回复闭环 —— feedbacks 表新增 server_id / reply / replied_at / synced
   // v13：客户档案补全（行业/来源/所在地/最近联系时间）+ 报价状态流转 + 报价模板
   // v14：迁移机制完善（事务+日志+降级保护），并为高频查询建索引（CREATE INDEX IF NOT EXISTS，纯增量不触碰数据）
-  static const int dbVersion = 16;
+  // v15：报价/收款等业务增强（历史遗留，见 database._migrateToV15）
+  // v16：第17批 收款对账 —— payments 补 reconciled/quote_id 两列
+  // v17：第15批 订阅裂变 —— 新增 subscription_orders 订阅订单表（本地闭环/兑换码/邀请送月）
+  static const int dbVersion = 17;
 
   // ---- 数据存储方式（v1.14.0）----
   // 存储方式的持久化键（settings 表）

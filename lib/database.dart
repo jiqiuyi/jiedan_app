@@ -284,6 +284,7 @@ class AppDb {
         await _createPendingCollections(db);
         await _createMilestones(db);
         await _createContracts(db);
+        await _createSubscriptionOrders(db);
       },
       // 逐版本迁移（if(oldVersion<X) 保证老用户数据不丢、每个版本只补差量）：
       // 新增未来版本时，只需在下方追加 if(oldVersion<N+1){ await _migrateToVN+1(db); }，
@@ -329,6 +330,7 @@ class AppDb {
       if (oldVersion < 14) await _migrateToV14(db);
       if (oldVersion < 15) await _migrateToV15(db);
       if (oldVersion < 16) await _migrateToV16(db);
+      if (oldVersion < 17) await _migrateToV17(db);
       await _appendMigrationLog(db, '成功 v$oldVersion -> v$newVersion @ $now()');
     } catch (e, st) {
       // 记录失败日志后抛出统一中文异常；平台事务回滚后数据库保持旧版本与全部数据，
@@ -663,6 +665,37 @@ class AppDb {
     }
     if (!cols.any((c) => c['name'] == 'quote_id')) {
       await db.execute('ALTER TABLE payments ADD COLUMN quote_id INTEGER');
+    }
+  }
+
+  // v17 建表：subscription_orders（第15批 订阅订单表，过渡期纯本地闭环）。
+  // 记录订阅订单/兑换码激活/邀请送月三类记录，预留云端同步字段 synced / ref_no。
+  Future<void> _createSubscriptionOrders(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS subscription_orders(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        phone TEXT,
+        plan_key TEXT,
+        plan_name TEXT,
+        amount INTEGER DEFAULT 0, -- 金额单位：分（兑换码/邀请奖励为 0）
+        channel TEXT, -- payment 购买 / redeem 兑换码 / invite 邀请送月
+        status TEXT, -- pending 待确认 / paid 已开通 / granted 已发放
+        ref_no TEXT, -- 云端订单号 / 兑换码 / 邀请批次（预留）
+        synced INTEGER DEFAULT 0, -- 云端同步标记（0 未同步 / 1 已同步，预留）
+        created_at INTEGER,
+        updated_at INTEGER
+      )
+    ''');
+  }
+
+  // v17 迁移（第15批 订阅裂变）：新增 subscription_orders 表。
+  // 幂等：PRAGMA table_info 探测表不存在才 CREATE（兼容 v16 老用户直接升级，
+  // 以及 CREATE TABLE IF NOT EXISTS 的双重保险；新装走 onCreate 已同步建表）。
+  Future<void> _migrateToV17(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(subscription_orders)');
+    if (cols.isEmpty) {
+      await _createSubscriptionOrders(db);
     }
   }
 
@@ -1662,6 +1695,71 @@ class AppDb {
   Future<String?> getAliQrPath() => getSetting('ali_qr_path');
   Future<void> setAliQrPath(String path) => setSetting('ali_qr_path', path);
 
+  // ---------- 第15批 订阅订单（subscription_orders，过渡期本地闭环）----------
+  // 订阅渠道（channel）与状态（status）常量。
+  static const String subChannelPayment = 'payment'; // 购买（手动收款上报）
+  static const String subChannelRedeem = 'redeem'; // 兑换码激活
+  static const String subChannelInvite = 'invite'; // 邀请送月
+  static const String subStatusPending = 'pending'; // 待确认（已提交待人工核）
+  static const String subStatusPaid = 'paid'; // 已开通（已确认到账）
+  static const String subStatusGranted = 'granted'; // 已发放（兑换码/邀请送月已落地）
+
+  // 插入一条订阅订单记录，返回自增 id。
+  Future<int> insertSubscriptionOrder({
+    required int userId,
+    String phone = '',
+    String planKey = '',
+    String planName = '',
+    int amount = 0,
+    String channel = subChannelPayment,
+    String status = subStatusPending,
+    String refNo = '',
+    int synced = 0,
+  }) async {
+    final t = DateTime.now().millisecondsSinceEpoch;
+    return _insert('subscription_orders', {
+      'user_id': userId,
+      'phone': phone,
+      'plan_key': planKey,
+      'plan_name': planName,
+      'amount': amount,
+      'channel': channel,
+      'status': status,
+      'ref_no': refNo,
+      'synced': synced,
+      'created_at': t,
+      'updated_at': t,
+    });
+  }
+
+  // 我的订阅订单明细（按时间倒序）。
+  Future<List<Map<String, Object?>>> subscriptionOrders(int userId) async {
+    return _all('subscription_orders',
+        where: 'user_id=?', whereArgs: [userId], orderBy: 'created_at DESC');
+  }
+
+  // 某用户指定渠道/状态的订阅订单数（兑换码去重、防止重复发放等）。
+  Future<int> subscriptionOrderCount({
+    required int userId,
+    String? channel,
+    String? status,
+  }) async {
+    final cond = StringBuffer('user_id=?');
+    final args = <Object?>[userId];
+    if (channel != null) {
+      cond.write(' AND channel=?');
+      args.add(channel);
+    }
+    if (status != null) {
+      cond.write(' AND status=?');
+      args.add(status);
+    }
+    final d = await db;
+    final rows = await _guard(() => d.rawQuery(
+        'SELECT COUNT(*) AS c FROM subscription_orders WHERE $cond', args));
+    return (rows.first['c'] as num?)?.toInt() ?? 0;
+  }
+
   // ---------- 推广赠送 VIP 状态（避免重复赠送）----------
   Future<bool> inviteBonusGranted(int userId) async {
     final v = await getSetting('invite_bonus_granted_$userId');
@@ -1867,6 +1965,10 @@ const Map<String, Set<String>> expectedColumns = {
     'contract_no', 'note',
   },
   'sync_tombstones': {'id', 'table_name', 'row_id', 'deleted_at'},
+  'subscription_orders': {
+    'id', 'user_id', 'phone', 'plan_key', 'plan_name', 'amount', 'channel',
+    'status', 'ref_no', 'synced', 'created_at', 'updated_at',
+  },
 };
 
 /// 单表结构完整性检查结果。
