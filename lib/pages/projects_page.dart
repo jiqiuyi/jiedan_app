@@ -65,6 +65,23 @@ class _ProjectsPageState extends State<ProjectsPage> {
     });
   }
 
+  // 列表交付截止标记（v1.24.0）：未设交付时间不标记；超期红色 / 3 天内黄色。
+  List<Widget> _deliverMark(Project pr) {
+    if (pr.deliverDate <= 0) return const [];
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final overdue = pr.deliverDate < nowMs;
+    final near = !overdue && (pr.deliverDate - nowMs) < 3 * 24 * 3600 * 1000;
+    final color = overdue ? AppTheme.danger : (near ? AppTheme.warn : AppTheme.textSub);
+    return [
+      Icon(overdue ? Icons.error_outline : Icons.event_outlined, size: 14, color: color),
+      const SizedBox(width: 2),
+      Text(
+        '交付 ${DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(pr.deliverDate))}${overdue ? ' 已超期' : (near ? ' 临近' : '')}',
+        style: TextStyle(fontSize: 12, color: color),
+      ),
+    ];
+  }
+
   List<Project> get _filtered {
     var list = _projects;
     final q = _query.trim().toLowerCase();
@@ -400,9 +417,26 @@ class _ProjectsPageState extends State<ProjectsPage> {
                                         overflow: TextOverflow.visible,
                                       ),
                                     ),
-                                  ],
-                                ),
-                                isThreeLine: true,
+                                  const SizedBox(height: 6),
+                                  LinearProgressIndicator(
+                                    value: (pr.progress / 100).clamp(0.0, 1.0),
+                                    minHeight: 4,
+                                    backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
+                                    color: pr.progress >= 100 ? AppTheme.accent : AppTheme.primary,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Text('进度 ${pr.progress}%',
+                                          style: const TextStyle(fontSize: 12, color: AppTheme.textSub)),
+                                      const Spacer(),
+                                      ..._deliverMark(pr),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              isThreeLine: false,
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [

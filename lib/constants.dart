@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.23.0';
+  static const String version = '1.24.0';
 
   // ---- 云端后端 ----
   // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）存储方式
@@ -51,7 +51,7 @@ class AppConfig {
   // v12：反馈回复闭环 —— feedbacks 表新增 server_id / reply / replied_at / synced
   // v13：客户档案补全（行业/来源/所在地/最近联系时间）+ 报价状态流转 + 报价模板
   // v14：迁移机制完善（事务+日志+降级保护），并为高频查询建索引（CREATE INDEX IF NOT EXISTS，纯增量不触碰数据）
-  static const int dbVersion = 14;
+  static const int dbVersion = 15;
 
   // ---- 数据存储方式（v1.14.0）----
   // 存储方式的持久化键（settings 表）
