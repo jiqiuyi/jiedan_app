@@ -164,6 +164,19 @@ table.det tr:last-child td{border-bottom:none}
 .sign-contact{font-size:12px;color:$textSub;margin-top:3px}
 .sign-line{width:150px;height:1px;background:$primary;margin:6px 0 0 auto}
 .foot{padding:10px 22px 16px;text-align:center;font-size:10.5px;color:#a6adbb;border-top:1px solid #f0f2f7;margin-top:18px}
+/* 第18批：打印 / 另存 PDF 专用样式 —— 适配 A4，去屏幕装饰、强制白底、防表格与区块被切断 */
+@media print {
+  @page{size:A4;margin:12mm}
+  body{background:#fff}
+  .page{max-width:100%;margin:0;border-radius:0;box-shadow:none;background:#fff}
+  .brand{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  .info-table th,
+  table.det th{background:#f4f6fa !important;color:#666 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  table.det tr{page-break-inside:avoid}
+  table.det tr:last-child td{border-bottom:1px solid #f0f2f7}
+  .head,.title,.info-table,.lines,.amount,.amount-box,.simple-amount,.refimg,.note,.sign{break-inside:avoid}
+  .foot{border-top:1px solid #e3e7ee}
+}
 </style>
 </head>
 <body>
