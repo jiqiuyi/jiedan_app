@@ -54,15 +54,20 @@ class AppState extends ChangeNotifier {
     // 绝不信任本地标记）。开发测试解锁标记除外（本机测试用）。
     _isPro = _testPro;
     notifyListeners();
-    // 有 token 时拉云端数据刷新订阅/推广状态；云端不可用时保持现有状态
+    // 有 token 时拉云端数据刷新订阅/推广状态；云端不可用时回退本地 VIP 缓存（第15批过渡期）
     if (ApiClient.instance.token != null) {
       try {
         await refreshCloud();
       } catch (_) {
-        // 云端暂不可用：只读降级，测试解锁标记不被云端覆盖
-        _isPro = _testPro;
+        // 云端暂不可用：读取本地 VIP 缓存维持订阅体验（该缓存由最近一次云端 me 成功写入），
+        // 叠加开发测试解锁标记。缓存缺失或已过期则按免费版处理（只读降级，不信任默认可写标记）。
+        _isPro = await _localVipActive() || _testPro;
         notifyListeners();
       }
+    } else {
+      // 未登录（无 token）：若存在本地会话账号则回退其 VIP 缓存，否则维持测试标记
+      _isPro = await _localVipActive() || _testPro;
+      notifyListeners();
     }
   }
 
@@ -125,9 +130,55 @@ class AppState extends ChangeNotifier {
     await AppDb.instance.updateUser(local);
     await AppDb.instance.setCurrentUser(local.id);
     _currentUser = local;
-    // 云端 isPro 与开发测试解锁标记取并集；测试标记只在云端不可用时兜底之外，
-    // 更多用于本地演示验收，正式支付接入后移除 testPro 相关代码。
-    _isPro = isPro || _testPro;
+    // 第15批（过渡期）：云端 me 成功即写入本地 VIP 缓存（按手机号隔离），
+    // 供云端不可用时离线续订；实时判定仍以云端 isPro 为权威。
+    await _writeLocalVipCache(phone, isPro, expireAt);
+    // 云端 isPro 有效期判定 + 开发测试解锁标记取并集；测试标记仅用于演示验收，
+    // 正式支付接入后移除 testPro 相关代码，VIP 判定回归纯云端权威。
+    _isPro = _vipActive(isPro, expireAt) || _testPro;
+  }
+
+  // ==================== 本地 VIP 缓存（第15批过渡期） ====================
+  // VIP 判定源（第15批）：云端 isPro 权威 → 成功即写本地缓存 → 云端不可用读本地缓存
+  // → testPro（仅 dev 演示验收）。缓存仅在云端 me 成功时写入，避免离线期间被篡改。
+  static const String localVipCachePrefix = 'local_vip_cache_';
+
+  /// 云端 me 成功后把 isPro / proExpireAt 落入本地缓存（按手机号隔离）。
+  Future<void> _writeLocalVipCache(
+      String phone, bool isPro, int? expireAt) async {
+    if (phone.isEmpty) return;
+    await AppDb.instance.setSetting(
+      localVipCachePrefix + phone,
+      jsonEncode({'isPro': isPro, 'proExpireAt': expireAt}),
+    );
+  }
+
+  /// 读取并判断本地 VIP 缓存是否仍有效（未过期）。缺失 / 无效 / 已过期返回 false。
+  Future<bool> _localVipActive() async {
+    final phone = _currentUser?.phone ?? '';
+    if (phone.isEmpty) return false;
+    final raw = await AppDb.instance.getSetting(localVipCachePrefix + phone);
+    if (raw == null || raw.isEmpty) return false;
+    try {
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      if (m['isPro'] != true) return false;
+      final expire = m['proExpireAt'];
+      if (expire == null) return true; // 永久订阅
+      final ms = expire is num
+          ? expire.toInt()
+          : (int.tryParse('$expire') ?? 0);
+      if (ms <= 0) return true; // 无到期时间视为永久
+      return ms > DateTime.now().millisecondsSinceEpoch;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// isPro 且未过期则视为 VIP 有效（null / 非正到期时间视为永久）。
+  static bool _vipActive(bool isPro, int? expireAt) {
+    if (!isPro) return false;
+    if (expireAt == null || expireAt <= 0) return true;
+    return expireAt > DateTime.now().millisecondsSinceEpoch;
   }
 
   // ==================== 账号（云端） ====================
