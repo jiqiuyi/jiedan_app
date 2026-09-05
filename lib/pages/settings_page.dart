@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../constants.dart';
+import '../services/device_info_reporter.dart';
 import '../services/sync_service.dart';
 import '../theme.dart';
 import 'login_page.dart';
@@ -353,6 +354,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                     const Divider(height: 1, indent: 56, endIndent: 16),
+                    _FeedbackReportSwitch(),
+                    const Divider(height: 1, indent: 56, endIndent: 16),
                     ListTile(
                       leading: const Icon(Icons.privacy_tip_outlined,
                           color: AppTheme.primary),
@@ -396,6 +399,46 @@ class _SettingsPageState extends State<SettingsPage> {
       return '登录后购买订阅，账号内长期有效';
     }
     return '免费版可管理 ${AppConfig.freeCustomerLimit} 个客户、${AppConfig.freeProjectLimit} 个进行中项目';
+  }
+}
+
+/// 反馈信息上报开关（v1.26.0）：默认开启；关闭后提交反馈不再附带设备信息，
+/// 仅影响本次提交的可选载荷，不影响反馈功能本身。
+class _FeedbackReportSwitch extends StatefulWidget {
+  const _FeedbackReportSwitch();
+
+  @override
+  State<_FeedbackReportSwitch> createState() => _FeedbackReportSwitchState();
+}
+
+class _FeedbackReportSwitchState extends State<_FeedbackReportSwitch> {
+  bool _enabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final v = await DeviceInfoReporter.instance.reportingEnabled();
+    if (!mounted) return;
+    setState(() => _enabled = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      secondary: const Icon(Icons.devices_outlined, color: AppTheme.primary),
+      title: const Text('反馈信息上报'),
+      subtitle: const Text(
+          '提交反馈时附带设备型号/系统版本/App版本（仅用于排查问题，不采集隐私数据，可随时关闭）'),
+      value: _enabled,
+      onChanged: (v) async {
+        setState(() => _enabled = v);
+        await DeviceInfoReporter.instance.setReportingEnabled(v);
+      },
+    );
   }
 }
 
