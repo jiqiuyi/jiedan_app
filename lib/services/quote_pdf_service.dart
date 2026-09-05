@@ -404,16 +404,19 @@ class QuotePdfService {
   }
 
   static pw.Widget _buildFooter(pw.Context ctx) {
+    // 页脚微调（第18批）：页码随 MultiPage 连续累加（第 x / n 页），
+    // 加大上下内边距并收紧行距（height 1.2），保证页脚不浮出页面下边界。
     return pw.Container(
       alignment: pw.Alignment.centerRight,
       margin: const pw.EdgeInsets.only(top: 12),
-      padding: const pw.EdgeInsets.only(top: 6),
+      padding: const pw.EdgeInsets.only(top: 8, bottom: 2),
       decoration: pw.BoxDecoration(
         border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
       ),
       child: pw.Text(
         '第 ${ctx.pageNumber} / ${ctx.pagesCount} 页   ·   接单管家 出品',
-        style: const pw.TextStyle(fontSize: 8.5, color: PdfColors.grey600),
+        style: pw.TextStyle(
+            fontSize: 9, color: PdfColors.grey600, height: 1.2),
       ),
     );
   }
