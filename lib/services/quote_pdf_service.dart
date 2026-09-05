@@ -210,28 +210,65 @@ class QuotePdfService {
   }
 
   static pw.Widget _linesTable(QuotePdfData data) {
-    final rows = <List<String>>[];
+    // 明细表跨页防切断（第18批）：
+    // - 表头行 TableRow(repeat: true) → 明细表跨页时表头在每一页顶部重复；
+    // - 每个明细行为独立 TableRow → pdf Table 跨页按整行切分，行不被分页拦腰切断。
+    final rows = <pw.TableRow>[
+      pw.TableRow(
+        repeat: true,
+        decoration: pw.BoxDecoration(
+          color: PdfColor.fromInt(AppTheme.primary.toARGB32()),
+        ),
+        children: [
+          for (final h in ['序号', '项目名称', '工时', '单价', '物料费', '小计'])
+            _tableCell(
+              h,
+              align: pw.Alignment.center,
+              style: const pw.TextStyle(
+                  fontSize: 9,
+                  color: PdfColors.white,
+                  fontWeight: pw.FontWeight.bold),
+            ),
+        ],
+      ),
+    ];
+
+    const colAligns = [
+      pw.Alignment.center,
+      pw.Alignment.centerLeft,
+      pw.Alignment.center,
+      pw.Alignment.centerRight,
+      pw.Alignment.centerRight,
+      pw.Alignment.centerRight,
+    ];
     var idx = 1;
     for (final l in data.lines) {
       final item = l.itemName.isEmpty ? '（未命名项目）' : l.itemName;
-      if (l.hours > 0 || l.hourRate > 0) {
-        rows.add([
-          '$idx',
-          item,
-          _num(l.hours),
-          '¥${_money(l.hourRate)}',
-          '¥${_money(l.materialFee)}',
-          '¥${_money(l.hours * l.hourRate + l.materialFee)}',
-        ]);
-      } else {
-        rows.add(['$idx', item, '-', '-', '¥${_money(l.materialFee)}', '¥${_money(l.materialFee)}']);
-      }
+      final cells = l.hours > 0 || l.hourRate > 0
+          ? [
+              '$idx',
+              item,
+              _num(l.hours),
+              '¥${_money(l.hourRate)}',
+              '¥${_money(l.materialFee)}',
+              '¥${_money(l.hours * l.hourRate + l.materialFee)}',
+            ]
+          : ['$idx', item, '-', '-', '¥${_money(l.materialFee)}', '¥${_money(l.materialFee)}'];
+      rows.add(pw.TableRow(
+        children: [
+          for (var i = 0; i < cells.length; i++)
+            _tableCell(
+              cells[i],
+              align: colAligns[i],
+              style: const pw.TextStyle(fontSize: 10),
+            ),
+        ],
+      ));
       idx++;
     }
-    return pw.TableHelper.fromTextArray(
+
+    return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.4),
-      headers: ['序号', '项目名称', '工时', '单价', '物料费', '小计'],
-      data: rows,
       columnWidths: {
         0: const pw.FixedColumnWidth(26),
         1: const pw.FlexColumnWidth(),
@@ -240,20 +277,22 @@ class QuotePdfService {
         4: const pw.FixedColumnWidth(70),
         5: const pw.FixedColumnWidth(80),
       },
-      headerStyle: pw.TextStyle(
-          fontSize: 9,
-          color: PdfColors.white,
-          fontWeight: pw.FontWeight.bold),
-      headerDecoration: pw.BoxDecoration(color: PdfColor.fromInt(AppTheme.primary.toARGB32())),
-      cellStyle: const pw.TextStyle(fontSize: 10),
-      cellAlignments: {
-        0: pw.Alignment.center,
-        1: pw.Alignment.centerLeft,
-        2: pw.Alignment.center,
-        3: pw.Alignment.centerRight,
-        4: pw.Alignment.centerRight,
-        5: pw.Alignment.centerRight,
-      },
+      defaultVerticalAlignment: pw.TableCellVerticalAlignment.full,
+      children: rows,
+    );
+  }
+
+  static pw.Widget _tableCell(
+    String text, {
+    required pw.Alignment align,
+    required pw.TextStyle style,
+  }) {
+    return pw.Align(
+      alignment: align,
+      child: pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        child: pw.Text(text, style: style),
+      ),
     );
   }
 
