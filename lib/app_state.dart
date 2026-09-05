@@ -482,11 +482,43 @@ class AppState extends ChangeNotifier {
     await AppDb.instance.deleteInvitee(inviteeId);
   }
 
-  /// 云端模式下 VIP 赠送由后端在满 2 位有效好友时自动发放。
-  /// 防破解加固（P0/P2）：本地不再具备发放 VIP 的能力，一律返回 false，
-  /// 避免通过本地改写数据库或构造数据直接解锁专业版。
+  /// 第15批过渡期：本地自动核验满 [AppConfig.inviteFreeVipFriends] 位已付款好友，
+  /// 本地发放 [AppConfig.inviteRewardMonths] 个月 VIP，并落 subscription_orders
+  /// （channel=invite，synced=0 预留云端同步字段）。已发放过则不重复触发。
+  /// 过渡期限制：仅本地发放，卸载重装 / 换机后丢失；云端就绪时由服务端发放，本地不重复。
+  /// 返回 true 表示本次触发了赠送。
   Future<bool> grantInviteVipIfEligible() async {
-    return false;
+    final uid = _currentUser?.id;
+    final phone = _currentUser?.phone ?? '';
+    if (uid == null) return false;
+    if (_cloudReady) return false; // 云端权威发放，本地不重复
+    if (await AppDb.instance.inviteBonusGranted(uid)) return false;
+    final list = await AppDb.instance.getInvitees(uid);
+    final paidCount = list.where((e) => e.paid).length;
+    if (paidCount < AppConfig.inviteFreeVipFriends) return false;
+    // 本地发放 N 个月 VIP：自当前时间起算
+    final expireAt = DateTime.now()
+        .add(Duration(days: 30 * AppConfig.inviteRewardMonths.toInt()))
+        .millisecondsSinceEpoch;
+    final updated = _currentUser!.copyWith(isPro: true, proExpireAt: expireAt);
+    await AppDb.instance.updateUser(updated);
+    await _writeLocalVipCache(phone, true, expireAt);
+    _currentUser = updated;
+    _isPro = true;
+    await AppDb.instance.markInviteBonusGranted(uid);
+    // 落订阅订单，预留云端同步字段（synced=0，ref_no 记邀请达标批次）
+    await AppDb.instance.insertSubscriptionOrder(
+      userId: uid,
+      phone: phone,
+      planKey: 'invite_bonus',
+      planName: '邀请送月',
+      amount: 0,
+      channel: AppDb.instance.subChannelInvite,
+      status: AppDb.instance.subStatusGranted,
+      refNo: 'invite-${AppConfig.inviteFreeVipFriends}p',
+    );
+    notifyListeners();
+    return true;
   }
 
   /// 通知全局刷新（供页面层在数据变化后触发重建）

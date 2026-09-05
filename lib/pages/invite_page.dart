@@ -8,12 +8,12 @@ import '../models.dart';
 import '../theme.dart';
 import 'login_page.dart';
 
-/// 推广活动页（云端自动核验版）
+/// 推广活动页（第15批过渡期：本地自动核验版）
 ///
 /// 规则：
 /// - 好友注册时填写你的邀请码，自动绑定邀请关系
 /// - 好友真实付款开通 VIP → 返现 50%
-/// - 每 2 位有效好友 → 免费送 VIP 1 个月（云端自动发放）
+/// - 每 2 位有效好友 → 免费送 VIP 1 个月（过渡期本地发放，正式版切云端）
 class InvitePage extends StatefulWidget {
   const InvitePage({super.key});
 
@@ -37,7 +37,7 @@ class _InvitePageState extends State<InvitePage> {
 
   Future<void> _load() async {
     final st = AppState.instance;
-    // 云端模式下 VIP 赠送由后端自动发放，本地兜底逻辑直接返回 false
+    // 第15批过渡期：本地自动核验满 2 位有效好友并发放 VIP（云端就绪时由服务端发放）
     final granted = await st.grantInviteVipIfEligible();
     final code = await st.myInviteCode();
     final stats = await st.inviteStats();
@@ -200,11 +200,12 @@ class _InvitePageState extends State<InvitePage> {
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
                 child: Text(
-                  '活动规则（云端自动核验）：\n'
+                  '活动规则（第15批过渡期 · 本地核验）：\n'
                   '1. 好友注册时填写你的邀请码，系统自动绑定邀请关系；\n'
                   '2. 好友付款开通专业版后自动返现其付款金额的 50%；\n'
                   '3. 每 2 位有效好友自动免费赠送 VIP 1 个月；\n'
-                  '4. 邀请关系与返现均由云端自动结算，无需手动登记与标记。',
+                  '4. VIP 赠送当前在本地发放并记录（卸载重装 / 换机后将丢失），'
+                  '正式版切云端后由服务器统一赠送，可跨设备保留。',
                   style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                 ),
               ),
