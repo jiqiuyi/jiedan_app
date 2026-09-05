@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../app_state.dart';
 import '../constants.dart';
 import '../database.dart';
 import '../theme.dart';
+import 'paywall_page.dart';
 
 /// 统计看板（v1.10.0 新增，v1.22.0 增强）：
 /// 收入/应收统计支持时间范围筛选（本月/上月/近12个月/自定义起止日期）与月度对比、
@@ -124,6 +126,16 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 第15批：统计·高级分析（自定义区间/月度对比/分类汇总）加 VIP 门禁，
+    // 不隐藏入口，免费用户进入即见升级引导。
+    if (!AppState.instance.isPro) {
+      return _vipGate(
+        context,
+        appBarTitle: '统计看板',
+        feature: '统计·高级分析',
+        desc: '自定义日期区间、月度对比与分类汇总为专业版专属权益。',
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('统计看板')),
       body: _loading
@@ -666,4 +678,49 @@ int calcReceivableAmount(Map<String, int> summary) {
   final pending = summary['pending'] ?? 0;
   if (pending <= 0) return 0;
   return pending;
+}
+
+/// 第15批 VIP 门禁引导组件（不隐藏入口，免费用户进入时展示并引导升级）。
+Widget _vipGate(BuildContext context,
+    {required String appBarTitle,
+    required String feature,
+    required String desc}) {
+  return Scaffold(
+    appBar: AppBar(title: Text(appBarTitle)),
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.lock_outline, size: 64, color: AppTheme.primary),
+            const SizedBox(height: 16),
+            Text('$feature为专业版专属',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(desc,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    color: AppTheme.textSub, fontSize: 13)),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const PaywallPage(
+                    title: '升级专业版',
+                    desc: '解锁全部高级经营功能',
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.workspace_premium),
+              label: const Text('升级 VIP 解锁'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
