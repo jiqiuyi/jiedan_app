@@ -37,6 +37,12 @@ Future<void> main() async {
     // 启动后静默核对一次到账记录（失败进重试队列，不阻塞启动）
     unawaited(PayNoticeReporter.instance.retryPending());
     unawaited(PayNoticeReporter.instance.uploadPending());
+    // 启动后巡检本地待办提醒（v1.24.0：回款到期 / 报价待确认，基于本地数据，不依赖服务器）
+    unawaited(NotifyService.instance.checkLocalReminders());
+    // App 在线期间每小时再巡检一次，跨过到期时间点也能及时本地提醒（轻量，仅查本地 SQLite）
+    Timer.periodic(const Duration(hours: 1), (_) {
+      unawaited(NotifyService.instance.checkLocalReminders());
+    });
     // 启动后静默执行一次数据库自检（表结构完整性 / 数据可恢复性），结果留痕，
     // 可在「数据管理」页查看；失败不阻断启动。
     unawaited(AppDb.instance.backgroundHealthCheck());
