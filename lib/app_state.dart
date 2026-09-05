@@ -283,6 +283,45 @@ class AppState extends ChangeNotifier {
     return ApiClient.instance.createOrder(plan);
   }
 
+  // ==================== 兑换码（第15批过渡期，本地闭环） ====================
+
+  /// 内置测试兑换码开通本地 VIP。
+  /// 输入正确测试码 → 本地发放（写 users 表 + 本地 VIP 缓存）并落
+  /// subscription_orders（channel=redeem，status=granted，ref_no=码）便于审计。
+  /// 返回 null 表示成功，否则为错误提示文案。
+  /// TODO: 正式上线前移除本方法内置码校验，改为提交服务端核销后由云端下发 isPro。
+  Future<String?> redeemVipCode(String code) async {
+    final c = code.trim();
+    if (c.isEmpty) return '请输入兑换码';
+    final uid = _currentUser?.id;
+    final phone = _currentUser?.phone ?? '';
+    if (uid == null) return '请先登录';
+    if (c != AppConfig.redeemCodeTest) return '兑换码无效';
+    // 同一兑换码仅可兑换一次（过渡期本地校验；正式版由服务端保证幂等）。
+    final mine = await AppDb.instance.subscriptionOrders(uid);
+    final used = mine.any((o) =>
+        o['channel'] == AppDb.instance.subChannelRedeem && o['ref_no'] == c);
+    if (used) return '该兑换码已使用过';
+    // 本地发放：测试码按「永久」开通（过渡期演示用，正式版以支付/服务端结果为准）。
+    await AppDb.instance.insertSubscriptionOrder(
+      userId: uid,
+      phone: phone,
+      planKey: 'forever',
+      planName: '永久',
+      amount: 0,
+      channel: AppDb.instance.subChannelRedeem,
+      status: AppDb.instance.subStatusGranted,
+      refNo: c,
+    );
+    final updated = _currentUser!.copyWith(isPro: true, proExpireAt: null);
+    await AppDb.instance.updateUser(updated);
+    await _writeLocalVipCache(phone, true, null);
+    _currentUser = updated;
+    _isPro = true;
+    notifyListeners();
+    return null;
+  }
+
   // ==================== 开发测试专用解锁（支付接入前临时方案） ====================
 
   /// 体验专业版：本地解锁免费版全部限制。

@@ -82,6 +82,12 @@ class AppConfig {
   static const int inviteFreeVipFriends = 2; // 推荐好友数达到该值 → 送 1 个月 VIP
   static const double inviteRewardMonths = 1; // 达成推荐目标赠送的 VIP 月数
   static const double rebateRate = 0.50; // 新人真实付款开通 VIP → 按比例返现
+
+  // ---- 兑换码（第15批过渡期：内置测试码，输入即开本地 VIP）----
+  // 过渡期无真实支付网关，用内置测试兑换码模拟「已付款」完成本地开通闭环，
+  // 兑换记录写入 subscription_orders（channel=redeem）以便审计与后续核销。
+  // TODO: 正式上线前移除内置测试码，改为服务端校验并兑换（防绕过 + 可核销/次数限制）。
+  static const String redeemCodeTest = 'JD-VIP-2026';
 }
 
 // 项目状态

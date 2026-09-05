@@ -134,6 +134,47 @@ class _PaywallPageState extends State<PaywallPage> {
     }
   }
 
+  // 兑换码开通弹窗（第15批过渡期：内置测试码本地开通）
+  Future<void> _showRedeemDialog() async {
+    final controller = TextEditingController();
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('兑换码开通'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('输入兑换码即可开通专业版（过渡期功能，正式版将改为服务端核销）。'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: '请输入兑换码',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('兑换'),
+          ),
+        ],
+      ),
+    );
+    if (result == null || result.isEmpty || !mounted) return;
+    final err = await AppState.instance.redeemVipCode(result);
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text(err ?? '兑换成功，已开通专业版')));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -249,6 +290,21 @@ class _PaywallPageState extends State<PaywallPage> {
                     label: const Text('体验专业版（开发测试）'),
                   ),
                 ),
+              const SizedBox(height: 28),
+              const Center(
+                child: Text(
+                  '过渡期可用兑换码开通（正式版将改为服务端核销）',
+                  style: TextStyle(color: AppTheme.textSub, fontSize: 12),
+                ),
+              ),
+              Center(
+                child: TextButton.icon(
+                  onPressed: _showRedeemDialog,
+                  icon: const Icon(Icons.confirmation_number_outlined,
+                      size: 18),
+                  label: const Text('兑换码开通'),
+                ),
+              ),
             ],
           );
         },
