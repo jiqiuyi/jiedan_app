@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'package:intl/intl.dart';
 
 import '../constants.dart';
 import '../theme.dart';
@@ -37,8 +40,14 @@ class _QuotePageState extends State<QuotePage>
   int? _simpleCustomerId; // 关联客户档案（可选）
   final _simpleAmountCtrl = TextEditingController(); // 报价总额
   final _simpleNoteCtrl = TextEditingController(); // 备注（可选）
+  final _simpleTaxCtrl = TextEditingController(); // 适用税率(%)
+  double _simpleTaxRate = 0; // 简单报价税率（0-1），v1.24.0 起可按单设置
   int? _simpleQuoteId; // 正在编辑的简单报价历史 id（null=新建）
   int? _simpleCreatedAt; // 编辑历史时保留原时间戳
+
+  // ================= 报价参考图（v1.24.0，两 Tab 共享） =================
+  // 图片复制到应用文档目录 quote_images/ 下，仅存本地不上传；路径写入 quotes.image_path。
+  String _imagePath = '';
 
   // ================= 详细报价状态（保留原有能力） =================
   final _lines = <QuoteLine>[
@@ -99,12 +108,139 @@ class _QuotePageState extends State<QuotePage>
     }
   }
 
+  // ================= 报价参考图（v1.24.0） =================
+  Future<void> _pickQuoteImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1600,
+      maxHeight: 1600,
+      imageQuality: 88,
+    );
+    if (picked == null || !mounted) return;
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory('${docs.path}${Platform.pathSeparator}quote_images');
+      if (!dir.existsSync()) dir.createSync(recursive: true);
+      final ext = picked.path.split('.').last.toLowerCase();
+      final safeExt =
+          (ext == 'jpg' || ext == 'jpeg' || ext == 'png' || ext == 'webp') ? ext : 'jpg';
+      final dest = '${dir.path}${Platform.pathSeparator}'
+          'quote_${DateTime.now().millisecondsSinceEpoch}.$safeExt';
+      await File(picked.path).copy(dest);
+      setState(() => _imagePath = dest);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('参考图已添加（仅保存在本机，不上传）')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('图片保存失败，请重试')),
+      );
+    }
+  }
+
+  void _removeQuoteImage() {
+    setState(() => _imagePath = '');
+  }
+
+  void _viewQuoteImage() {
+    if (_imagePath.isNotEmpty) _viewImagePath(_imagePath);
+  }
+
+  /// 查看某条报价参考图大图（历史详情 / 编辑预览共用，自动容错失效图片）。
+  void _viewImagePath(String path) {
+    if (path.isEmpty) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        child: InteractiveViewer(
+          maxScale: 5,
+          child: Image.file(
+            File(path),
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) => const Padding(
+              padding: EdgeInsets.all(32),
+              child: Text('图片已失效，可重新选择',
+                  style: TextStyle(color: Colors.white)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 参考图选择区（简单 / 详细 Tab 共用，附于报价表单，随报价保存到本地并展示）。
+  Widget _buildQuoteImageSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('参考图（可选）',
+            style: TextStyle(fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
+        const SizedBox(height: 4),
+        const Text('插入本地参考图，仅保存在本机不上传，会随报价详情一起展示',
+            style: TextStyle(fontSize: 11, color: AppTheme.textSub)),
+        const SizedBox(height: 8),
+        if (_imagePath.isNotEmpty)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GestureDetector(
+                onTap: _viewQuoteImage,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.file(
+                    File(_imagePath),
+                    width: 120,
+                    height: 120,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => Container(
+                      width: 120,
+                      height: 120,
+                      color: AppTheme.bgCard,
+                      alignment: Alignment.center,
+                      child: const Icon(Icons.broken_image_outlined, color: AppTheme.textSub),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextButton.icon(
+                    onPressed: _viewQuoteImage,
+                    icon: const Icon(Icons.zoom_in, size: 18),
+                    label: const Text('查看大图'),
+                  ),
+                  TextButton.icon(
+                    onPressed: _removeQuoteImage,
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text('移除'),
+                  ),
+                ],
+              ),
+            ],
+          )
+        else
+          OutlinedButton.icon(
+            onPressed: _pickQuoteImage,
+            icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
+            label: const Text('选择参考图'),
+          ),
+      ],
+    );
+  }
+
   @override
   void dispose() {
     _tabController.dispose();
     _simpleNameCtrl.dispose();
     _simpleAmountCtrl.dispose();
     _simpleNoteCtrl.dispose();
+    _simpleTaxCtrl.dispose();
     _clientCtrl.dispose();
     _titleCtrl.dispose();
     _taxCtrl.dispose();
@@ -158,13 +294,14 @@ class _QuotePageState extends State<QuotePage>
       projectId: _simpleProjectId,
       customerId: _simpleCustomerId,
       title: objectName,
-      taxRate: 0,
+      taxRate: _simpleTaxRate * 100, // 存百分数，兼容历史简单报价默认 0
       lines: const [],
       total: Money.parseYuanToFen(amount.toStringAsFixed(2)),
       createdAt: _simpleCreatedAt ?? now,
       type: 'simple',
       note: note,
       taxInclude: true,
+      imagePath: _imagePath,
     );
     if (_simpleQuoteId == null) {
       await AppDb.instance.insertQuote(q);
@@ -184,6 +321,9 @@ class _QuotePageState extends State<QuotePage>
       _simpleNameCtrl.clear();
       _simpleAmountCtrl.clear();
       _simpleNoteCtrl.clear();
+      _simpleTaxCtrl.clear();
+      _simpleTaxRate = 0;
+      _imagePath = '';
     });
   }
 
@@ -241,6 +381,7 @@ class _QuotePageState extends State<QuotePage>
       type: 'full',
       note: _detailNoteCtrl.text.trim(),
       taxInclude: true,
+      imagePath: _imagePath,
     );
     if (_quoteId == null) {
       await AppDb.instance.insertQuote(q);
@@ -262,6 +403,7 @@ class _QuotePageState extends State<QuotePage>
       _taxCtrl.clear();
       _detailNoteCtrl.clear();
       _taxRate = AppConfig.defaultTaxRate;
+      _imagePath = '';
       _lines
         ..clear()
         ..add(const QuoteLine(
@@ -462,8 +604,70 @@ class _QuotePageState extends State<QuotePage>
                       key: ValueKey('quote_${q.id}'),
                     endActionPane: ActionPane(
                       motion: const ScrollMotion(),
-                      extentRatio: 0.72,
+                      extentRatio: 0.9,
                       children: [
+                        CustomSlidableAction(
+                          onPressed: (_) {
+                            // 查看报价单详情（文本 + 参考图，参考图仅供查看）
+                            showDialog<void>(
+                              context: ctx,
+                              builder: (dctx) => AlertDialog(
+                                title: const Text('报价单详情'),
+                                content: SingleChildScrollView(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      ConstrainedBox(
+                                        constraints:
+                                            const BoxConstraints(maxHeight: 320),
+                                        child: SelectableText(_quoteTextFor(q)),
+                                      ),
+                                      if (q.imagePath.isNotEmpty) ...[
+                                        const SizedBox(height: 16),
+                                        const Text('参考图',
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color: AppTheme.textSub)),
+                                        const SizedBox(height: 8),
+                                        GestureDetector(
+                                          onTap: () =>
+                                              _viewImagePath(q.imagePath),
+                                          child: ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            child: Image.file(
+                                              File(q.imagePath),
+                                              height: 200,
+                                              width: double.infinity,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, _, _) =>
+                                                  const Text('图片已失效',
+                                                      style: TextStyle(
+                                                          color: AppTheme
+                                                              .textSub)),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(dctx),
+                                      child: const Text('关闭')),
+                                ],
+                              ),
+                            );
+                          },
+                          backgroundColor: Colors.blueGrey,
+                          foregroundColor: Colors.white,
+                          child: const SlidableActionContent(
+                              icon: Icons.visibility_outlined, label: '查看'),
+                        ),
                         CustomSlidableAction(
                           onPressed: (_) async {
                             final messenger =
@@ -988,6 +1192,9 @@ class _QuotePageState extends State<QuotePage>
       _simpleNameCtrl.text = t.title;
       _simpleAmountCtrl.text = _numText(t.total / 100);
       _simpleNoteCtrl.text = t.note;
+      _imagePath = t.imagePath;
+      _simpleTaxRate = t.taxRate / 100;
+      _simpleTaxCtrl.text = t.taxRate.toStringAsFixed(0);
     });
   }
 
@@ -1004,6 +1211,7 @@ class _QuotePageState extends State<QuotePage>
       _taxRate = t.taxRate / 100;
       _taxCtrl.text = t.taxRate.toStringAsFixed(0);
       _detailNoteCtrl.text = t.note;
+      _imagePath = t.imagePath;
       _lines
         ..clear()
         ..addAll(t.lines.isEmpty
@@ -1087,6 +1295,9 @@ class _QuotePageState extends State<QuotePage>
       _simpleNoteCtrl.text = q.note;
       _simpleProjectId = q.projectId;
       _simpleNameCtrl.text = q.title;
+      _imagePath = q.imagePath;
+      _simpleTaxRate = q.taxRate / 100;
+      _simpleTaxCtrl.text = q.taxRate.toStringAsFixed(0);
     });
   }
 
@@ -1103,6 +1314,7 @@ class _QuotePageState extends State<QuotePage>
       _taxRate = q.taxRate / 100;
       _taxCtrl.text = q.taxRate.toStringAsFixed(0); // 同步税率输入框（历史存百分比）
       _detailNoteCtrl.text = q.note;
+      _imagePath = q.imagePath;
       _lines
         ..clear()
         ..addAll(q.lines.isEmpty
@@ -1317,6 +1529,39 @@ class _QuotePageState extends State<QuotePage>
                 style: TextStyle(
                     fontSize: 12, color: AppTheme.textSub)),
           ),
+          const SizedBox(height: 6),
+          // 适用税率：v1.24.0 简单报价也可按单设置税率（仅记录并展示，一口价含税不重算总额）
+          Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('适用税率',
+                    style: TextStyle(
+                        fontSize: 12, color: AppTheme.textSub)),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 80,
+                  child: TextField(
+                    controller: _simpleTaxCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    inputFormatters: moneyInputFormatters,
+                    textAlign: TextAlign.right,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      suffixText: '%',
+                      contentPadding: EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                    ),
+                    onChanged: (v) {
+                      final n = double.tryParse(v);
+                      setState(() => _simpleTaxRate = (n ?? 0) / 100);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
           const Spacer(),
           // 备注：固定小高度，超出内部滚动
           const Text('备注（可选）',
@@ -1337,6 +1582,8 @@ class _QuotePageState extends State<QuotePage>
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          _buildQuoteImageSection(),
         ],
     );
   }
@@ -1430,6 +1677,8 @@ class _QuotePageState extends State<QuotePage>
                     hintText: '补充说明（随报价单保存到历史）',
                   ),
                 ),
+                const SizedBox(height: 12),
+                _buildQuoteImageSection(),
               ],
             ),
           ),
