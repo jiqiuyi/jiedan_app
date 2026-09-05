@@ -58,3 +58,6 @@ temp_build_log.txt
 verify/
 # P1: local key.properties (contains keystore path/password, never commit)
 android/key.properties
+
+# 构建产物 APK（交付副本统一放 output/，不入库）
+*.apk
