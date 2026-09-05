@@ -19,11 +19,21 @@ Future<bool> showPaymentDialog(
   required int projectId,
   required int amountTotal, // 分
   required int paidTotal, // 分
+  int? quoteId, // 预选关联报价单 id（第17批：基于 quote_id 精确关联，可空）
 }) async {
   final amountCtrl = TextEditingController();
   final noteCtrl = TextEditingController();
   final customTypeCtrl = TextEditingController();
   final remaining = amountTotal - paidTotal < 0 ? 0 : amountTotal - paidTotal;
+
+  // 第17批关联报价：载入该项目下非模板报价单供精确关联；项目无报价时不显示该选项。
+  final quotes = (await AppDb.instance.getQuotesByProject(projectId))
+      .where((q) => !q.isTemplate)
+      .toList();
+  var selQuote =
+      quoteId != null && quotes.any((q) => q.id == quoteId) ? quoteId : null;
+  // 跨 async 间隙后再使用 context，先做 mounted 防护（第17批关联报价载入后）
+  if (!context.mounted) return false;
 
   // 根据收款阶段挑选默认类型
   late PayType defaultType;
@@ -90,6 +100,24 @@ Future<bool> showPaymentDialog(
               ),
             ],
             const SizedBox(height: 12),
+            if (quotes.isNotEmpty) ...[
+              DropdownButtonFormField<int?>(
+                initialValue: selQuote,
+                decoration: const InputDecoration(labelText: '关联报价'),
+                items: [
+                  const DropdownMenuItem<int?>(
+                      value: null, child: Text('不关联报价')),
+                  for (final q in quotes)
+                    DropdownMenuItem<int?>(
+                      value: q.id,
+                      child: Text('${q.title} · ¥${Money.yuan(q.total)}',
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                onChanged: (v) => setDlg(() => selQuote = v),
+              ),
+              const SizedBox(height: 12),
+            ],
             TextField(
               controller: noteCtrl,
               decoration: const InputDecoration(labelText: '备注', hintText: '如：首期款到账'),
@@ -127,6 +155,7 @@ Future<bool> showPaymentDialog(
       typeLabel: type == PayType.custom ? customTypeCtrl.text.trim() : '',
       paidAt: DateTime.now().millisecondsSinceEpoch,
       note: noteCtrl.text.trim(),
+      quoteId: selQuote,
     ));
     Ticker.ping();
     return true;
