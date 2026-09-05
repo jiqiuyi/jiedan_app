@@ -326,6 +326,7 @@ class AppDb {
       if (oldVersion < 13) await _migrateToV13(db);
       if (oldVersion < 14) await _migrateToV14(db);
       if (oldVersion < 15) await _migrateToV15(db);
+      if (oldVersion < 16) await _migrateToV16(db);
       await _appendMigrationLog(db, '成功 v$oldVersion -> v$newVersion @ $now()');
     } catch (e, st) {
       // 记录失败日志后抛出统一中文异常；平台事务回滚后数据库保持旧版本与全部数据，
@@ -645,6 +646,21 @@ class AppDb {
     final quoteCols = await db.rawQuery('PRAGMA table_info(quotes)');
     if (!quoteCols.any((c) => c['name'] == 'image_path')) {
       await db.execute('ALTER TABLE quotes ADD COLUMN image_path TEXT');
+    }
+  }
+
+  // v16 迁移（第17批 收款对账）：payments 同时补两列——
+  // reconciled：已/未对账标记（0 未对账 / 1 已对账，默认 0）；
+  // quote_id：关联报价单 id（可空，未关联时为 NULL）。
+  // 沿用 PRAGMA 探测后幂等 ALTER，兼容任意历史版本直接升到 v16。
+  Future<void> _migrateToV16(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(payments)');
+    if (!cols.any((c) => c['name'] == 'reconciled')) {
+      await db
+          .execute('ALTER TABLE payments ADD COLUMN reconciled INTEGER DEFAULT 0');
+    }
+    if (!cols.any((c) => c['name'] == 'quote_id')) {
+      await db.execute('ALTER TABLE payments ADD COLUMN quote_id INTEGER');
     }
   }
 
@@ -1321,6 +1337,63 @@ class AppDb {
     '''));
   }
 
+  // ---------- 第17批 收款对账增强（v1.28.0 / db v16）----------
+  // 全量收款流水明细（含项目/客户/关联报价标题），按收款时间倒序。
+  // reconciled 传 null=全部、true=仅未对账、false=仅已对账。
+  Future<List<Map<String, Object?>>> reconciliationFlows(
+      {bool? reconciled}) async {
+    final d = await db;
+    final sb = StringBuffer(
+      'SELECT p.*, '
+      "COALESCE(pr.title, '已删除项目') AS project_title, "
+      "COALESCE(c.name, '未关联客户') AS customer_name, "
+      "COALESCE(q.title, '') AS quote_title "
+      'FROM payments p '
+      'LEFT JOIN projects pr ON pr.id = p.project_id '
+      'LEFT JOIN customers c ON c.id = pr.customer_id '
+      'LEFT JOIN quotes q ON q.id = p.quote_id',
+    );
+    final args = <Object?>[];
+    if (reconciled != null) {
+      sb.write(' WHERE p.reconciled = ?');
+      args.add(reconciled ? 1 : 0);
+    }
+    sb.write(' ORDER BY p.paid_at DESC');
+    return _guard(() => d.rawQuery(sb.toString(), args));
+  }
+
+  // 指定报价单关联的全部收款流水（从报价单看已收），按收款时间倒序。
+  Future<List<Map<String, Object?>>> paymentsByQuote(int quoteId) async {
+    final d = await db;
+    return _guard(() => d.rawQuery(
+          'SELECT p.*, '
+          "COALESCE(pr.title, '已删除项目') AS project_title "
+          'FROM payments p LEFT JOIN projects pr ON pr.id = p.project_id '
+          'WHERE p.quote_id=? ORDER BY p.paid_at DESC',
+          [quoteId],
+        ));
+  }
+
+  // 指定报价单已收合计（分）：基于 quote_id 精确关联。
+  Future<int> quotePaidTotal(int quoteId) async {
+    final d = await db;
+    final rows = await _guard(() => d.rawQuery(
+          'SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE quote_id=?',
+          [quoteId],
+        ));
+    return (rows.first['t'] as num?)?.toInt() ?? 0;
+  }
+
+  // 切换收款流水对账标记（0 未对账 / 1 已对账）。
+  Future<void> setPaymentReconciled(int id, bool reconciled) async {
+    await _updateByWhere(
+      'payments',
+      {'reconciled': reconciled ? 1 : 0},
+      where: 'id=?',
+      whereArgs: [id],
+    );
+  }
+
   // 有待收提醒设置的项目（due_date>0 且存在未结清待收）
   Future<List<Map<String, Object?>>> projectsWithPendingReminder() async {
     final d = await db;
@@ -1757,6 +1830,7 @@ const Map<String, Set<String>> expectedColumns = {
   },
   'payments': {
     'id', 'project_id', 'amount', 'type', 'type_label', 'paid_at', 'note',
+    'reconciled', 'quote_id',
   },
   'settings': {'key', 'value'},
   'users': {
