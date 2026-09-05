@@ -103,6 +103,8 @@ class Project {
   final int updatedAt; // 最后修改时间（ms），同步用
   final int dueDate; // 待收提醒日（ms），0 未设置
   final int remindAt; // 提醒时间点（ms），0 未设置
+  final int progress; // 项目进度（%，0-100），v1.24.0
+  final int deliverDate; // 交付时间（ms），0 未设置，v1.24.0
 
   const Project({
     this.id,
@@ -114,6 +116,8 @@ class Project {
     required this.updatedAt,
     this.dueDate = 0,
     this.remindAt = 0,
+    this.progress = 0,
+    this.deliverDate = 0,
   });
 
   Map<String, Object?> toMap() => {
@@ -126,6 +130,8 @@ class Project {
         'updated_at': updatedAt,
         'due_date': dueDate,
         'remind_at': remindAt,
+        'progress': progress,
+        'deliver_date': deliverDate,
       };
 
   // status 号越界时兜底到首个枚举，避免历史脏数据触发 RangeError。
@@ -142,6 +148,8 @@ class Project {
       updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
       dueDate: (m['due_date'] as num?)?.toInt() ?? 0,
       remindAt: (m['remind_at'] as num?)?.toInt() ?? 0,
+      progress: ((m['progress'] as num?)?.toInt() ?? 0).clamp(0, 100),
+      deliverDate: (m['deliver_date'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -157,6 +165,8 @@ class Project {
     int? updatedAt,
     int? dueDate,
     int? remindAt,
+    int? progress,
+    int? deliverDate,
   }) =>
       Project(
         id: id,
@@ -168,6 +178,8 @@ class Project {
         updatedAt: updatedAt ?? this.updatedAt,
         dueDate: dueDate ?? this.dueDate,
         remindAt: remindAt ?? this.remindAt,
+        progress: (progress ?? this.progress).clamp(0, 100),
+        deliverDate: deliverDate ?? this.deliverDate,
       );
 }
 
@@ -509,6 +521,7 @@ class Quote {
   final QuoteStatus status; // 状态流转（v1.21.0）
   final bool isTemplate; // 是否为模板（v1.21.0）
   final int updatedAt; // 最后修改时间（ms），同步用
+  final String imagePath; // 报价参考图本地路径（v1.24.0，不上传）
 
   const Quote({
     this.id,
@@ -525,6 +538,7 @@ class Quote {
     this.status = QuoteStatus.draft,
     this.isTemplate = false,
     this.updatedAt = 0,
+    this.imagePath = '', // 报价参考图本地路径（不上传），v1.24.0
   });
 
   bool get isSimple => type == 'simple';
@@ -544,6 +558,7 @@ class Quote {
         'status': status.index,
         'is_template': isTemplate ? 1 : 0,
         'updated_at': updatedAt,
+        'image_path': imagePath,
       };
 
   // title 先归一化再判断合法性；lines_json 解析失败按空行处理。
@@ -569,6 +584,7 @@ class Quote {
           statusRaw < 0 || statusRaw >= QuoteStatus.values.length ? 0 : statusRaw],
       isTemplate: ((m['is_template'] as num?)?.toInt() ?? 0) == 1,
       updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
+      imagePath: (m['image_path'] as String?) ?? '',
     );
   }
 
