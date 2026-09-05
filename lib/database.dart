@@ -264,7 +264,9 @@ class AppDb {
             type INTEGER,
             type_label TEXT,
             paid_at INTEGER,
-            note TEXT
+            note TEXT,
+            reconciled INTEGER DEFAULT 0, -- 已/未对账标记（0 未对账 / 1 已对账，默认 0）
+            quote_id INTEGER -- 关联报价单 id（可空，未关联时为 NULL）
           )
         ''');
         await db.execute('''
