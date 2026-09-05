@@ -5,6 +5,7 @@ import '../api_client.dart';
 import '../app_state.dart';
 import '../constants.dart';
 import '../database.dart';
+import '../services/device_info_reporter.dart';
 import '../theme.dart';
 import 'login_page.dart';
 
@@ -69,10 +70,20 @@ class _FeedbackPageState extends State<FeedbackPage> {
     String feedbackId = '';
     String? err;
     try {
+      // v1.26.0：提交前按上报开关决定是否附带最小化设备信息（4 项非敏感）；
+      // 开关关闭或读取失败时为空串，后端按缺失处理，不影响提交成功。
+      var payload = const DeviceInfoPayload();
+      if (await DeviceInfoReporter.instance.reportingEnabled()) {
+        payload = await DeviceInfoReporter.instance.collect();
+      }
       final res = await ApiClient.instance.submitFeedback(
         type: _type.name,
         content: content,
         contact: _contactCtrl.text.trim(),
+        deviceModel: payload.deviceModel,
+        osVersion: payload.osVersion,
+        appVersion: payload.appVersion,
+        buildNumber: payload.buildNumber,
       );
       feedbackId = '${res['feedbackId']}';
     } catch (e) {
