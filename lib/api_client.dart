@@ -362,10 +362,17 @@ class ApiClient {
 
   /// 在线提交意见反馈到服务器。返回 { ok, feedbackId }。
   /// [type]：bug / suggestion / other；[content] 必填，[contact] 选填。
+  /// v1.26.0：支持设备信息最小化上报（均可选，默认空串）——
+  /// deviceModel / osVersion / appVersion / buildNumber 4 项非敏感信息，
+  /// 上报开关关闭或读取失败时传空串，后端按缺失处理，不影响提交。
   Future<Map<String, dynamic>> submitFeedback({
     required String type,
     required String content,
     String contact = '',
+    String deviceModel = '',
+    String osVersion = '',
+    String appVersion = '',
+    String buildNumber = '',
   }) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
@@ -373,6 +380,10 @@ class ApiClient {
       'type': type,
       'content': content,
       'contact': contact,
+      'deviceModel': deviceModel,
+      'osVersion': osVersion,
+      'appVersion': appVersion,
+      'buildNumber': buildNumber,
     }, authRequired: true);
   }
 
