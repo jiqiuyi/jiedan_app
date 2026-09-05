@@ -192,6 +192,8 @@ class Payment {
   final int paidAt;
   final String note;
   final int updatedAt; // 最后修改时间（ms），同步用
+  final bool reconciled; // 是否已对账（v1.28.0 / db v16，0 未对账 1 已对账）
+  final int? quoteId; // 关联报价单 id（v1.28.0 / db v16，可空）
 
   const Payment({
     this.id,
@@ -202,6 +204,8 @@ class Payment {
     required this.paidAt,
     this.note = '',
     this.updatedAt = 0,
+    this.reconciled = false,
+    this.quoteId,
   });
 
   // 展示用收款类型名：自定义类型显示自定义名称，否则显示枚举 label。
@@ -217,6 +221,8 @@ class Payment {
         'paid_at': paidAt,
         'note': note,
         'updated_at': updatedAt,
+        'reconciled': reconciled ? 1 : 0,
+        'quote_id': quoteId,
       };
 
   factory Payment.fromMap(Map<String, Object?> m) => Payment(
@@ -229,6 +235,8 @@ class Payment {
         paidAt: (m['paid_at'] as num?)?.toInt() ?? 0,
         note: (m['note'] as String?) ?? '',
         updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
+        reconciled: ((m['reconciled'] as num?)?.toInt() ?? 0) == 1,
+        quoteId: m['quote_id'] as int?,
       );
 }
 
