@@ -12,6 +12,7 @@ import '../widgets/slidable_action.dart';
 import '../models.dart';
 import '../database.dart';
 import '../services/quote_pdf_service.dart';
+import '../services/quote_web_service.dart';
 import '../utils/money_input.dart';
 
 /// 报价单双 Tab 管理（v8 起支持 简单报价 / 详细报价）：
@@ -564,6 +565,41 @@ class _QuotePageState extends State<QuotePage>
     return result;
   }
 
+  // ================= v1.25.0 分享网页版报价单 =================
+  /// 本地生成自包含 HTML 报价页（内联样式 / 手机浏览器自适应）并拉起系统分享
+  /// 面板发送给客户（微信 / QQ / 邮件等）；业务数据仅存本地，不上传服务器。
+  Future<void> _shareWeb(BuildContext ctx, Quote q) async {
+    final messenger = ScaffoldMessenger.of(ctx);
+    final sig = await QuotePdfService.readSignature();
+    String customerName = q.title;
+    if (q.customerId != null) {
+      for (final c in _customers) {
+        if (c.id == q.customerId) {
+          customerName = c.name;
+          break;
+        }
+      }
+    }
+    try {
+      await QuoteWebService.share(QuoteWebData(
+        quote: q,
+        customerName: customerName,
+        projectName: _projectTitle(q.projectId),
+        signName: sig.name,
+        signContact: sig.contact,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(q.createdAt),
+      ));
+      if (!ctx.mounted) return;
+      Navigator.pop(ctx);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('网页报价单已生成，选择应用即可发送给客户')),
+      );
+    } catch (e) {
+      if (!ctx.mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('分享网页报价单失败：$e')));
+    }
+  }
+
   // ================= 历史弹层 =================
   Future<void> _openHistory() async {
     final quotes = await AppDb.instance.getQuotes();
@@ -606,6 +642,13 @@ class _QuotePageState extends State<QuotePage>
                       motion: const ScrollMotion(),
                       extentRatio: 0.9,
                       children: [
+                        CustomSlidableAction(
+                          onPressed: (_) => _shareWeb(ctx, q),
+                          backgroundColor: AppTheme.primary,
+                          foregroundColor: Colors.white,
+                          child: const SlidableActionContent(
+                              icon: Icons.public, label: '网页分享'),
+                        ),
                         CustomSlidableAction(
                           onPressed: (_) {
                             // 查看报价单详情（文本 + 参考图，参考图仅供查看）
