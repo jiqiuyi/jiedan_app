@@ -300,7 +300,7 @@ class AppState extends ChangeNotifier {
     // 同一兑换码仅可兑换一次（过渡期本地校验；正式版由服务端保证幂等）。
     final mine = await AppDb.instance.subscriptionOrders(uid);
     final used = mine.any((o) =>
-        o['channel'] == AppDb.instance.subChannelRedeem && o['ref_no'] == c);
+        o['channel'] == AppDb.subChannelRedeem && o['ref_no'] == c);
     if (used) return '该兑换码已使用过';
     // 本地发放：测试码按「永久」开通（过渡期演示用，正式版以支付/服务端结果为准）。
     await AppDb.instance.insertSubscriptionOrder(
@@ -309,8 +309,8 @@ class AppState extends ChangeNotifier {
       planKey: 'forever',
       planName: '永久',
       amount: 0,
-      channel: AppDb.instance.subChannelRedeem,
-      status: AppDb.instance.subStatusGranted,
+      channel: AppDb.subChannelRedeem,
+      status: AppDb.subStatusGranted,
       refNo: c,
     );
     final updated = _currentUser!.copyWith(isPro: true, proExpireAt: null);
@@ -513,8 +513,8 @@ class AppState extends ChangeNotifier {
       planKey: 'invite_bonus',
       planName: '邀请送月',
       amount: 0,
-      channel: AppDb.instance.subChannelInvite,
-      status: AppDb.instance.subStatusGranted,
+      channel: AppDb.subChannelInvite,
+      status: AppDb.subStatusGranted,
       refNo: 'invite-${AppConfig.inviteFreeVipFriends}p',
     );
     notifyListeners();
