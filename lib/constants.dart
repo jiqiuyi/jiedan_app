@@ -31,8 +31,10 @@ class AppConfig {
   static const int freeCustomerLimit = 1; // 免费版客户上限
   static const int freeProjectLimit = 3; // 免费版活跃项目上限
 
-  // ---- 订阅定价（仅展示用，MVP 阶段支付网关未接入）----
+  // ---- 订阅定价（第15批 v1.29.0 过渡期：纯 App 端本地闭环，与 README 权益一致）----
   // 首月特惠 1 元，仅限首次开通、每人一次；之后按标准价。
+  // 过渡期暂未接入真实支付网关：采用「出示收款码 + 手动确认到账」人工闭环，
+  // 手动到账后由云端 isPro 下发；同时支持内置兑换码本地开通（见 app_state.redeemVipCode）。
   static const double firstMonthPrice = 1; // 首月特惠价（元，仅一次）
   static const double monthlyPrice = 10; // 月订阅价（元，首月之后）
   static const double yearlyPrice = 68; // 年订阅价（元）
@@ -73,7 +75,7 @@ class AppConfig {
   // 充值说明：真实通道接入前，充值为"出示收款码 + 手动确认到账"，接入后自动到账
   static const String rechargeNotice = '充值到账后计入钱包余额，可用于后续开通专业版等消费；当前为手动确认模式，付款后请点击「确认到账」完成入账。';
 
-  // ---- 推广活动规则（本地 MVP 版，手动确认）----
+  // ---- 推广活动规则（第15批 v1.29.0 过渡期：本地自动核验版，与 README 权益一致）----
   static const int inviteFreeVipFriends = 2; // 推荐好友数达到该值 → 送 1 个月 VIP
   static const double inviteRewardMonths = 1; // 达成推荐目标赠送的 VIP 月数
   static const double rebateRate = 0.50; // 新人真实付款开通 VIP → 按比例返现
