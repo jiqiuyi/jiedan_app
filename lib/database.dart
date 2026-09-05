@@ -284,45 +284,65 @@ class AppDb {
       // 逐版本迁移（if(oldVersion<X) 保证老用户数据不丢、每个版本只补差量）：
       // 新增未来版本时，只需在下方追加 if(oldVersion<N+1){ await _migrateToVN+1(db); }，
       // 并在对应迁移函数内用 PRAGMA table_info 探测列后再 ALTER。
+      // 迁移统一走 _runMigration：集中管理全部历史版本差量路径 + 事务回滚保护 + 日志留痕。
       onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 2) {
-          await _createUsers(db);
-        }
-        if (oldVersion < 3) {
-          await _createFeedbacks(db);
-        }
-        if (oldVersion < 4) {
-          await _createInvitees(db);
-        }
-        if (oldVersion < 5) {
-          await _createWithdrawals(db);
-        }
-        if (oldVersion < 6) {
-          await _createRecharges(db);
-        }
-        if (oldVersion < 7) {
-          await _migrateToV7(db);
-        }
-        if (oldVersion < 8) {
-          await _migrateToV8(db);
-        }
-        if (oldVersion < 9) {
-          await _migrateToV9(db);
-        }
-        if (oldVersion < 10) {
-          await _migrateToV10(db);
-        }
-        if (oldVersion < 11) {
-          await _migrateToV11(db);
-        }
-        if (oldVersion < 12) {
-          await _migrateToV12(db);
-        }
-        if (oldVersion < 13) {
-          await _migrateToV13(db);
-        }
+        await _runMigration(db, oldVersion, newVersion);
+      },
+      // 降级保护（v1.23.0）：本地数据库版本高于当前应用可处理版本（例如用户回退安装
+      // 旧 APK）时，绝不执行任何 DDL / 数据改动，直接拒绝打开，避免新版数据结构被
+      // 旧版代码误操作破坏。用户如需回退旧版，应先在新版「数据管理」导出备份。
+      onDowngrade: (db, oldVersion, newVersion) async {
+        throw DbException(
+          '检测到本地数据版本(v$oldVersion)高于当前应用可处理的版本(v$newVersion)，'
+          '为防止数据被破坏已停止打开数据库。请安装不低于原版本的应用（或先还原旧版数据备份）。',
+        );
       },
     );
+  }
+
+  // 迁移成功/失败日志的 settings 键（保留最近若干条，便于排查版本升级问题）。
+  static const String _kDbMigrationLogKey = 'db_migration_log';
+
+  // 迁移统一入口：按 oldVersion 逐级补齐到 newVersion，保证「任意历史版本（v1~v13…）
+  // 升级到当前版本」都有对应的差量迁移路径，绝不会因跨多个版本而跳版本。
+  // 迁移在 Android SQLiteOpenHelper 为 onUpgrade 包裹的事务内执行：任一步骤失败会
+  // 整体回滚，schema 保持升级前版本、业务数据完好，应用下次打开可再次重试；
+  // 成功/失败都会写入 settings 留痕（db_migration_log）。
+  Future<void> _runMigration(Database db, int oldVersion, int newVersion) async {
+    try {
+      if (oldVersion < 2) await _createUsers(db);
+      if (oldVersion < 3) await _createFeedbacks(db);
+      if (oldVersion < 4) await _createInvitees(db);
+      if (oldVersion < 5) await _createWithdrawals(db);
+      if (oldVersion < 6) await _createRecharges(db);
+      if (oldVersion < 7) await _migrateToV7(db);
+      if (oldVersion < 8) await _migrateToV8(db);
+      if (oldVersion < 9) await _migrateToV9(db);
+      if (oldVersion < 10) await _migrateToV10(db);
+      if (oldVersion < 11) await _migrateToV11(db);
+      if (oldVersion < 12) await _migrateToV12(db);
+      if (oldVersion < 13) await _migrateToV13(db);
+      if (oldVersion < 14) await _migrateToV14(db);
+      await _appendMigrationLog(db, '成功 v$oldVersion -> v$newVersion @ $now()');
+    } catch (e, st) {
+      // 记录失败日志后抛出统一中文异常；平台事务回滚后数据库保持旧版本与全部数据，
+      // 上层（AppState.load）可感知并提示用户重试，不会静默损坏数据。
+      try {
+        await _appendMigrationLog(db, '失败 v$oldVersion -> v$newVersion @ $now()\n$e\n$st');
+      } catch (_) {}
+      throw DbException(
+        '数据库从 v$oldVersion 升级到 v$newVersion 失败，已自动回滚，数据未受影响。'
+        '请重启应用重试；若持续失败，请先在「数据管理」中导出备份后卸载重装。原因：$e',
+      );
+    }
+  }
+
+  Future<void> _appendMigrationLog(Database db, String line) async {
+    final rows = await db.query('settings',
+        where: 'key=?', whereArgs: [_kDbMigrationLogKey], orderBy: 'rowid DESC', limit: 5);
+    final prev = rows.isEmpty ? '' : '${rows.first['value']}\n';
+    await db.insert('settings', {'key': _kDbMigrationLogKey, 'value': '$prev$line'},
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   // v2 新增：本地账号表
@@ -592,6 +612,21 @@ class AppDb {
     }
   }
 
+  // v14 迁移（v1.23.0）：迁移机制完善——为高频查询建立索引，提升列表 / 统计看板性能。
+  // 全部使用 CREATE INDEX IF NOT EXISTS，幂等且不触碰任何业务数据（不删表、不改行、
+  // 不覆盖字段），符合「不得破坏现有业务数据」约束。
+  Future<void> _migrateToV14(Database db) async {
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_projects_customer ON projects(customer_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_payments_project ON payments(project_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_payments_paid_at ON payments(paid_at)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_quotes_project ON quotes(project_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_quotes_customer ON quotes(customer_id)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_pending_collections_project ON pending_collections(project_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_milestones_project ON milestones(project_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_contracts_project ON contracts(project_id)');
+  }
+
   // v7 迁移：payments 补 type_label 列（存量置空）+ 新增 quotes 表。
   Future<void> _migrateToV7(Database db) async {
     final cols = await db.rawQuery('PRAGMA table_info(payments)');
@@ -777,6 +812,100 @@ class AppDb {
           {'key': key, 'value': value},
           conflictAlgorithm: ConflictAlgorithm.replace,
         ));
+  }
+
+  // ============================================================
+  // 数据库自检（v1.23.0）：表结构完整性 + 数据可恢复性提示
+  //  - 结构完整性：把每张业务表的 PRAGMA table_info 实测列与预期列集合比对，
+  //    缺列 / 多余列即告警（不修改任何表结构）；
+  //  - 数据可恢复性：integrity_check 检查库文件完整性、foreign_key_check 检查
+  //    外键引用合法性，并统计各表行数供用户评估备份必要性。
+  // 自检为只读操作，绝不写入业务数据，结果可持久化到 settings 留痕。
+  // ============================================================
+  static const String kHealthReportKey = 'db_health_last_report';
+
+  Future<DbHealthReport> healthCheck() async {
+    final d = await db;
+    final report = await _guard(() async {
+      final integrityRows = await d.rawQuery('PRAGMA integrity_check(1)');
+      final integrityCheck = integrityRows.isEmpty
+          ? 'unknown'
+          : integrityRows.first.values.first.toString();
+
+      final tables = <TableIntegrity>[];
+      final rowCounts = <String, int>{};
+      for (final entry in expectedColumns.entries) {
+        final cols = await d.rawQuery('PRAGMA table_info(${entry.key})');
+        if (cols.isEmpty) {
+          tables.add(TableIntegrity(table: entry.key, exists: false));
+          continue;
+        }
+        final actual = cols.map((c) => c['name'].toString()).toSet();
+        final missing =
+            entry.value.difference(actual).toList()..sort();
+        final extra = actual.difference(entry.value).toList()..sort();
+        if (missing.isNotEmpty || extra.isNotEmpty) {
+          tables.add(TableIntegrity(
+            table: entry.key,
+            exists: true,
+            missingColumns: missing,
+            extraColumns: extra,
+          ));
+        }
+        final cnt = await d
+            .rawQuery('SELECT COUNT(*) AS c FROM ${entry.key}');
+        rowCounts[entry.key] = (cnt.first['c'] as num?)?.toInt() ?? 0;
+      }
+
+      final fkRows = await d.rawQuery('PRAGMA foreign_key_check');
+      final foreignKeyIssues = fkRows.isEmpty
+          ? <String>[]
+          : fkRows
+              .map((r) =>
+                  '${r['table']}#${r['rowid']} -> ${r['parent']}.${r['fkid']}')
+              .toList();
+
+      return DbHealthReport(
+        checkedAt: DateTime.now(),
+        integrityCheck: integrityCheck,
+        tables: tables,
+        foreignKeyIssues: foreignKeyIssues,
+        rowCounts: rowCounts,
+      );
+    });
+
+    // 留痕最近一次自检结果，供「数据管理」页展示与事后排查。
+    try {
+      await setSetting(
+        kHealthReportKey,
+        jsonEncode({
+          'checkedAt': report.checkedAt.millisecondsSinceEpoch,
+          'healthy': report.healthy,
+          'integrity': report.integrityCheck,
+          'tables': report.tables
+              .map((t) => {
+                    'table': t.table,
+                    'ok': t.ok,
+                    'missing': t.missingColumns,
+                    'extra': t.extraColumns,
+                  })
+              .toList(),
+          'rows': report.rowCounts,
+        }),
+      );
+    } catch (_) {
+      // 留痕失败不影响自检结果返回。
+    }
+    return report;
+  }
+
+  /// 启动后静默自检：不抛异常、不阻塞启动流程，仅留痕供界面查看。
+  Future<void> backgroundHealthCheck() async {
+    try {
+      await healthCheck();
+    } catch (_) {
+      // 自检失败不打断启动。
+    }
   }
 
   // ---------- users（本地账号）----------
@@ -1589,4 +1718,112 @@ class AppDb {
     }
     return counts;
   }
+}
+
+// ============================================================
+// 数据库自检 - 预期表结构（v1.23.0）
+// 每张业务表的「完整合法列集合」，供 healthCheck() 与 PRAGMA table_info 实测结果比对。
+// 注意：新增表 / 新增列时必须同步维护本集合与对应迁移函数，避免自检误报缺列。
+// ============================================================
+const Map<String, Set<String>> expectedColumns = {
+  'customers': {
+    'id', 'name', 'contact', 'note', 'industry', 'source', 'location',
+    'last_contact_at', 'created_at', 'updated_at',
+  },
+  'projects': {
+    'id', 'customer_id', 'title', 'status', 'amount_total', 'created_at',
+    'updated_at', 'due_date', 'remind_at',
+  },
+  'payments': {
+    'id', 'project_id', 'amount', 'type', 'type_label', 'paid_at', 'note',
+  },
+  'settings': {'key', 'value'},
+  'users': {
+    'id', 'phone', 'pass_hash', 'nickname', 'is_pro', 'pro_expire_at',
+    'created_at',
+  },
+  'feedbacks': {
+    'id', 'type', 'content', 'contact', 'created_at', 'server_id', 'reply',
+    'replied_at', 'synced',
+  },
+  'invitees': {
+    'id', 'inviter_user_id', 'name', 'phone', 'invited_at', 'paid',
+    'pay_amount', 'rebate', 'paid_at',
+  },
+  'withdrawals': {
+    'id', 'amount', 'method', 'account_name', 'account_no', 'status',
+    'created_at', 'note',
+  },
+  'recharges': {'id', 'amount', 'method', 'status', 'created_at', 'note'},
+  'quotes': {
+    'id', 'project_id', 'customer_id', 'title', 'tax_rate', 'lines_json',
+    'total', 'created_at', 'quote_type', 'note', 'tax_include', 'status',
+    'is_template', 'updated_at',
+  },
+  'pending_collections': {
+    'id', 'project_id', 'quote_id', 'customer_id', 'title', 'amount',
+    'due_date', 'status', 'created_at', 'settled_at',
+  },
+  'milestones': {'id', 'project_id', 'name', 'amount', 'done', 'created_at'},
+  'contracts': {
+    'id', 'target', 'amount', 'project_id', 'status', 'signed_at',
+    'contract_no', 'note',
+  },
+  'sync_tombstones': {'id', 'table_name', 'row_id', 'deleted_at'},
+};
+
+/// 单表结构完整性检查结果。
+class TableIntegrity {
+  const TableIntegrity({
+    required this.table,
+    required this.exists,
+    this.missingColumns = const [],
+    this.extraColumns = const [],
+  });
+
+  final String table;
+  final bool exists;
+  final List<String> missingColumns;
+  final List<String> extraColumns;
+
+  bool get ok => exists && missingColumns.isEmpty && extraColumns.isEmpty;
+
+  String get describe {
+    if (!exists) return '表缺失';
+    if (missingColumns.isNotEmpty) return '缺列: ${missingColumns.join(', ')}';
+    if (extraColumns.isNotEmpty) return '多余列: ${extraColumns.join(', ')}';
+    return '完整';
+  }
+}
+
+/// 数据库自检报告（表结构完整性 + 数据可恢复性提示）。
+class DbHealthReport {
+  const DbHealthReport({
+    required this.checkedAt,
+    required this.integrityCheck,
+    required this.tables,
+    required this.foreignKeyIssues,
+    required this.rowCounts,
+  });
+
+  final DateTime checkedAt;
+
+  /// PRAGMA integrity_check(1) 结果：'ok' 表示库文件完整，否则为具体损坏信息。
+  final String integrityCheck;
+
+  /// 存在异常的表的检查结果；结构完全正常的表不在此列表。
+  final List<TableIntegrity> tables;
+
+  /// foreign_key_check 查出的外键引用问题（空列表 = 无问题）。
+  final List<String> foreignKeyIssues;
+
+  /// 各表行数（仅统计存在且可读的表）。
+  final Map<String, int> rowCounts;
+
+  bool get healthy =>
+      integrityCheck == 'ok' &&
+      foreignKeyIssues.isEmpty &&
+      tables.every((t) => t.ok);
+
+  int get totalRows => rowCounts.values.fold(0, (sum, n) => sum + n);
 }
