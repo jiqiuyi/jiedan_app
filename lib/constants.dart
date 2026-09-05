@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.25.0';
+  static const String version = '1.26.0';
 
   // ---- 云端后端 ----
   // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）存储方式
