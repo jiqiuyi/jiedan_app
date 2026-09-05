@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../app_state.dart';
 import '../constants.dart';
 import '../database.dart';
 import '../theme.dart';
+import 'paywall_page.dart';
 
 /// 对账页（v1.10.0 项目维度汇总 + 第17批 v1.28.0 收款流水明细）：
 /// 上方保留每个项目 约定总额 / 已收 / 待收 汇总；
@@ -74,6 +76,15 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 第15批：经营对账汇总加 VIP 门禁，不隐藏入口，免费用户进入即见升级引导。
+    if (!AppState.instance.isPro) {
+      return _vipGate(
+        context,
+        appBarTitle: '对账汇总',
+        feature: '经营对账汇总',
+        desc: '多维度经营对账报表为专业版专属权益。',
+      );
+    }
     final totalAgreed = _rows.fold<int>(0, (s, r) => s + _v(r['amount_total']));
     final totalPaid = _rows.fold<int>(0, (s, r) => s + _v(r['paid_total']));
     final totalPending = _rows.fold<int>(0, (s, r) => s + _v(r['pending_total']));
@@ -534,4 +545,49 @@ class _FlowRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 第15批 VIP 门禁引导组件（不隐藏入口，免费用户进入时展示并引导升级）。
+Widget _vipGate(BuildContext context,
+    {required String appBarTitle,
+    required String feature,
+    required String desc}) {
+  return Scaffold(
+    appBar: AppBar(title: Text(appBarTitle)),
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.lock_outline, size: 64, color: AppTheme.primary),
+            const SizedBox(height: 16),
+            Text('$feature为专业版专属',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(desc,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    color: AppTheme.textSub, fontSize: 13)),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const PaywallPage(
+                    title: '升级专业版',
+                    desc: '解锁全部高级经营功能',
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.workspace_premium),
+              label: const Text('升级 VIP 解锁'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
