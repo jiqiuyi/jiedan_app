@@ -39,6 +39,9 @@ app.*.symbols
 # Obfuscation related
 app.*.map.json
 
+# Dart 混淆符号表（仅用于崩溃栈还原，勿提交/分发）
+debug-info/
+
 # Android Studio will place build artifacts here
 /android/app/debug
 /android/app/profile
