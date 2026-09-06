@@ -54,7 +54,6 @@ android/app/*.jks
 # 本地构建临时日志
 temp_build_log.txt
 
-# �����֤��ͼ����ʱ���
 verify/
 # P1: local key.properties (contains keystore path/password, never commit)
 android/key.properties
