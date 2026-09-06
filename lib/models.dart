@@ -93,6 +93,46 @@ class Customer {
       );
 }
 
+// ================= v1.30.0 标签（第19批 标签系统）=================
+// 标签池：预设种子（重要客户/回头客/潜在客户/已成交/难沟通/待跟进）+ 用户自定义。
+// color 存 ARGB int（Material Color.value），UI 端 Color(color) 直接使用。
+class Tag {
+  final int? id;
+  final String name;
+  final int color; // ARGB 色值，默认品牌蓝
+  final int createdAt;
+
+  const Tag({
+    this.id,
+    required this.name,
+    this.color = 0xFF4C9AFF,
+    this.createdAt = 0,
+  });
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'name': name,
+        'color': color,
+        'created_at': createdAt,
+      };
+
+  factory Tag.fromMap(Map<String, Object?> m) => Tag(
+        id: m['id'] as int?,
+        name: (m['name'] as String?) ?? '',
+        color: (m['color'] as num?)?.toInt() ?? 0xFF4C9AFF,
+        createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
+      );
+
+  bool isValidTag() => name.trim().isNotEmpty;
+
+  Tag copyWith({String? name, int? color}) => Tag(
+        id: id,
+        name: name ?? this.name,
+        color: color ?? this.color,
+        createdAt: createdAt,
+      );
+}
+
 class Project {
   final int? id;
   final int customerId;
