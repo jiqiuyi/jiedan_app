@@ -61,3 +61,11 @@ android/key.properties
 
 # 构建产物 APK（交付副本统一放 output/，不入库）
 *.apk
+
+# 内部开发文档，不公开
+审查报告.md
+待优化清单.md
+改造交付说明*.md
+数据存储方式改造说明.md
+v1.*.md
+docs/
