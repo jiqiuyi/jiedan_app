@@ -56,7 +56,8 @@ class AppConfig {
   // v15：报价/收款等业务增强（历史遗留，见 database._migrateToV15）
   // v16：第17批 收款对账 —— payments 补 reconciled/quote_id 两列
   // v17：第15批 订阅裂变 —— 新增 subscription_orders 订阅订单表（本地闭环/兑换码/邀请送月）
-  static const int dbVersion = 17;
+  // v18：第19批 标签系统 —— 新增 tags 标签表 + customer_tags 客户-标签多对多关联表
+  static const int dbVersion = 18;
 
   // ---- 数据存储方式（v1.14.0）----
   // 存储方式的持久化键（settings 表）
