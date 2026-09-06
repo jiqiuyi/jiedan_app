@@ -2112,6 +2112,8 @@ const Map<String, Set<String>> expectedColumns = {
     'id', 'user_id', 'phone', 'plan_key', 'plan_name', 'amount', 'channel',
     'status', 'ref_no', 'synced', 'created_at', 'updated_at',
   },
+  'tags': {'id', 'name', 'color', 'created_at'},
+  'customer_tags': {'customer_id', 'tag_id'},
 };
 
 /// 单表结构完整性检查结果。
