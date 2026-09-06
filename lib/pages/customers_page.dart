@@ -413,6 +413,7 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
   List<Project> _projects = [];
   bool _loading = true;
   int _paidTotal = 0;
+  List<Tag> _tags = []; // 当前客户已打标签（第19批 标签系统）
 
   @override
   void initState() {
@@ -424,10 +425,12 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
     final projs =
         await AppDb.instance.getProjectsByCustomer(widget.customer.id!);
     final paid = await AppDb.instance.customerPaidTotal(widget.customer.id!);
+    final tags = await AppDb.instance.getCustomerTags(widget.customer.id!);
     if (!mounted) return;
     setState(() {
       _projects = projs;
       _paidTotal = paid;
+      _tags = tags;
       _loading = false;
     });
   }
@@ -455,6 +458,8 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
                 _infoRow('最近联系',
                     c.lastContactAt > 0 ? _fmtDate(c.lastContactAt) : '未记录'),
                 _infoRow('备注', c.note),
+                const SizedBox(height: 16),
+                _buildTagCard(),
                 const SizedBox(height: 16),
                 Row(
                   children: [
@@ -519,6 +524,250 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
     );
   }
 
+  // ---- 第19批 标签系统：详情页标签展示卡 ----
+  Widget _buildTagCard() {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            const Icon(Icons.sell_outlined, size: 20, color: AppTheme.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('标签',
+                      style:
+                          TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  if (_tags.isEmpty)
+                    const Text('未打标签',
+                        style: TextStyle(color: AppTheme.textSub, fontSize: 13))
+                  else
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final t in _tags) _TagChip(tag: t),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: _editTags,
+              child: const Text('管理'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 标签管理：底部弹出全标签勾选区，支持新建自定义标签（含选色）。
+  Future<void> _editTags() async {
+    final all = await AppDb.instance.getTags();
+    final sel = <int>{for (final t in _tags) t.id!};
+    final tags = [...all];
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          void commit() {
+            AppDb.instance
+                .setCustomerTags(widget.customer.id!, sel.toList())
+                .then((_) => setSheet(() {}));
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Text('标签管理',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w700)),
+                      const Spacer(),
+                      Text('已选 ${sel.length}',
+                          style: const TextStyle(color: AppTheme.textSub)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text('选择标签为「${widget.customer.name}」打标，可多选',
+                      style: const TextStyle(
+                          color: AppTheme.textSub, fontSize: 12)),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final t in tags)
+                            FilterChip(
+                              label: Text(t.name),
+                              selected: sel.contains(t.id),
+                              onSelected: (v) {
+                                setSheet(() {
+                                  if (v) {
+                                    sel.add(t.id!);
+                                  } else {
+                                    sel.remove(t.id!);
+                                  }
+                                  commit();
+                                });
+                              },
+                              selectedColor:
+                                  Color(t.color).withValues(alpha: 0.18),
+                              checkmarkColor: Color(t.color),
+                              labelStyle: TextStyle(
+                                  color: Color(t.color),
+                                  fontWeight: sel.contains(t.id)
+                                      ? FontWeight.w600
+                                      : FontWeight.w400),
+                              side: BorderSide(
+                                  color: Color(t.color).withValues(alpha: 0.4)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20)),
+                            ),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final t = await _createTagDialog();
+                              if (t != null) {
+                                setSheet(() {
+                                  tags.add(t);
+                                  sel.add(t.id!);
+                                  commit();
+                                });
+                              }
+                            },
+                            icon: const Icon(Icons.add, size: 16),
+                            label: const Text('新建标签'),
+                            style: OutlinedButton.styleFrom(
+                                shape: const StadiumBorder()),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _openTagManagePage()
+                                .then((changed) {
+                              if (changed == true) {
+                                Navigator.pop(ctx, true);
+                              }
+                            }),
+                            icon: const Icon(Icons.tune, size: 16),
+                            label: const Text('标签池管理'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      icon: const Icon(Icons.check, size: 18),
+                      label: const Text('完成'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (saved == true) {
+      await _load();
+    }
+  }
+
+  // 新建标签对话框：名称 + 色板单选。
+  Future<Tag?> _createTagDialog({Tag? edit}) async {
+    final nameCtrl = TextEditingController(text: edit?.name ?? '');
+    const palette = <int>[
+      0xFFE53935, 0xFFFB8C00, 0xFFFDD835, 0xFF43A047,
+      0xFF00897B, 0xFF1E88E5, 0xFF8E24AA, 0xFF546E7A,
+    ];
+    var picked = edit?.color ?? palette.first;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(edit == null ? '新建标签' : '编辑标签'),
+        content: StatefulBuilder(
+          builder: (ctx, setDlg) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                maxLength: 8,
+                decoration: const InputDecoration(
+                    labelText: '标签名称', hintText: '如：VIP 客户'),
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final c in palette)
+                    GestureDetector(
+                      onTap: () => setDlg(() => picked = c),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: Color(c),
+                          shape: BoxShape.circle,
+                          border: picked == c
+                              ? Border.all(color: Colors.black54, width: 2.5)
+                              : null,
+                        ),
+                        child: picked == c
+                            ? const Icon(Icons.check, size: 18, color: Colors.white)
+                            : null,
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+            onPressed: () => nameCtrl.text.trim().isEmpty
+                ? null
+                : Navigator.pop(ctx, true),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) return Tag(name: nameCtrl.text.trim(), color: picked);
+    return null;
+  }
+
+  // 标签池管理（编辑/删除标签），返回是否发生变更。
+  Future<bool?> _openTagManagePage() {
+    return Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const _TagManagePage()),
+    );
+  }
+
   Widget _infoRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
@@ -558,6 +807,275 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ================= 第19批 标签系统：彩色标签 chip（列表与详情共用）=================
+class _TagChip extends StatelessWidget {
+  const _TagChip({required this.tag});
+
+  final Tag tag;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Color(tag.color);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 4),
+          Text(tag.name,
+              style: TextStyle(
+                  fontSize: 11, color: c, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+// ================= 第19批 标签系统：标签池管理（含标签维度汇总）=================
+class _TagManagePage extends StatefulWidget {
+  const _TagManagePage();
+
+  @override
+  State<_TagManagePage> createState() => _TagManagePageState();
+}
+
+class _TagManagePageState extends State<_TagManagePage> {
+  static final NumberFormat _fmt = NumberFormat('#,##0.00');
+
+  List<Map<String, Object?>> _summaries = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final s = await AppDb.instance.tagSummaries();
+    if (!mounted) return;
+    setState(() {
+      _summaries = s;
+      _loading = false;
+    });
+  }
+
+  // 新建 / 编辑标签（名称 + 色板），返回 Tag 或 null。
+  Future<Tag?> _openEditor({Tag? edit}) async {
+    final nameCtrl = TextEditingController(text: edit?.name ?? '');
+    const palette = <int>[
+      0xFFE53935, 0xFFFB8C00, 0xFFFDD835, 0xFF43A047,
+      0xFF00897B, 0xFF1E88E5, 0xFF8E24AA, 0xFF546E7A,
+    ];
+    var picked = edit?.color ?? palette.first;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(edit == null ? '新建标签' : '编辑标签'),
+        content: StatefulBuilder(
+          builder: (ctx, setDlg) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                maxLength: 8,
+                decoration: const InputDecoration(
+                    labelText: '标签名称', hintText: '如：VIP 客户'),
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final c in palette)
+                    GestureDetector(
+                      onTap: () => setDlg(() => picked = c),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: Color(c),
+                          shape: BoxShape.circle,
+                          border: picked == c
+                              ? Border.all(color: Colors.black54, width: 2.5)
+                              : null,
+                        ),
+                        child: picked == c
+                            ? const Icon(Icons.check,
+                                size: 18, color: Colors.white)
+                            : null,
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+            onPressed: () => nameCtrl.text.trim().isEmpty
+                ? null
+                : Navigator.pop(ctx, true),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return null;
+    if (edit == null) {
+      return Tag(name: nameCtrl.text.trim(), color: picked);
+    }
+    return edit.copyWith(name: nameCtrl.text.trim(), color: picked);
+  }
+
+  Future<void> _create() async {
+    final t = await _openEditor();
+    if (t != null) {
+      await AppDb.instance.insertTag(t.name, t.color);
+      await _load();
+    }
+  }
+
+  Future<void> _edit(Map<String, Object?> s) async {
+    final tag = Tag(
+      id: s['tag_id'] as int?,
+      name: (s['tag_name'] as String?) ?? '',
+      color: (s['tag_color'] as num?)?.toInt() ?? 0xFF4C9AFF,
+    );
+    final updated = await _openEditor(edit: tag);
+    if (updated != null) {
+      await AppDb.instance.updateTag(updated);
+      await _load();
+    }
+  }
+
+  Future<void> _remove(Map<String, Object?> s) async {
+    final id = s['tag_id'] as int?;
+    final name = s['tag_name'] as String? ?? '';
+    if (id == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除标签'),
+        content: Text('确定删除标签「$name」吗？\n该标签与全部客户的关联将一并移除。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await AppDb.instance.deleteTag(id);
+      await _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('标签池')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _create,
+        backgroundColor: AppTheme.primary,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add),
+        label: const Text('新建标签'),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _summaries.isEmpty
+              ? const Center(
+                  child: Text('还没有标签，点右下角新建',
+                      style: TextStyle(color: AppTheme.textSub)))
+              : ListView(
+                  padding: const EdgeInsets.only(bottom: 88),
+                  children: [
+                    Container(
+                      color: AppTheme.primary.withValues(alpha: 0.06),
+                      padding: const EdgeInsets.all(12),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline,
+                              size: 16, color: AppTheme.primary),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '标签维度汇总：每行显示该标签下的客户数与该批客户累计收款，'
+                              '仅做轻量统计，不联动对账流水。',
+                              style: TextStyle(
+                                  fontSize: 12, color: AppTheme.textSub),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    for (final s in _summaries)
+                      Card(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 4),
+                        child: ListTile(
+                          leading: Container(
+                            width: 18,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              color: Color(
+                                  (s['tag_color'] as num?)?.toInt() ??
+                                      0xFF4C9AFF),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          title: Text(
+                            (s['tag_name'] as String?) ?? '',
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(
+                            '${s['customer_count'] ?? 0} 位客户 · '
+                            '累计收款 ¥${_fmt.format(((s['paid_total'] as num?)?.toInt() ?? 0) / 100)}',
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined,
+                                    size: 20),
+                                onPressed: () => _edit(s),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline,
+                                    size: 20, color: AppTheme.danger),
+                                onPressed: () => _remove(s),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
     );
   }
 }
