@@ -90,7 +90,7 @@ class QrCodePayChannel implements PayChannel {
   @override
   Future<PaymentResult> createPayment(PaymentRequest req) async {
     // 真实接入点①：这里改为拉起微信 APP 支付 / 支付宝 APP 支付，
-    // 或调用服务商（虎皮椒 / PAYJS 等）下单接口换取支付参数。
+    // 或调用服务商（ZPAY / 易支付等）下单接口换取支付参数。
     return const PaymentResult(true, '请出示收款码收款，到账后手动确认登记');
   }
 

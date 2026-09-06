@@ -194,6 +194,18 @@ class ApiClient {
         authRequired: true);
   }
 
+  /// ZPAY支付：创建支付订单（第16批骨架）。
+  /// [plan] 取值：firstMonth / month / year / forever
+  /// 返回 { orderId, tradeOrderId, plan, amount, url, url_qrcode }。
+  /// url 为手机端跳转链接，url_qrcode 为 PC 端二维码地址；骨架阶段
+  /// 后端未配置 ZPAY_PID/ZPAY_KEY 时返回「未配置支付渠道」。
+  Future<Map<String, dynamic>> payCreate(String plan) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/pay/create', {'plan': plan},
+        authRequired: true);
+  }
+
   /// 监听上报：由通知解析侧（原生组件 / Flutter 兜底）上报到账金额 + 时间。
   /// [amount] 到账金额（元）；[ts] 到账时间戳（毫秒）；[source] 渠道标识
   /// （wechat / alipay / manual）；[deviceId] 设备标识（风控 / 拉黑用）。
