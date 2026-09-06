@@ -1112,6 +1112,7 @@ class AppDb {
 
   // 级联删除：先删该客户全部项目（deleteProject 已级联子表），再删待收/报价，最后删客户。
   Future<void> deleteCustomer(int id) async {
+    await _deleteByWhere('customer_tags', where: 'customer_id=?', whereArgs: [id]);
     final projects =
         await _all('projects', where: 'customer_id=?', whereArgs: [id]);
     for (final pr in projects) {
@@ -1132,6 +1133,94 @@ class AppDb {
     await _deleteById('customers', id, strict: false);
     await addTombstone('customers', id);
     _notify();
+  }
+
+  // ---------- tags / customer_tags（第19批 标签系统，仅本地语义）----------
+  // 标签池全量标签
+  Future<List<Tag>> getTags() async {
+    final rows = await _all('tags', orderBy: 'created_at ASC');
+    return rows.map(Tag.fromMap).toList();
+  }
+
+  Future<int> insertTag(String name, int color) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return _insert('tags', {'name': name.trim(), 'color': color, 'created_at': now});
+  }
+
+  Future<void> updateTag(Tag t) async {
+    await _updateById('tags', t.toMap()..remove('id'), t.id!);
+  }
+
+  // 删除标签：同时移除该标签与全部客户的关联（级联清理 customer_tags）。
+  Future<void> deleteTag(int id) async {
+    await _deleteByWhere('customer_tags', where: 'tag_id=?', whereArgs: [id]);
+    await _deleteById('tags', id);
+  }
+
+  // 单客户的已打标签
+  Future<List<Tag>> getCustomerTags(int customerId) async {
+    final d = await db;
+    final rows = await d.rawQuery('''
+      SELECT t.* FROM tags t
+      JOIN customer_tags ct ON ct.tag_id = t.id
+      WHERE ct.customer_id = ?
+      ORDER BY t.created_at ASC
+    ''', [customerId]);
+    return rows.map(Tag.fromMap).toList();
+  }
+
+  // 一次取全部客户 -> 标签映射（供客户列表批量展示，避免 N+1 查询）。
+  Future<Map<int, List<Tag>>> tagsByCustomers() async {
+    final d = await db;
+    final rows = await d.rawQuery('''
+      SELECT ct.customer_id AS cid, t.* FROM customer_tags ct
+      JOIN tags t ON ct.tag_id = t.id
+      ORDER BY t.created_at ASC
+    ''');
+    final map = <int, List<Tag>>{};
+    for (final r in rows) {
+      final cid = r['cid'] as int?;
+      if (cid == null) continue;
+      map.putIfAbsent(cid, () => []).add(Tag.fromMap(r));
+    }
+    return map;
+  }
+
+  // 覆盖式保存客户标签（先清后插，事务包裹保证原子性）。
+  Future<void> setCustomerTags(int customerId, List<int> tagIds) async {
+    final d = await db;
+    await d.transaction((txn) async {
+      await txn.delete('customer_tags',
+          where: 'customer_id=?', whereArgs: [customerId]);
+      for (final tid in tagIds) {
+        await txn.insert(
+            'customer_tags', {'customer_id': customerId, 'tag_id': tid},
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
+  // 标签维度汇总（轻量，第19批）：每标签下客户数 + 标签下客户累计收款合计（分）。
+  // 复用现有客户累计收款口径（payments join projects），不做对账模块深度联动。
+  Future<List<Map<String, Object?>>> tagSummaries() async {
+    final d = await db;
+    final rows = await d.rawQuery('''
+      SELECT t.id AS tag_id, t.name AS tag_name, t.color AS tag_color,
+             COUNT(DISTINCT ct.customer_id) AS customer_count,
+             COALESCE(SUM(m.amt), 0) AS paid_total
+      FROM tags t
+      LEFT JOIN customer_tags ct ON ct.tag_id = t.id
+      LEFT JOIN (
+        SELECT pr.customer_id AS cid, COALESCE(SUM(py.amount), 0) AS amt
+        FROM payments py
+        JOIN projects pr ON py.project_id = pr.id
+        WHERE pr.customer_id IS NOT NULL
+        GROUP BY pr.customer_id
+      ) m ON m.cid = ct.customer_id
+      GROUP BY t.id
+      ORDER BY t.created_at ASC
+    ''');
+    return rows;
   }
 
   // ---------- projects（同步表）----------
