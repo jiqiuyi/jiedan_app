@@ -285,6 +285,7 @@ class AppDb {
         await _createMilestones(db);
         await _createContracts(db);
         await _createSubscriptionOrders(db);
+        await _createTags(db);
       },
       // 逐版本迁移（if(oldVersion<X) 保证老用户数据不丢、每个版本只补差量）：
       // 新增未来版本时，只需在下方追加 if(oldVersion<N+1){ await _migrateToVN+1(db); }，
@@ -331,6 +332,7 @@ class AppDb {
       if (oldVersion < 15) await _migrateToV15(db);
       if (oldVersion < 16) await _migrateToV16(db);
       if (oldVersion < 17) await _migrateToV17(db);
+      if (oldVersion < 18) await _migrateToV18(db);
       await _appendMigrationLog(db, '成功 v$oldVersion -> v$newVersion @ $now()');
     } catch (e, st) {
       // 记录失败日志后抛出统一中文异常；平台事务回滚后数据库保持旧版本与全部数据，
@@ -696,6 +698,58 @@ class AppDb {
     final cols = await db.rawQuery('PRAGMA table_info(subscription_orders)');
     if (cols.isEmpty) {
       await _createSubscriptionOrders(db);
+    }
+  }
+
+  // v18 建表：tags 标签表 + customer_tags 客户-标签多对多关联表（第19批 标签系统）。
+  // tags 为标签池（预设种子 + 用户自定义）；customer_tags 用 (customer_id, tag_id)
+  // 复合主键防重复关联。color 存 ARGB int（Material Color.value），UI 端 Color(x) 直接用。
+  Future<void> _createTags(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS tags(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        color INTEGER NOT NULL DEFAULT 0xFF4C9AFF,
+        created_at INTEGER
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS customer_tags(
+        customer_id INTEGER NOT NULL,
+        tag_id INTEGER NOT NULL,
+        PRIMARY KEY (customer_id, tag_id)
+      )
+    ''');
+    await _seedTags(db);
+  }
+
+  // 预设标签池种子（第19批）：6 个常用标签 + 各自默认颜色，随建表/迁移落库。
+  // 幂等：name 有 UNIQUE 约束，INSERT OR IGNORE 保证重复执行不产生重复数据；
+  // 用户可后续自定义新增 / 改色 / 删除，本批不重置已存在的同名标签。
+  Future<void> _seedTags(Database db) async {
+    final seed = <Map<String, Object?>>[
+      {'name': '重要客户', 'color': 0xFFE53935},
+      {'name': '回头客', 'color': 0xFFFB8C00},
+      {'name': '潜在客户', 'color': 0xFF1E88E5},
+      {'name': '已成交', 'color': 0xFF43A047},
+      {'name': '难沟通', 'color': 0xFF8E24AA},
+      {'name': '待跟进', 'color': 0xFF00897B},
+    ];
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final s in seed) {
+      await db.insert('tags',
+          {'name': s['name'], 'color': s['color'], 'created_at': now},
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+  }
+
+  // v18 迁移（第19批 标签系统）：新增 tags + customer_tags 两表。
+  // 幂等：PRAGMA table_info 探测表不存在才 CREATE（兼容 v17 老用户升级，
+  // 以及 CREATE TABLE IF NOT EXISTS 双重保险；新装走 onCreate 已同步建表）。
+  Future<void> _migrateToV18(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(tags)');
+    if (cols.isEmpty) {
+      await _createTags(db);
     }
   }
 
