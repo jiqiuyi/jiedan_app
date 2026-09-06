@@ -26,6 +26,10 @@ class _CustomersPageState extends State<CustomersPage> {
   Timer? _debounce;
   // 订阅全局数据变更广播（删除/编辑来自本页或项目详情页级联），自动刷新。
   StreamSubscription<int>? _tickerSub;
+  // 第19批 标签系统：标签池 / 客户->标签映射 / 当前筛选标签
+  List<Tag> _allTags = [];
+  Map<int, List<Tag>> _tagsByCust = {};
+  int? _selectedTagId;
 
   @override
   void initState() {
@@ -43,22 +47,35 @@ class _CustomersPageState extends State<CustomersPage> {
 
   Future<void> _load() async {
     final list = await AppDb.instance.getCustomers();
+    final tags = await AppDb.instance.getTags();
+    final map = await AppDb.instance.tagsByCustomers();
     if (!mounted) return;
     setState(() {
       _customers = list;
+      _allTags = tags;
+      _tagsByCust = map;
       _loading = false;
     });
   }
 
   List<Customer> get _filtered {
     final q = _query.trim().toLowerCase();
-    if (q.isEmpty) return _customers;
-    return _customers
-        .where((c) =>
-            c.name.toLowerCase().contains(q) ||
-            c.contact.toLowerCase().contains(q) ||
-            c.note.toLowerCase().contains(q))
-        .toList();
+    var result = _customers;
+    if (q.isNotEmpty) {
+      result = result
+          .where((c) =>
+              c.name.toLowerCase().contains(q) ||
+              c.contact.toLowerCase().contains(q) ||
+              c.note.toLowerCase().contains(q))
+          .toList();
+    }
+    if (_selectedTagId != null) {
+      result = result
+          .where((c) => (_tagsByCust[c.id] ?? const <Tag>[])
+              .any((t) => t.id == _selectedTagId))
+          .toList();
+    }
+    return result;
   }
 
   Future<void> _addOrEdit([Customer? c]) async {
@@ -243,12 +260,112 @@ class _CustomersPageState extends State<CustomersPage> {
         MaterialPageRoute(builder: (_) => PaywallPage(title: title, desc: desc)));
   }
 
+  // ---- 第19批 标签系统：列表页标签能力 ----
+  List<Tag> _tagsOf(Customer c) => _tagsByCust[c.id] ?? const <Tag>[];
+
+  // 顶部标签筛选条（横向 chips）：全部 + 各标签，点击切换按标签筛选客户。
+  Widget _buildTagFilterBar() {
+    return SizedBox(
+      height: 42,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 6, top: 6),
+            child: ChoiceChip(
+              label: Text(_selectedTagId == null ? '全部' : '全部标签'),
+              selected: _selectedTagId == null,
+              onSelected: (_) => setState(() => _selectedTagId = null),
+              selectedColor: AppTheme.primary,
+              labelStyle: TextStyle(
+                fontSize: 12,
+                color: _selectedTagId == null
+                    ? Colors.white
+                    : AppTheme.textSub,
+                fontWeight: FontWeight.w600,
+              ),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+            ),
+          ),
+          for (final t in _allTags)
+            Padding(
+              padding: const EdgeInsets.only(right: 6, top: 6),
+              child: ChoiceChip(
+                key: ValueKey('tag_filter_${t.id}'),
+                label: Text(t.name),
+                selected: _selectedTagId == t.id,
+                onSelected: (_) => setState(() => _selectedTagId = t.id),
+                selectedColor: Color(t.color).withValues(alpha: 0.18),
+                checkmarkColor: Color(t.color),
+                labelStyle: TextStyle(
+                  fontSize: 12,
+                  color: _selectedTagId == t.id
+                      ? Color(t.color)
+                      : AppTheme.textSub,
+                  fontWeight: FontWeight.w600,
+                ),
+                side: BorderSide(
+                    color: Color(t.color).withValues(alpha: 0.4)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // 标签池管理入口（编辑/删除标签 + 标签维度汇总），返回后刷新标签与映射。
+  Future<void> _openTagManagePage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const _TagManagePage()),
+    );
+    await _load();
+  }
+
+  // 卡片标签 chip（彩色）：最多展示 2 个，超出折叠为 +n。
+  Widget _buildCardTagChips(Customer c) {
+    final tags = _tagsOf(c);
+    if (tags.isEmpty) return const SizedBox.shrink();
+    final shown = tags.take(2).toList();
+    final remain = tags.length - shown.length;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final t in shown)
+          Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: _TagChip(tag: t),
+          ),
+        if (remain > 0)
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text('+$remain',
+                style: const TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.textSub,
+                    fontWeight: FontWeight.w600)),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final customers = _filtered;
     return Scaffold(
       appBar: AppBar(
         title: const Text('客户'),
+        actions: [
+          IconButton(
+            tooltip: '标签池',
+            icon: const Icon(Icons.sell_outlined),
+            onPressed: _openTagManagePage,
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         tooltip: '新建客户',
@@ -287,6 +404,7 @@ class _CustomersPageState extends State<CustomersPage> {
                     ),
                   ),
                 ),
+                _buildTagFilterBar(),
                 Expanded(
                   child: _customers.isEmpty
                       ? const _Empty()
@@ -351,6 +469,7 @@ class _CustomersPageState extends State<CustomersPage> {
                                               child: Text(c.industry,
                                                   style: const TextStyle(fontSize: 11, color: AppTheme.primary, fontWeight: FontWeight.w600)),
                                             ),
+                                          _buildCardTagChips(c),
                                         ],
                                       ),
                                       subtitle: Text(
@@ -569,6 +688,7 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
   // 标签管理：底部弹出全标签勾选区，支持新建自定义标签（含选色）。
   Future<void> _editTags() async {
     final all = await AppDb.instance.getTags();
+    if (!mounted) return;
     final sel = <int>{for (final t in _tags) t.id!};
     final tags = [...all];
     final saved = await showModalBottomSheet<bool>(
@@ -657,12 +777,12 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
                                 shape: const StadiumBorder()),
                           ),
                           TextButton.icon(
-                            onPressed: () => _openTagManagePage()
-                                .then((changed) {
-                              if (changed == true) {
+                            onPressed: () async {
+                              final changed = await _openTagManagePage();
+                              if (ctx.mounted && changed == true) {
                                 Navigator.pop(ctx, true);
                               }
-                            }),
+                            },
                             icon: const Icon(Icons.tune, size: 16),
                             label: const Text('标签池管理'),
                           ),
