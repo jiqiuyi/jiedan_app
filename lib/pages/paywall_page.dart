@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api_client.dart';
 import '../app_state.dart';
@@ -134,6 +137,74 @@ class _PaywallPageState extends State<PaywallPage> {
     }
   }
 
+  // ZPAY立即开通（第16批骨架）：调后端 POST /api/pay/create 拿 url（易支付跳转链接），
+  // 手机端拉起 url 跳转；支付结果自动轮询 + 手动刷新。url_qrcode 由页面跳转协议留空。
+  Future<void> _buyZpay() async {
+    final plans = _plans;
+    if (_selected >= plans.length) return;
+    final plan = plans[_selected];
+
+    // 未登录：先引导登录，登录成功后继续下单
+    if (!AppState.instance.loggedIn) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('需要先登录'),
+          content: const Text('购买订阅前请先登录账号，订阅将绑定到该账号上。'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('暂不登录')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('去登录'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      if (ok != true) return;
+      final logged = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+      );
+      if (logged != true || !mounted) return;
+      await _loadFirstMonthState();
+      if (!mounted) return;
+    }
+
+    setState(() => _paying = true);
+    try {
+      final json = await ApiClient.instance.payCreate(plan.planKey);
+      if (!mounted) return;
+      final granted = await showDialog<bool>(
+        context: context,
+        builder: (_) => _ZpayPayDialog(
+          planName: plan.name,
+          amount: (json['amount'] as num?)?.toDouble() ?? 0,
+          payUrl: (json['url'] ?? '').toString(),
+          qrUrl: (json['url_qrcode'] ?? '').toString(),
+        ),
+      );
+      if (!mounted) return;
+      if (granted == true) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(plan.successText)));
+      }
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('下单失败，请稍后重试')),
+      );
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
+  }
+
   // 兑换码开通弹窗（第15批过渡期：内置测试码本地开通）
   Future<void> _showRedeemDialog() async {
     final controller = TextEditingController();
@@ -226,6 +297,17 @@ class _PaywallPageState extends State<PaywallPage> {
                           )
                         : Text(plans[_selected].buyText)),
               ),
+              // 第16批 ZPAY支付骨架：在线支付入口（后端配置 ZPAY_PID/ZPAY_KEY 后生效）
+              if (!isPro && !_paying)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: OutlinedButton.icon(
+                    onPressed: _buyZpay,
+                    icon: const Icon(Icons.account_balance_wallet_outlined,
+                        size: 18),
+                    label: const Text('ZPAY 立即开通（在线支付）'),
+                  ),
+                ),
               const SizedBox(height: 12),
               const Center(
                 child: Text(
@@ -461,6 +543,154 @@ class _PlanCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// ZPAY支付确认弹层（第16批骨架）：
+/// 展示「打开支付页面」（易支付 submit.php 跳转链接），后端配置支付渠道后可用；
+/// 支付结果自动轮询云端订阅状态，用户亦可手动点「已完成支付」刷新。
+class _ZpayPayDialog extends StatefulWidget {
+  final String planName;
+  final double amount;
+  final String payUrl;
+  final String qrUrl;
+
+  const _ZpayPayDialog({
+    required this.planName,
+    required this.amount,
+    required this.payUrl,
+    required this.qrUrl,
+  });
+
+  @override
+  State<_ZpayPayDialog> createState() => _ZpayPayDialogState();
+}
+
+class _ZpayPayDialogState extends State<_ZpayPayDialog> {
+  Timer? _timer;
+  int _ticks = 0;
+  bool _checking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 轮询后端订阅状态（最多 10 次 × 3s），检测到开通后自动关闭
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (_ticks >= 10) {
+        _timer?.cancel();
+        return;
+      }
+      _ticks++;
+      try {
+        await AppState.instance.refreshCloud();
+      } catch (_) {
+        // 网络波动忽略，下一轮再试
+      }
+      if (!mounted) return;
+      if (AppState.instance.isPro) {
+        _timer?.cancel();
+        Navigator.of(context).pop(true);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _openPayPage() async {
+    final url = widget.payUrl;
+    if (url.isEmpty) return;
+    try {
+      final ok = await launchUrl(Uri.parse(url),
+          mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('无法拉起支付页面，请手动复制链接或扫码')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('无法拉起支付页面')),
+        );
+      }
+    }
+  }
+
+  Future<void> _manualRefresh() async {
+    if (_checking) return;
+    setState(() => _checking = true);
+    try {
+      await AppState.instance.refreshCloud();
+    } catch (_) {
+      // 忽略，弹层内提示
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+    if (!mounted) return;
+    if (AppState.instance.isPro) {
+      Navigator.of(context).pop(true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('尚未检测到开通，可稍后再次刷新')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasQr = widget.qrUrl.isNotEmpty;
+    final hasUrl = widget.payUrl.isNotEmpty;
+    return AlertDialog(
+      title: Text('ZPAY 支付 · ${widget.planName}'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('应付金额：¥${widget.amount.toStringAsFixed(2)}'),
+            const SizedBox(height: 12),
+            if (!hasUrl && !hasQr)
+              const Text('支付链接暂不可用（骨架阶段未配置支付渠道）。',
+                  style: TextStyle(color: AppTheme.warn)),
+            if (hasUrl) ...[
+              const Text('点击下方按钮打开支付页面完成付款。'),
+              const SizedBox(height: 8),
+            ],
+            if (hasQr)
+              Center(
+                child: Image.network(
+                  widget.qrUrl,
+                  width: 200,
+                  height: 200,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) => const Icon(
+                      Icons.qr_code, size: 120, color: AppTheme.textSub),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        if (hasUrl)
+          FilledButton.icon(
+            onPressed: _openPayPage,
+            icon: const Icon(Icons.open_in_browser, size: 18),
+            label: const Text('打开支付页面'),
+          ),
+        TextButton(
+          onPressed: _checking ? null : _manualRefresh,
+          child: Text(_checking ? '刷新中…' : '已完成支付'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('关闭'),
+        ),
+      ],
     );
   }
 }
