@@ -25,13 +25,6 @@ class AppState extends ChangeNotifier {
   bool _isPro = false;
   bool get isPro => _isPro;
 
-  /// 【开发测试】体验专业版标记（设备级，settings 持久化）。
-  /// 支付正式接入前，供作品集演示与功能验收解锁免费版限制；
-  /// 接入真实购买后应移除本入口，VIP 判定回归纯云端权威。
-  static const String testProKey = 'dev_test_pro';
-  bool _testPro = false;
-  bool get testPro => _testPro;
-
   /// 云端 me() 返回的 user 缓存（订阅 / 首月特惠 / 邀请码 / 邀请人列表）
   Map<String, dynamic>? _cloudMe;
   Map<String, dynamic>? get cloudMe => _cloudMe;
@@ -47,26 +40,24 @@ class AppState extends ChangeNotifier {
   Future<void> load() async {
     await ApiClient.instance.loadToken();
     _currentUser = await AppDb.instance.getCurrentUser();
-    // 读取开发测试解锁标记；此标记独立于云订阅，二者任一成立即视为专业版。
-    _testPro = await AppDb.instance.getSetting(testProKey) == '1';
     // 防破解加固（P0）：VIP 判定以云端为准，本地 SQLite 的 is_pro 仅作展示缓存，
     // 不再作为 VIP 判定依据。未登录或云端不可用时一律按免费版处理（只读降级，
-    // 绝不信任本地标记）。开发测试解锁标记除外（本机测试用）。
-    _isPro = _testPro;
+    // 绝不信任本地标记）。
+    _isPro = false;
     notifyListeners();
     // 有 token 时拉云端数据刷新订阅/推广状态；云端不可用时回退本地 VIP 缓存（第15批过渡期）
     if (ApiClient.instance.token != null) {
       try {
         await refreshCloud();
       } catch (_) {
-        // 云端暂不可用：读取本地 VIP 缓存维持订阅体验（该缓存由最近一次云端 me 成功写入），
-        // 叠加开发测试解锁标记。缓存缺失或已过期则按免费版处理（只读降级，不信任默认可写标记）。
-        _isPro = await _localVipActive() || _testPro;
+        // 云端暂不可用：读取本地 VIP 缓存维持订阅体验（该缓存由最近一次云端 me 成功写入）。
+        // 缓存缺失或已过期则按免费版处理（只读降级，不信任默认可写标记）。
+        _isPro = await _localVipActive();
         notifyListeners();
       }
     } else {
-      // 未登录（无 token）：若存在本地会话账号则回退其 VIP 缓存，否则维持测试标记
-      _isPro = await _localVipActive() || _testPro;
+      // 未登录（无 token）：若存在本地会话账号则回退其 VIP 缓存，否则按免费版处理
+      _isPro = await _localVipActive();
       notifyListeners();
     }
   }
@@ -133,14 +124,13 @@ class AppState extends ChangeNotifier {
     // 第15批（过渡期）：云端 me 成功即写入本地 VIP 缓存（按手机号隔离），
     // 供云端不可用时离线续订；实时判定仍以云端 isPro 为权威。
     await _writeLocalVipCache(phone, isPro, expireAt);
-    // 云端 isPro 有效期判定 + 开发测试解锁标记取并集；测试标记仅用于演示验收，
-    // 正式支付接入后移除 testPro 相关代码，VIP 判定回归纯云端权威。
-    _isPro = _vipActive(isPro, expireAt) || _testPro;
+    // 防破解加固：VIP 判定纯云端权威，本地不叠加任何解锁标记。
+    _isPro = _vipActive(isPro, expireAt);
   }
 
   // ==================== 本地 VIP 缓存（第15批过渡期） ====================
-  // VIP 判定源（第15批）：云端 isPro 权威 → 成功即写本地缓存 → 云端不可用读本地缓存
-  // → testPro（仅 dev 演示验收）。缓存仅在云端 me 成功时写入，避免离线期间被篡改。
+  // VIP 判定源（第15批）：云端 isPro 权威 → 成功即写本地缓存 → 云端不可用读本地缓存。
+  // 缓存仅在云端 me 成功时写入，避免离线期间被篡改。
   static const String localVipCachePrefix = 'local_vip_cache_';
 
   /// 云端 me 成功后把 isPro / proExpireAt 落入本地缓存（按手机号隔离）。
@@ -255,7 +245,7 @@ class AppState extends ChangeNotifier {
     await ApiClient.instance.clearToken();
     await AppDb.instance.setCurrentUser(null);
     _currentUser = null;
-    _isPro = _testPro;
+    _isPro = false;
     _cloudMe = null;
     _cloudReady = false;
     notifyListeners();
@@ -283,72 +273,26 @@ class AppState extends ChangeNotifier {
     return ApiClient.instance.createOrder(plan);
   }
 
-  // ==================== 兑换码（第15批过渡期，本地闭环） ====================
+  // ==================== 兑换码（防破解修复：服务端核销） ====================
 
-  /// 内置测试兑换码开通本地 VIP。
-  /// 输入正确测试码 → 本地发放（写 users 表 + 本地 VIP 缓存）并落
-  /// subscription_orders（channel=redeem，status=granted，ref_no=码）便于审计。
-  /// 返回 null 表示成功，否则为错误提示文案。
-  /// TODO: 正式上线前移除本方法内置码校验，改为提交服务端核销后由云端下发 isPro。
+  /// 兑换码核销（服务端权威）：提交码后由 POST /api/redeem 校验码的有效性、
+  /// 幂等与次数限制，成功则云端下发 isPro / 订阅信息并同步本地。
+  /// 客户端不硬编码任何码、不做本地判断。返回 null 表示成功，否则为错误提示文案。
   Future<String?> redeemVipCode(String code) async {
     final c = code.trim();
     if (c.isEmpty) return '请输入兑换码';
-    final uid = _currentUser?.id;
-    final phone = _currentUser?.phone ?? '';
-    if (uid == null) return '请先登录';
-    if (c != AppConfig.redeemCodeTest) return '兑换码无效';
-    // 同一兑换码仅可兑换一次（过渡期本地校验；正式版由服务端保证幂等）。
-    final mine = await AppDb.instance.subscriptionOrders(uid);
-    final used = mine.any((o) =>
-        o['channel'] == AppDb.subChannelRedeem && o['ref_no'] == c);
-    if (used) return '该兑换码已使用过';
-    // 本地发放：测试码按「永久」开通（过渡期演示用，正式版以支付/服务端结果为准）。
-    await AppDb.instance.insertSubscriptionOrder(
-      userId: uid,
-      phone: phone,
-      planKey: 'forever',
-      planName: '永久',
-      amount: 0,
-      channel: AppDb.subChannelRedeem,
-      status: AppDb.subStatusGranted,
-      refNo: c,
-    );
-    final updated = _currentUser!.copyWith(isPro: true, proExpireAt: null);
-    await AppDb.instance.updateUser(updated);
-    await _writeLocalVipCache(phone, true, null);
-    _currentUser = updated;
-    _isPro = true;
-    notifyListeners();
-    return null;
-  }
-
-  // ==================== 开发测试专用解锁（支付接入前临时方案） ====================
-
-  /// 体验专业版：本地解锁免费版全部限制。
-  /// 仅用于作品集演示与功能验收；接入真实购买后移除，VIP 判定回归纯云端权威。
-  /// 返回 true 表示解锁成功。
-  Future<bool> unlockTestPro() async {
-    await AppDb.instance.setSetting(testProKey, '1');
-    _testPro = true;
-    _isPro = true;
-    notifyListeners();
-    return true;
-  }
-
-  /// 取消开发测试解锁，恢复为云端订阅状态（未登录则回到免费版）。
-  Future<void> clearTestPro() async {
-    await AppDb.instance.setSetting(testProKey, '0');
-    _testPro = false;
-    if (loggedIn) {
-      try {
-        await refreshCloud(); // 以云端权威刷新
-      } catch (_) {
-        _isPro = false;
+    if (!loggedIn) return '请先登录';
+    try {
+      final json = await ApiClient.instance.redeemCode(c);
+      final user = json['user'];
+      if (user is Map<String, dynamic>) {
+        await _syncLocalUserFromCloud(user);
         notifyListeners();
+        return null;
       }
-    } else {
-      _isPro = false;
-      notifyListeners();
+      return '兑换成功，请稍后重试';
+    } on ApiException catch (e) {
+      return e.message;
     }
   }
 

@@ -206,6 +206,15 @@ class ApiClient {
         authRequired: true);
   }
 
+  /// 兑换码核销（防破解修复）：码的有效性 / 幂等 / 次数限制全部由服务端校验，
+  /// 客户端不做本地判断、不硬编码任何兑换码。返回 { ok, user, redeemed }，
+  /// user 为开通后的云端用户信息（VIP 以云端为准）。
+  Future<Map<String, dynamic>> redeemCode(String code) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/redeem', {'code': code}, authRequired: true);
+  }
+
   /// 监听上报：由通知解析侧（原生组件 / Flutter 兜底）上报到账金额 + 时间。
   /// [amount] 到账金额（元）；[ts] 到账时间戳（毫秒）；[source] 渠道标识
   /// （wechat / alipay / manual）；[deviceId] 设备标识（风控 / 拉黑用）。

@@ -57,7 +57,10 @@ lib/
 ```bash
 # 环境：Flutter SDK + JDK 17 + Android SDK
 flutter pub get
-flutter build apk --release   # 产物：build/app/outputs/flutter-apk/app-release.apk
+# 正式发布构建：必须带 Dart 混淆与符号表（Windows 可直接执行 build_release.bat）
+flutter build apk --release --obfuscate --split-debug-info=./debug-info
+#   产物：build/app/outputs/flutter-apk/app-release.apk
+#   符号：./debug-info（仅用于崩溃栈还原，禁止分发/提交）
 ```
 
 ## 功能分层规划（免费版 vs 专业版 VIP）

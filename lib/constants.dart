@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.30.0+39';
+  static const String version = '1.31.0+40';
 
   // ---- 云端后端 ----
   // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）存储方式
@@ -34,7 +34,7 @@ class AppConfig {
   // ---- 订阅定价（第15批 v1.29.0 过渡期：纯 App 端本地闭环，与 README 权益一致）----
   // 首月特惠 1 元，仅限首次开通、每人一次；之后按标准价。
   // 过渡期暂未接入真实支付网关：采用「出示收款码 + 手动确认到账」人工闭环，
-  // 手动到账后由云端 isPro 下发；同时支持内置兑换码本地开通（见 app_state.redeemVipCode）。
+  // 手动到账后由云端 isPro 下发；兑换码走服务端核销（POST /api/redeem）。
   static const double firstMonthPrice = 1; // 首月特惠价（元，仅一次）
   static const double monthlyPrice = 10; // 月订阅价（元，首月之后）
   static const double yearlyPrice = 68; // 年订阅价（元）
@@ -84,11 +84,9 @@ class AppConfig {
   static const double inviteRewardMonths = 1; // 达成推荐目标赠送的 VIP 月数
   static const double rebateRate = 0.50; // 新人真实付款开通 VIP → 按比例返现
 
-  // ---- 兑换码（第15批过渡期：内置测试码，输入即开本地 VIP）----
-  // 过渡期无真实支付网关，用内置测试兑换码模拟「已付款」完成本地开通闭环，
-  // 兑换记录写入 subscription_orders（channel=redeem）以便审计与后续核销。
-  // TODO: 正式上线前移除内置测试码，改为服务端校验并兑换（防绕过 + 可核销/次数限制）。
-  static const String redeemCodeTest = 'JD-VIP-2026';
+  // ---- 兑换码（防破解修复：服务端核销）----
+  // 客户端不再硬编码任何兑换码；码仅存在于服务端 data.json（后台配置），
+  // 客户端提交码后由 POST /api/redeem 校验有效性、幂等与次数限制并下发 VIP。
 }
 
 // 项目状态
