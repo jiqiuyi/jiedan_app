@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
+import 'package:crypto/crypto.dart' show Hmac, sha256;
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'api_client.dart';
 import 'constants.dart';
@@ -128,40 +131,105 @@ class AppState extends ChangeNotifier {
     _isPro = _vipActive(isPro, expireAt);
   }
 
-  // ==================== 本地 VIP 缓存（第15批过渡期） ====================
+  // ==================== 本地 VIP 缓存（第16批防白嫖加固） ====================
   // VIP 判定源（第15批）：云端 isPro 权威 → 成功即写本地缓存 → 云端不可用读本地缓存。
   // 缓存仅在云端 me 成功时写入，避免离线期间被篡改。
+  //
+  // 第16批（断网破解加固）：缓存由「明文 JSON」升级为 v2 签名格式——
+  //   1) HMAC-SHA256 签名：签名密钥为设备级随机密钥（存 flutter_secure_storage，
+  //      与 token 同级保护，不进 SQLite），任何篡改都会导致验签失败直接降级；
+  //   2) 手机号参与签名：防止跨账号复制缓存；
+  //   3) 7 天离线宽限期：缓存自带写入时间 ts，离线超过 7 天即作废降级，
+  //      杜绝「断网 + 改库」永久白嫖；
+  //   4) 旧版 v1 明文缓存一律不信任（升级后首次云端 me 成功即重写 v2）。
+  // 局限说明：宽限期依赖本地时钟，改系统时间可延长（纯本地无法根治，
+  //          待 HTTPS 联调后由服务端时间戳/请求签名兜底）。
   static const String localVipCachePrefix = 'local_vip_cache_';
 
-  /// 云端 me 成功后把 isPro / proExpireAt 落入本地缓存（按手机号隔离）。
+  /// v2 缓存签名密钥：设备级随机密钥，持久化于 flutter_secure_storage。
+  static const _vipCacheKeyStorage = FlutterSecureStorage();
+  static const _vipCacheKeyName = 'vip_cache_hmac_key_v2';
+  static const _vipCacheMaxOffline = Duration(days: 7);
+
+  /// 获取（或首次生成）设备级缓存签名密钥。密钥只在 secure storage，不进 SQLite。
+  Future<String> _vipCacheDeviceKey() async {
+    final existed = await _vipCacheKeyStorage.read(key: _vipCacheKeyName);
+    if (existed != null && existed.isNotEmpty) return existed;
+    final rnd = Random.secure();
+    final bytes = List<int>.generate(32, (_) => rnd.nextInt(256));
+    final key = base64Encode(bytes);
+    await _vipCacheKeyStorage.write(key: _vipCacheKeyName, value: key);
+    return key;
+  }
+
+  /// 规范化签名原文：手机号 + 写入时间 + isPro + 到期时间，改任一字段验签必败。
+  static String _vipCacheSigInput(
+      String phone, int ts, bool isPro, int? expireAt) {
+    return '$phone\n$ts\n$isPro\n${expireAt ?? 0}';
+  }
+
+  /// 云端 me 成功后把 isPro / proExpireAt 落入本地缓存（按手机号隔离，v2 签名格式）。
   Future<void> _writeLocalVipCache(
       String phone, bool isPro, int? expireAt) async {
     if (phone.isEmpty) return;
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final key = await _vipCacheDeviceKey();
+    final sig = Hmac(sha256, utf8.encode(key))
+        .convert(utf8.encode(_vipCacheSigInput(phone, ts, isPro, expireAt)))
+        .toString();
     await AppDb.instance.setSetting(
       localVipCachePrefix + phone,
-      jsonEncode({'isPro': isPro, 'proExpireAt': expireAt}),
+      jsonEncode({
+        'v': 2,
+        'ts': ts,
+        'data': {'isPro': isPro, 'proExpireAt': expireAt},
+        'sig': sig,
+      }),
     );
   }
 
-  /// 读取并判断本地 VIP 缓存是否仍有效（未过期）。缺失 / 无效 / 已过期返回 false。
+  /// 读取并判断本地 VIP 缓存是否仍有效（签名有效 + 未过期 + 未超 7 天离线宽限）。
+  /// 缺失 / 无签名旧格式 / 篡改 / 已过期 / 超宽限期一律返回 false（只读降级）。
   Future<bool> _localVipActive() async {
     final phone = _currentUser?.phone ?? '';
     if (phone.isEmpty) return false;
     final raw = await AppDb.instance.getSetting(localVipCachePrefix + phone);
     if (raw == null || raw.isEmpty) return false;
+    final Map<String, dynamic> m;
     try {
-      final m = jsonDecode(raw) as Map<String, dynamic>;
-      if (m['isPro'] != true) return false;
-      final expire = m['proExpireAt'];
-      if (expire == null) return true; // 永久订阅
-      final ms = expire is num
-          ? expire.toInt()
-          : (int.tryParse('$expire') ?? 0);
-      if (ms <= 0) return true; // 无到期时间视为永久
-      return ms > DateTime.now().millisecondsSinceEpoch;
+      m = jsonDecode(raw) as Map<String, dynamic>;
     } catch (_) {
       return false;
     }
+    // 仅信任 v2 签名格式：v1 明文缓存是白嫖漏洞源，升级即作废（下次 me 成功会重写）。
+    if (m['v'] != 2) return false;
+    final ts = m['ts'];
+    final sig = m['sig'];
+    final data = m['data'];
+    if (ts is! num || sig is! String || data is! Map<String, dynamic>) {
+      return false;
+    }
+    final tsMs = ts.toInt();
+    // 7 天离线宽限期：超期降级，禁止长期断网白嫖。
+    if (DateTime.now().millisecondsSinceEpoch - tsMs >
+        _vipCacheMaxOffline.inMilliseconds) {
+      return false;
+    }
+    // 验签：任一字段被篡改（含改系统时间前挪动 ts）都会验签失败。
+    final isPro = data['isPro'];
+    final expireRaw = data['proExpireAt'];
+    final expire = expireRaw is num
+        ? expireRaw.toInt()
+        : (int.tryParse('$expireRaw') ?? 0);
+    final key = await _vipCacheDeviceKey();
+    final expect = Hmac(sha256, utf8.encode(key))
+        .convert(utf8.encode(
+            _vipCacheSigInput(phone, tsMs, isPro == true, expire)))
+        .toString();
+    if (expect != sig.toLowerCase()) return false;
+    if (isPro != true) return false;
+    if (expire <= 0) return true; // 永久订阅（签名有效 + 未超宽限期）
+    return expire > DateTime.now().millisecondsSinceEpoch;
   }
 
   /// isPro 且未过期则视为 VIP 有效（null / 非正到期时间视为永久）。
