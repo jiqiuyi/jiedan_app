@@ -7,6 +7,11 @@ class AppConfig {
   static const String appName = '接单管家';
   static const String version = '1.34.0+44';
 
+  // ---- 检查更新 ----
+  // 版本清单（静态 JSON 放官网，走 HTTPS）：发布新版时更新该 JSON 并覆盖官网 latest 安装包，
+  // 客户端启动自动检查 / 设置页手动检查时拉取，与本地版本比对。
+  static const String updateManifestUrl = 'https://yurouyun.cn/version.json';
+
   // ---- 云端后端 ----
   // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）存储方式
   // 由用户选择（仅本地 / 仅服务器 / 本地+服务器），见 StorageMode。
