@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/update_service.dart';
 
 import 'dashboard_page.dart';
 import 'projects_page.dart';
@@ -16,6 +17,17 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // 启动后稍等片刻自动检查更新（非强制，网络失败静默）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) UpdateService.instance.checkAuto(context);
+      });
+    });
+  }
 
   static const _pages = [
     DashboardPage(),

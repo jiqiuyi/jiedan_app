@@ -4,6 +4,7 @@ import '../app_state.dart';
 import '../constants.dart';
 import '../services/device_info_reporter.dart';
 import '../services/sync_service.dart';
+import '../services/update_service.dart';
 import '../theme.dart';
 import 'login_page.dart';
 import 'paywall_page.dart';
@@ -341,6 +342,16 @@ class _SettingsPageState extends State<SettingsPage> {
               Card(
                 child: Column(
                   children: [
+                    ListTile(
+                      leading: const Icon(Icons.system_update,
+                          color: AppTheme.primary),
+                      title: const Text('检查更新'),
+                      subtitle: const Text('点击检查是否有新版本'),
+                      trailing: const Icon(Icons.chevron_right,
+                          color: AppTheme.textSub),
+                      onTap: () => UpdateService.instance.checkManual(context),
+                    ),
+                    const Divider(height: 1, indent: 56, endIndent: 16),
                     ListTile(
                       leading: const Icon(Icons.feedback_outlined,
                           color: AppTheme.primary),
