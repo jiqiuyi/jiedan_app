@@ -51,19 +51,30 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($prodPath, $html, $utf8NoBom)
 Write-Host "[4/6] product.html 已指向 latest、版本号更新为 v$verCompact" -ForegroundColor Cyan
 
-# 5) 上传官网（downloads 两个包 + product.html）
+# 5) 上传官网（downloads 两个包 + product.html + version.json 版本清单）
 Write-Host "[5/6] 上传到服务器官网 ..." -ForegroundColor Cyan
 scp -i $SshKey -o StrictHostKeyChecking=no (Join-Path $dlLocal $Latest) (Join-Path $dlLocal $arch) "${Srv}:$SrvWeb/downloads/"
 scp -i $SshKey -o StrictHostKeyChecking=no $prodPath "${Srv}:$SrvWeb/product.html"
+$manifestPath = Join-Path $WebLocal 'version.json'
+if (Test-Path $manifestPath) {
+  scp -i $SshKey -o StrictHostKeyChecking=no $manifestPath "${Srv}:$SrvWeb/version.json"
+}
 
-# 6) 公网验证：状态 200 且线上大小=本地大小
-Start-Sleep -Seconds 2
+# 6) 公网验证：上传后短暂重试，状态 200 且线上大小=本地大小才算通过
 Write-Host "[6/6] 公网验证 ..." -ForegroundColor Cyan
-$head = curl.exe -sI "https://yurouyun.cn/downloads/$Latest"
-if ($head -notmatch '200 OK') { throw '公网验证失败：未返回 200' }
-$remoteLen = ($head | Where-Object { $_ -match 'Content-Length:\s*(\d+)' } | ForEach-Object { $Matches[1] } | Select-Object -First 1)
 $localLen = (Get-Item $built).Length
-if ("$remoteLen" -ne "$localLen") { throw "线上大小 $remoteLen 与本地 $localLen 不一致，同步可能不完整" }
+$head = $null
+$remoteLen = $null
+for ($try = 1; $try -le 6; $try++) {
+  Start-Sleep -Seconds 2
+  $head = curl.exe -sI "https://yurouyun.cn/downloads/$Latest"
+  if ($head -match '200 OK') {
+    $remoteLen = ($head | Where-Object { $_ -match 'Content-Length:\s*(\d+)' } | ForEach-Object { $Matches[1] } | Select-Object -First 1)
+    if ("$remoteLen" -eq "$localLen") { break }
+  }
+  $remoteLen = $null
+}
+if ("$remoteLen" -ne "$localLen") { throw "公网验证失败：线上大小 $remoteLen 与本地 $localLen 不一致（已重试）" }
 Write-Host ($head -join "`n")
 Write-Host ""
 Write-Host "全部完成：官网下载已更新为 v$verCompact（大小校验一致）" -ForegroundColor Green
