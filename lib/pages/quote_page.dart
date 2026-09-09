@@ -1519,10 +1519,12 @@ class _QuotePageState extends State<QuotePage>
   // 修复小屏手机上底部常驻按钮遮挡表单内容的问题；滚动即收起键盘，
   // 缓解键盘弹出导致的焦点错位。
   Widget _buildSimpleTab() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      children: [
+    // 一屏固定：用 Column + Spacer 弹性分配、不滚动。
+    // 原先 ListView 无界高度，Spacer 会撑成无限高 -> 一直下滑、滑不到底并出现灰色色块。
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(
+        children: [
           const Text('报价对象',
               style: TextStyle(
                   fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
@@ -1721,6 +1723,7 @@ class _QuotePageState extends State<QuotePage>
           const SizedBox(height: 12),
           _buildQuoteImageSection(),
         ],
+      ),
     );
   }
 
@@ -2088,20 +2091,17 @@ class _QuotePageState extends State<QuotePage>
           ],
         ),
         actions: [
-          TextButton.icon(
+          TextButton(
             onPressed: _openTemplateSheet,
-            icon: const Icon(Icons.bookmarks_outlined, size: 18),
-            label: const Text('模板'),
+            child: const Text('模板'),
           ),
-          TextButton.icon(
+          TextButton(
             onPressed: _editSignature,
-            icon: const Icon(Icons.edit_note, size: 18),
-            label: const Text('落款'),
+            child: const Text('落款'),
           ),
-          TextButton.icon(
+          TextButton(
             onPressed: _openHistory,
-            icon: const Icon(Icons.history, size: 18),
-            label: const Text('历史'),
+            child: const Text('历史'),
           ),
         ],
       ),
@@ -2123,18 +2123,22 @@ class _QuotePageState extends State<QuotePage>
               child: Row(
                 children: [
                   Expanded(
-                    child: FilledButton.icon(
+                    child: FilledButton(
                       onPressed: isSimple ? _copySimpleToClipboard : _copyToClipboard,
-                      icon: const Icon(Icons.content_copy),
-                      label: const Text('生成并复制'),
+                      style: FilledButton.styleFrom(
+                        textStyle: const TextStyle(fontSize: 14),
+                      ),
+                      child: const Text('生成并复制'),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: FilledButton.tonalIcon(
+                    child: FilledButton.tonal(
                       onPressed: isSimple ? _saveSimpleQuote : _saveQuote,
-                      icon: const Icon(Icons.save_outlined),
-                      label: Text(
+                      style: FilledButton.styleFrom(
+                        textStyle: const TextStyle(fontSize: 14),
+                      ),
+                      child: Text(
                         isSimple
                             ? (_simpleQuoteId == null ? '保存到历史' : '更新保存')
                             : (_quoteId == null ? '保存到历史' : '更新保存'),
@@ -2143,12 +2147,12 @@ class _QuotePageState extends State<QuotePage>
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: FilledButton.tonalIcon(
+                    child: FilledButton.tonal(
                       onPressed: isSimple ? _exportSimplePdf : _exportFullPdf,
-                      icon: const Icon(Icons.picture_as_pdf),
-                      label: Text(
-                        isSimple ? '导出PDF' : '导出PDF',
+                      style: FilledButton.styleFrom(
+                        textStyle: const TextStyle(fontSize: 14),
                       ),
+                      child: const Text('导出PDF'),
                     ),
                   ),
                 ],
