@@ -22,6 +22,8 @@ class _PaywallPageState extends State<PaywallPage> {
   bool _paying = false;
   bool _firstMonthUsed = false; // 当前账号是否已用过首月特惠
   int _selected = 1; // 默认选中档位（年付）
+  // ignore: prefer_final_fields // 保留可变开关，恢复永久档时改为 true
+  bool _showForever = false; // 永久档展示开关：暂时隐藏，恢复时改 true
 
   /// 订阅档位（按展示顺序）
   List<_Plan> get _plans => [
@@ -49,14 +51,16 @@ class _PaywallPageState extends State<PaywallPage> {
           months: 12,
           planKey: 'year',
         ),
-        const _Plan(
-          name: '永久',
-          price: '¥${AppConfig.foreverPrice}',
-          desc: '一次买断，永久使用',
-          months: -1,
-          planKey: 'forever',
-          lifetime: true,
-        ),
+        // 永久档暂时隐藏（代码保留，恢复展示把 _showForever 改为 true）
+        if (_showForever)
+          const _Plan(
+            name: '永久',
+            price: '¥${AppConfig.foreverPrice}',
+            desc: '一次买断，永久使用',
+            months: -1,
+            planKey: 'forever',
+            lifetime: true,
+          ),
       ];
 
   @override
