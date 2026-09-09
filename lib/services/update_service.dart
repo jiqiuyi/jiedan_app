@@ -58,14 +58,16 @@ class UpdateService {
       final now = DateTime.now().millisecondsSinceEpoch;
       if (now - last < _autoInterval.inMilliseconds) return null;
     }
-    await prefs.setInt(
-        _lastCheckKey, DateTime.now().millisecondsSinceEpoch);
 
     try {
       final resp = await http
           .get(Uri.parse(AppConfig.updateManifestUrl))
           .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return null;
+      // 仅在成功拿到清单后才记录检查时间：请求失败不更新，下次启动可自动重试，
+      // 避免一次断网把自动检查「锁」在间隔期内不再尝试。
+      await prefs.setInt(
+          _lastCheckKey, DateTime.now().millisecondsSinceEpoch);
       final info = UpdateInfo.fromJson(
           jsonDecode(resp.body) as Map<String, dynamic>);
       if (info.version.isEmpty || info.url.isEmpty) return null;
