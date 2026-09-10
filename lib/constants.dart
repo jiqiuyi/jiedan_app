@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.39.2+51';
+  static const String version = '1.40.0+52';
 
   // ---- 检查更新 ----
   // 版本清单（静态 JSON 放官网，走 HTTPS）：发布新版时更新该 JSON 并覆盖官网 latest 安装包，
