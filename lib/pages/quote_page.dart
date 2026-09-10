@@ -15,6 +15,10 @@ import '../services/quote_pdf_service.dart';
 import '../services/quote_web_service.dart';
 import '../utils/money_input.dart';
 
+/// 报价页 AppBar 右侧图标区总宽度（3 × 40 + 4 = 124）。
+/// 标题居中时用作左侧空白占位宽度，保证「报价单」在全宽中绝对居中。
+const double _kAppBarSideWidth = 124;
+
 /// 报价单双 Tab 管理（v8 起支持 简单报价 / 详细报价）：
 /// - 简单报价 Tab：一口价快速报价（客户/项目二选一 + 大号金额 + 备注），一屏内完成；
 /// - 详细报价 Tab：保留原明细计税能力（工时/单价/物料费/税率/合计）；
@@ -1519,211 +1523,246 @@ class _QuotePageState extends State<QuotePage>
   // 修复小屏手机上底部常驻按钮遮挡表单内容的问题；滚动即收起键盘，
   // 缓解键盘弹出导致的焦点错位。
   Widget _buildSimpleTab() {
-    // 一屏固定：用 Column + Spacer 弹性分配、不滚动。
-    // 原先 ListView 无界高度，Spacer 会撑成无限高 -> 一直下滑、滑不到底并出现灰色色块。
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Column(
-        children: [
-          const Text('报价对象',
-              style: TextStyle(
-                  fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _simpleNameCtrl,
-            decoration: const InputDecoration(
-              isDense: true,
-              border: OutlineInputBorder(),
-              hintText: '输入客户名称',
-            ),
-          ),
-          const SizedBox(height: 8),
-          // 关联项目：轻量入口 + 底部弹层选择（v1.12.0 改，替代原丑下拉）
-          InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: _pickSimpleProject,
-            child: InputDecorator(
-              decoration: const InputDecoration(
-                isDense: true,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.folder_outlined,
-                      size: 18,
-                      color: _simpleProjectId == null
-                          ? AppTheme.textSub
-                          : AppTheme.primary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _simpleProjectId == null
-                          ? '关联项目（可选）'
-                          : _projects
-                                  .firstWhere((p) => p.id == _simpleProjectId)
-                                  .title,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: _simpleProjectId == null
-                            ? AppTheme.textSub
-                            : AppTheme.textMain,
-                      ),
-                    ),
-                  ),
-                  if (_simpleProjectId != null)
-                    GestureDetector(
-                      onTap: () => setState(() => _simpleProjectId = null),
-                      child: const Icon(Icons.close,
-                          size: 16, color: AppTheme.textSub),
-                    )
-                  else
-                    const Icon(Icons.chevron_right,
-                        size: 18, color: AppTheme.textSub),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          // 关联客户档案：轻量入口 + 底部弹层选择
-          InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: _pickSimpleCustomer,
-            child: InputDecorator(
-              decoration: const InputDecoration(
-                isDense: true,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.badge_outlined,
-                      size: 18,
-                      color: _simpleCustomerId == null
-                          ? AppTheme.textSub
-                          : AppTheme.primary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _simpleCustomerId == null
-                          ? '关联客户档案（可选）'
-                          : _customers
-                                  .firstWhere((c) => c.id == _simpleCustomerId)
-                                  .name,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: _simpleCustomerId == null
-                            ? AppTheme.textSub
-                            : AppTheme.textMain,
-                      ),
-                    ),
-                  ),
-                  if (_simpleCustomerId != null)
-                    GestureDetector(
-                      onTap: () => setState(() => _simpleCustomerId = null),
-                      child: const Icon(Icons.close,
-                          size: 16, color: AppTheme.textSub),
-                    )
-                  else
-                    const Icon(Icons.chevron_right,
-                        size: 18, color: AppTheme.textSub),
-                ],
-              ),
-            ),
-          ),
-          const Spacer(),
-          // 大号报价总额输入框（C 位）
-          Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: (MediaQuery.sizeOf(context).width * 0.66)
-                    .clamp(280.0, 480.0),
-              ),
-              child: TextField(
-                controller: _simpleAmountCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: moneyInputFormatters,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 40,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.primary),
-                decoration: const InputDecoration(
-                  hintText: '0.00',
-                  prefixText: '¥ ',
-                  prefixStyle: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.primary),
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Center(
-            child: Text('报价总额（一口价含税）',
-                style: TextStyle(
-                    fontSize: 12, color: AppTheme.textSub)),
-          ),
-          const SizedBox(height: 6),
-          // 适用税率：v1.24.0 简单报价也可按单设置税率（仅记录并展示，一口价含税不重算总额）
-          Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+    // v1.39.1：恢复可滚动表单（小屏 / 键盘弹起 / 内容超高时可上下滑动），
+    // 各字段按自然顺序自上而下排列（金额输入紧随关联客户之后），
+    // 去掉原 Spacer / spaceBetween——无界高度下它们会把内容撑开或挤压到错误位置。
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double minH = (constraints.maxHeight.isFinite &&
+                constraints.maxHeight > 24)
+            ? constraints.maxHeight - 24
+            : 0.0;
+        return SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minH),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.start,
               children: [
-                const Text('适用税率',
-                    style: TextStyle(
-                        fontSize: 12, color: AppTheme.textSub)),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 80,
-                  child: TextField(
-                    controller: _simpleTaxCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
-                    inputFormatters: moneyInputFormatters,
-                    textAlign: TextAlign.right,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      suffixText: '%',
-                      contentPadding: EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 8),
+                // —— 上段：报价对象 / 关联项目 / 关联客户档案 ——
+                Column(
+                  children: [
+                    const Text('报价对象',
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: AppTheme.textSub,
+                            fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _simpleNameCtrl,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                        hintText: '输入客户名称',
+                      ),
                     ),
-                    onChanged: (v) {
-                      final n = double.tryParse(v);
-                      setState(() => _simpleTaxRate = (n ?? 0) / 100);
-                    },
-                  ),
+                    const SizedBox(height: 8),
+                    // 关联项目：轻量入口 + 底部弹层选择（v1.12.0 改，替代原丑下拉）
+                    InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: _pickSimpleProject,
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.folder_outlined,
+                                size: 18,
+                                color: _simpleProjectId == null
+                                    ? AppTheme.textSub
+                                    : AppTheme.primary),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _simpleProjectId == null
+                                    ? '关联项目（可选）'
+                                    : _projects
+                                            .firstWhere(
+                                                (p) => p.id == _simpleProjectId)
+                                            .title,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: _simpleProjectId == null
+                                      ? AppTheme.textSub
+                                      : AppTheme.textMain,
+                                ),
+                              ),
+                            ),
+                            if (_simpleProjectId != null)
+                              GestureDetector(
+                                onTap: () =>
+                                    setState(() => _simpleProjectId = null),
+                                child: const Icon(Icons.close,
+                                    size: 16, color: AppTheme.textSub),
+                              )
+                            else
+                              const Icon(Icons.chevron_right,
+                                  size: 18, color: AppTheme.textSub),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // 关联客户档案：轻量入口 + 底部弹层选择
+                    InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: _pickSimpleCustomer,
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.badge_outlined,
+                                size: 18,
+                                color: _simpleCustomerId == null
+                                    ? AppTheme.textSub
+                                    : AppTheme.primary),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _simpleCustomerId == null
+                                    ? '关联客户档案（可选）'
+                                    : _customers
+                                            .firstWhere(
+                                                (c) => c.id == _simpleCustomerId)
+                                            .name,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: _simpleCustomerId == null
+                                      ? AppTheme.textSub
+                                      : AppTheme.textMain,
+                                ),
+                              ),
+                            ),
+                            if (_simpleCustomerId != null)
+                              GestureDetector(
+                                onTap: () =>
+                                    setState(() => _simpleCustomerId = null),
+                                child: const Icon(Icons.close,
+                                    size: 16, color: AppTheme.textSub),
+                              )
+                            else
+                              const Icon(Icons.chevron_right,
+                                  size: 18, color: AppTheme.textSub),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // —— 中段：大号报价总额输入框 ——
+                Column(
+                  children: [
+                    Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: (MediaQuery.sizeOf(context).width * 0.66)
+                              .clamp(280.0, 480.0),
+                        ),
+                        child: TextField(
+                          controller: _simpleAmountCtrl,
+                          keyboardType:
+                              const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: moneyInputFormatters,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 40,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primary),
+                          decoration: const InputDecoration(
+                            hintText: '0.00',
+                            prefixText: '¥ ',
+                            prefixStyle: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.primary),
+                            filled: true,
+                            fillColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Center(
+                      child: Text('报价总额（一口价含税）',
+                          style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
+                    ),
+                    const SizedBox(height: 6),
+                    // 适用税率：v1.24.0 简单报价也可按单设置税率（仅记录并展示，一口价含税不重算总额）
+                    Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('适用税率',
+                              style:
+                                  TextStyle(fontSize: 12, color: AppTheme.textSub)),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 80,
+                            child: TextField(
+                              controller: _simpleTaxCtrl,
+                              keyboardType: const TextInputType.numberWithOptions(
+                                  decimal: true),
+                              inputFormatters: moneyInputFormatters,
+                              textAlign: TextAlign.right,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                suffixText: '%',
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 8),
+                              ),
+                              onChanged: (v) {
+                                final n = double.tryParse(v);
+                                setState(() => _simpleTaxRate = (n ?? 0) / 100);
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // —— 下段：备注 / 参考图 ——
+                Column(
+                  children: [
+                    const Text('备注（可选）',
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: AppTheme.textSub,
+                            fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      height: 72,
+                      child: TextField(
+                        controller: _simpleNoteCtrl,
+                        maxLines: null,
+                        expands: true,
+                        keyboardType: TextInputType.multiline,
+                        textAlignVertical: TextAlignVertical.top,
+                        decoration: const InputDecoration(
+                          hintText: '补充说明，如交付时间、付款方式等',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildQuoteImageSection(),
+                  ],
                 ),
               ],
             ),
           ),
-          const Spacer(),
-          // 备注：固定小高度，超出内部滚动
-          const Text('备注（可选）',
-              style: TextStyle(
-                  fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 72,
-            child: TextField(
-              controller: _simpleNoteCtrl,
-              maxLines: null,
-              expands: true,
-              keyboardType: TextInputType.multiline,
-              textAlignVertical: TextAlignVertical.top,
-              decoration: const InputDecoration(
-                hintText: '补充说明，如交付时间、付款方式等',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          _buildQuoteImageSection(),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -2075,11 +2114,41 @@ class _QuotePageState extends State<QuotePage>
     }
   }
 
+  /// AppBar 右上角图标按钮：固定 40×40 紧凑点击区，
+  /// 三个按钮总宽与左侧占位宽度 [_kAppBarSideWidth] 对齐。
+  Widget _appBarIcon({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: IconButton(
+        onPressed: onPressed,
+        tooltip: tooltip,
+        iconSize: 22,
+        padding: EdgeInsets.zero,
+        style: IconButton.styleFrom(
+          minimumSize: const Size(40, 40),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          padding: EdgeInsets.zero,
+        ),
+        icon: Icon(icon),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        // 标题居中：无返回按钮时左侧留出与右侧图标区等宽的空白占位，
+        // 使「报价单」始终位于整条 AppBar 的水平中心。
         title: const Text('报价单'),
+        centerTitle: true,
+        leadingWidth: _kAppBarSideWidth,
+        leading: Navigator.of(context).canPop() ? null : const SizedBox.shrink(),
         bottom: TabBar(
           controller: _tabController,
           labelColor: AppTheme.primary,
@@ -2091,18 +2160,22 @@ class _QuotePageState extends State<QuotePage>
           ],
         ),
         actions: [
-          TextButton(
+          _appBarIcon(
+            icon: Icons.article_outlined,
+            tooltip: '模板',
             onPressed: _openTemplateSheet,
-            child: const Text('模板'),
           ),
-          TextButton(
+          _appBarIcon(
+            icon: Icons.draw_outlined,
+            tooltip: '落款',
             onPressed: _editSignature,
-            child: const Text('落款'),
           ),
-          TextButton(
+          _appBarIcon(
+            icon: Icons.history,
+            tooltip: '历史',
             onPressed: _openHistory,
-            child: const Text('历史'),
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: TabBarView(
@@ -2127,8 +2200,13 @@ class _QuotePageState extends State<QuotePage>
                       onPressed: isSimple ? _copySimpleToClipboard : _copyToClipboard,
                       style: FilledButton.styleFrom(
                         textStyle: const TextStyle(fontSize: 14),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
                       ),
-                      child: const Text('生成并复制'),
+                      child: const Text('生成并复制',
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -2137,11 +2215,16 @@ class _QuotePageState extends State<QuotePage>
                       onPressed: isSimple ? _saveSimpleQuote : _saveQuote,
                       style: FilledButton.styleFrom(
                         textStyle: const TextStyle(fontSize: 14),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
                       ),
                       child: Text(
                         isSimple
                             ? (_simpleQuoteId == null ? '保存到历史' : '更新保存')
                             : (_quoteId == null ? '保存到历史' : '更新保存'),
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
                       ),
                     ),
                   ),
@@ -2151,8 +2234,13 @@ class _QuotePageState extends State<QuotePage>
                       onPressed: isSimple ? _exportSimplePdf : _exportFullPdf,
                       style: FilledButton.styleFrom(
                         textStyle: const TextStyle(fontSize: 14),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
                       ),
-                      child: const Text('导出PDF'),
+                      child: const Text('导出PDF',
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center),
                     ),
                   ),
                 ],

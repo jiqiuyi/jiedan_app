@@ -242,7 +242,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   onAdmin: () => _push(const AdminPage()),
                   onPayNotice: () => _push(const PayNoticeGuidePage()),
                   onLogout: _confirmLogout,
-                  onLogin: _goLogin,
                 ),
                 const SizedBox(height: 8),
                 Center(
@@ -712,6 +711,10 @@ class _FunctionGrid extends StatelessWidget {
             const SizedBox(height: 10),
             GridView.builder(
               shrinkWrap: true,
+              // 显式清零 padding：否则 ScrollView 会隐式套用 MediaQuery 的系统栏内边距，
+              // 在本页（无 SafeArea 包裹）表现为标题与宫格之间多出一大段空白。
+              padding: EdgeInsets.zero,
+              primary: false,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: items.length,
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -768,7 +771,6 @@ class _SettingsCard extends StatelessWidget {
   final VoidCallback onAdmin;
   final VoidCallback onPayNotice;
   final VoidCallback onLogout;
-  final VoidCallback onLogin;
 
   const _SettingsCard({
     required this.isPro,
@@ -779,7 +781,6 @@ class _SettingsCard extends StatelessWidget {
     required this.onAdmin,
     required this.onPayNotice,
     required this.onLogout,
-    required this.onLogin,
   });
 
   @override
@@ -790,8 +791,6 @@ class _SettingsCard extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.system_update, color: AppTheme.primary),
             title: const Text('检查更新'),
-            subtitle: const Text('点击检查是否有新版本',
-                style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -810,8 +809,6 @@ class _SettingsCard extends StatelessWidget {
             leading:
                 const Icon(Icons.privacy_tip_outlined, color: AppTheme.primary),
             title: const Text('隐私政策'),
-            subtitle: const Text('数据存储说明 · 数据存放方式与隐私保护',
-                style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
             trailing:
                 const Icon(Icons.chevron_right, color: AppTheme.textSub),
             onTap: onPrivacy,
@@ -840,25 +837,16 @@ class _SettingsCard extends StatelessWidget {
               onTap: onPayNotice,
             ),
           ],
-          const _CardDivider(),
-          if (loggedIn)
+          if (loggedIn) ...[
+            const _CardDivider(),
             ListTile(
               leading: const Icon(Icons.logout, color: AppTheme.danger),
               title: const Text('退出登录',
                   style: TextStyle(
                       color: AppTheme.danger, fontWeight: FontWeight.w600)),
               onTap: onLogout,
-            )
-          else
-            ListTile(
-              leading: const Icon(Icons.login, color: AppTheme.primary),
-              title: const Text('登录账号',
-                  style: TextStyle(
-                      color: AppTheme.primary, fontWeight: FontWeight.w600)),
-              subtitle: const Text('登录后可保存订阅状态、支持多设备同步',
-                  style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
-              onTap: onLogin,
             ),
+          ],
         ],
       ),
     );
@@ -903,8 +891,6 @@ class _FeedbackReportSwitchState extends State<_FeedbackReportSwitch> {
     return SwitchListTile(
       secondary: const Icon(Icons.devices_outlined, color: AppTheme.primary),
       title: const Text('反馈信息上报'),
-      subtitle: const Text(
-          '提交反馈时附带设备型号/系统版本/App版本（仅用于排查问题，不采集隐私数据，可随时关闭）'),
       value: _enabled,
       onChanged: (v) async {
         setState(() => _enabled = v);
