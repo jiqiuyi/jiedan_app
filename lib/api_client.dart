@@ -206,6 +206,50 @@ class ApiClient {
         authRequired: true);
   }
 
+  /// 简付 JianPay（第17批）：创建收银台扫码支付订单。
+  /// [plan] 取值：firstMonth / month / year / forever；
+  /// [payMethod] 取值：wx（微信）/ alipay（支付宝）。
+  /// 返回 { orderId, orderNo, plan, amount, payMethod, payUrl, payQrcodeUrl }；
+  /// 后端未配置支付渠道时抛「未配置支付渠道」。
+  Future<Map<String, dynamic>> jianpayCreate(
+      String plan, String payMethod) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/jianpay/create', {
+      'plan': plan,
+      'payMethod': payMethod,
+    }, authRequired: true);
+  }
+
+  /// 简付：查单补偿（支付弹层轮询 / 手动刷新用）。
+  /// [orderNo] 为空时后端取当前账号最近一笔订单。
+  /// 返回 { orderNo, status, remoteStatus, paid, granted }。
+  Future<Map<String, dynamic>> jianpaySyncOrder(String orderNo) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/jianpay/sync-order', {'orderNo': orderNo},
+        authRequired: true);
+  }
+
+  /// 简付：退款资格查询（开通 24h 内、每账号 1 次）。
+  /// 返回 { canRefund, reason, orderNo, paidAt, deadlineAt, usedRefund, windowHours }。
+  Future<Map<String, dynamic>> jianpayRefundStatus() async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/jianpay/refund/status', null,
+        authRequired: true);
+  }
+
+  /// 简付：申请退款（原路退回，成功后立即收回权益）。
+  /// [orderNo] 为空时后端取当前账号最近一笔已支付订单。
+  /// 返回 { refundNo, status, remoteStatus, vipRevoked, message }。
+  Future<Map<String, dynamic>> jianpayRefund(String orderNo) async {
+    final t = _token;
+    if (t == null) throw const ApiException('未登录');
+    return _call('POST', '/api/jianpay/refund', {'orderNo': orderNo},
+        authRequired: true);
+  }
+
   /// 兑换码核销（防破解修复）：码的有效性 / 幂等 / 次数限制全部由服务端校验，
   /// 客户端不做本地判断、不硬编码任何兑换码。返回 { ok, user, redeemed }，
   /// user 为开通后的云端用户信息（VIP 以云端为准）。
