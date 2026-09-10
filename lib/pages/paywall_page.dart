@@ -806,6 +806,10 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
         setState(() {});
       }
     });
+    // 支付宝小微可走 H5：弹层打开即自动拉起收银台 payUrl（跳支付宝 App），无需扫码
+    if (!_isWx && widget.payUrl.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openPayPage());
+    }
   }
 
   @override
@@ -914,8 +918,9 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
   @override
   Widget build(BuildContext context) {
     final hasQr = widget.qrUrl.isNotEmpty;
+    final h5 = !_isWx; // 支付宝小微走 H5 直接拉起，微信走扫码
     return AlertDialog(
-      title: Text('扫码支付 · ${widget.planName}'),
+      title: Text(h5 ? '支付宝支付 · ${widget.planName}' : '扫码支付 · ${widget.planName}'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -924,24 +929,27 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
             Text('应付金额：¥${widget.amount.toStringAsFixed(2)}'),
             const SizedBox(height: 6),
             Text(
-              '请用$_methodName扫一扫下方二维码完成付款，付款成功后自动开通。',
+              h5
+                  ? '正在跳转支付宝完成付款，付款成功后返回本页面将自动开通。'
+                  : '请用$_methodName扫一扫下方二维码完成付款，付款成功后自动开通。',
               style: const TextStyle(fontSize: 12, color: AppTheme.textSub),
             ),
             const SizedBox(height: 12),
-            if (hasQr)
-              Center(
-                child: Image.network(
-                  widget.qrUrl,
-                  width: 200,
-                  height: 200,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => const Icon(Icons.qr_code,
-                      size: 120, color: AppTheme.textSub),
-                ),
-              )
-            else
-              const Text('二维码获取失败，可点下方按钮继续付款或稍后重试。',
-                  style: TextStyle(color: AppTheme.warn)),
+            if (!h5)
+              if (hasQr)
+                Center(
+                  child: Image.network(
+                    widget.qrUrl,
+                    width: 200,
+                    height: 200,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => const Icon(Icons.qr_code,
+                        size: 120, color: AppTheme.textSub),
+                  ),
+                )
+              else
+                const Text('二维码获取失败，可点下方按钮继续付款或稍后重试。',
+                    style: TextStyle(color: AppTheme.warn)),
             const SizedBox(height: 8),
             Center(
               child: Text(
@@ -953,18 +961,24 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
         ),
       ),
       actions: [
-        FilledButton.icon(
-          onPressed: _openPayApp,
-          icon: Icon(_isWx ? Icons.chat_bubble : Icons.account_balance_wallet,
-              size: 18),
-          label: Text('打开$_methodName'),
-        ),
-        if (hasQr)
+        if (h5)
+          FilledButton.icon(
+            onPressed: _openPayPage,
+            icon: const Icon(Icons.account_balance_wallet, size: 18),
+            label: const Text('打开支付宝继续支付'),
+          )
+        else
+          FilledButton.icon(
+            onPressed: _openPayApp,
+            icon: const Icon(Icons.chat_bubble, size: 18),
+            label: Text('打开$_methodName'),
+          ),
+        if (!h5 && hasQr)
           TextButton(
             onPressed: _saving ? null : _saveQr,
             child: Text(_saving ? '处理中…' : '保存二维码'),
           ),
-        if (widget.payUrl.isNotEmpty)
+        if (!h5 && widget.payUrl.isNotEmpty)
           TextButton(
             onPressed: _openPayPage,
             child: const Text('打开支付页'),
