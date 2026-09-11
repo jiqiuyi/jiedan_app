@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../constants.dart';
 import '../database.dart';
 import '../theme.dart';
+import '../widgets/date_range_picker_sheet.dart';
 import 'paywall_page.dart';
 
 /// 统计看板（v1.10.0 新增，v1.22.0 增强）：
@@ -179,42 +180,82 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
     );
   }
 
-  // 时间范围筛选条：本月 / 上月 / 近12个月 / 自定义
+  // 时间范围筛选条：本月 / 上月 / 近12个月 / 自定义（四个筛选项固定一行等宽排列，
+  // 自定义区间入口单独一行展示当前区间，避免文字过长挤压筛选行）
   Widget _buildRangeSelector() {
+    const items = [
+      (_RangeMode.month, '本月'),
+      (_RangeMode.lastMonth, '上月'),
+      (_RangeMode.last12, '近12个月'),
+      (_RangeMode.custom, '自定义'),
+    ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final (m, label) in [
-            (_RangeMode.month, '本月'),
-            (_RangeMode.lastMonth, '上月'),
-            (_RangeMode.last12, '近12个月'),
-            (_RangeMode.custom, '自定义'),
-          ])
-            ChoiceChip(
-              label: Text(label),
-              selected: _mode == m,
-              onSelected: (_) {
-                if (_mode == m) return;
-                setState(() => _mode = m);
-                _load();
-              },
-              visualDensity: VisualDensity.compact,
-            ),
-          if (_mode == _RangeMode.custom)
-            TextButton.icon(
-              onPressed: _pickCustomRange,
-              icon: const Icon(Icons.date_range, size: 16),
-              label: Text(_titleOf(),
-                  style: const TextStyle(fontSize: 12)),
-              style: TextButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+          Row(
+            children: [
+              for (int i = 0; i < items.length; i++) ...[
+                if (i > 0) const SizedBox(width: 6),
+                Expanded(
+                  child: ChoiceChip(
+                    label: Text(
+                      items[i].$2,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    selected: _mode == items[i].$1,
+                    onSelected: (_) {
+                      if (_mode == items[i].$1) return;
+                      setState(() => _mode = items[i].$1);
+                      _load();
+                    },
+                    showCheckmark: false,
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    labelPadding: const EdgeInsets.symmetric(horizontal: 2),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 4, vertical: 2),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (_mode == _RangeMode.custom) ...[
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: _pickCustomRange,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.date_range,
+                        size: 16, color: AppTheme.primary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '统计区间：${_titleOf()}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right,
+                        size: 16, color: AppTheme.textSub),
+                  ],
+                ),
               ),
             ),
+          ],
         ],
       ),
     );
@@ -222,16 +263,14 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
 
   Future<void> _pickCustomRange() async {
     final now = DateTime.now();
-    final range = await showDateRangePicker(
+    // 自绘起止日期弹层：点起点→自动切终点，年份可直接点选，避免全屏日历灰屏问题
+    final range = await showDateRangeSheet(
       context: context,
-      firstDate: DateTime(now.year - 10, 1),
+      start: _rStart,
+      end: _rEnd,
+      firstDate: DateTime(now.year - 10, 1, 1),
       lastDate: now,
-      initialDateRange: DateTimeRange(
-        start: _rStart.isBefore(_rEnd) ? _rStart : _rEnd,
-        end: _rEnd,
-      ),
-      helpText: '选择统计起止日期',
-      saveText: '确定',
+      title: '选择统计起止日期',
     );
     if (range == null || !mounted) return;
     setState(() {

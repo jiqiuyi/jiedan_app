@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../database.dart';
 import '../constants.dart';
 import '../theme.dart';
+import '../widgets/date_range_picker_sheet.dart';
 
 /// 收入记录页：按 年 / 月 / 周 / 自定义日期区间 筛选历史收入，
 /// 展示所选时间段的收入合计与该时间段收款明细。
@@ -15,8 +16,16 @@ class IncomeHistoryPage extends StatefulWidget {
   State<IncomeHistoryPage> createState() => _IncomeHistoryPageState();
 }
 
-/// 筛选模式
+/// 筛选模式（枚举本身仅定义可选模式，界面展示顺序见 _modeOrder）
 enum _RangeMode { month, week, year, range }
+
+/// 筛选模式在界面上的展示顺序：按周 → 按月 → 按年 → 自定义
+const List<_RangeMode> _modeOrder = [
+  _RangeMode.week,
+  _RangeMode.month,
+  _RangeMode.year,
+  _RangeMode.range,
+];
 
 class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
   final _fmt = NumberFormat('#,##0.00');
@@ -83,7 +92,7 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
         return (
           s.millisecondsSinceEpoch,
           e.millisecondsSinceEpoch,
-          '${_rStart.month}月${_rStart.day}日 - ${_rEnd.month}月${_rEnd.day}日 收入',
+          '${_rangeLabel(_rStart, _rEnd)} 收入',
         );
     }
   }
@@ -151,9 +160,16 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
         _RangeMode.month => '$_mYear年 $_mMonth月',
         _RangeMode.week => _weekNavLabel,
         _RangeMode.year => '$_yYear年',
-        _RangeMode.range =>
-          '${_rStart.month}月${_rStart.day}日 - ${_rEnd.month}月${_rEnd.day}日',
+        _RangeMode.range => _rangeLabel(_rStart, _rEnd),
       };
+
+  /// 起止区间文案：始终带年份，跨年时两端都带年份
+  String _rangeLabel(DateTime s, DateTime e) {
+    if (s.year == e.year) {
+      return '${s.year}年${s.month}月${s.day}日 - ${e.month}月${e.day}日';
+    }
+    return '${s.year}年${s.month}月${s.day}日 - ${e.year}年${e.month}月${e.day}日';
+  }
 
   String get _weekNavLabel {
     final ws = _weekStartOf(_weekAnchor);
@@ -219,13 +235,14 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
         if (picked == null) return;
         setState(() => _yYear = picked.year);
       case _RangeMode.range:
-        final picked = await showDateRangePicker(
+        // 自绘起止日期弹层：年份可直接点选，避免全屏日历滑动找年份的繁琐与灰屏
+        final picked = await showDateRangeSheet(
           context: context,
-          firstDate: DateTime(2000),
+          start: _rStart,
+          end: _rEnd,
+          firstDate: DateTime(2000, 1, 1),
           lastDate: DateTime(now.year + 1, 12, 31),
-          initialDateRange: DateTimeRange(start: _rStart, end: _rEnd),
-          helpText: '选择起止日期',
-          saveText: '确定',
+          title: '选择起止日期',
         );
         if (picked == null) return;
         setState(() {
@@ -269,7 +286,7 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                for (final mode in _RangeMode.values) ...[
+                for (final mode in _modeOrder) ...[
                   _ModeChip(
                     label: switch (mode) {
                       _RangeMode.month => '按月',
@@ -284,7 +301,7 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
                       _load();
                     },
                   ),
-                  if (mode != _RangeMode.values.last) const SizedBox(width: 8),
+                  if (mode != _modeOrder.last) const SizedBox(width: 8),
                 ],
               ],
             ),
