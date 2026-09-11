@@ -173,6 +173,35 @@ class ApiClient {
     return _call('GET', '/api/me', null);
   }
 
+  // ---------------- 模块 B：返现提现 ----------------
+
+  /// 保存返现收款账户：method(wechat/alipay) + name + account + 收款码。
+  /// [wechatQrcode] / [alipayQrcode] 为 data:image/...;base64,<data>，解码后需
+  /// ≤200KB；不重传时传空串（服务端保留原图）。返回 { ok, method, name, account, ... }。
+  Future<Map<String, dynamic>> savePayoutAccount({
+    required String method,
+    required String name,
+    required String account,
+    String wechatQrcode = '',
+    String alipayQrcode = '',
+  }) async {
+    if (_token == null) throw const ApiException('未登录');
+    return _call('POST', '/api/payout/account', {
+      'method': method,
+      'name': name,
+      'account': account,
+      'wechatQrcode': wechatQrcode,
+      'alipayQrcode': alipayQrcode,
+    }, authRequired: true);
+  }
+
+  /// 申请返现打款（服务端写 applyAt 冻结 + 账户快照，幂等）。
+  /// 返回 { ok, applyCount, applyAmount }。
+  Future<Map<String, dynamic>> applyPayout() async {
+    if (_token == null) throw const ApiException('未登录');
+    return _call('POST', '/api/payout/apply', null, authRequired: true);
+  }
+
   // ---------------- 订阅 / 支付 ----------------
 
   /// 创建订单，返回 { orderId, orderNo, amount, plan, qrPayload, qrcode }
@@ -231,7 +260,7 @@ class ApiClient {
         authRequired: true);
   }
 
-  /// 简付：退款资格查询（开通 24h 内、每账号 1 次）。
+  /// 简付：退款资格查询（开通 6h 内、每账号 1 次）。
   /// 返回 { canRefund, reason, orderNo, paidAt, deadlineAt, usedRefund, windowHours }。
   Future<Map<String, dynamic>> jianpayRefundStatus() async {
     final t = _token;

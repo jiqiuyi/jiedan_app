@@ -26,7 +26,65 @@ class _LoginPageState extends State<LoginPage> {
   bool _obscureConfirm = true;
   bool _agree = false;
   bool _loading = false;
+  bool _detectedInvite = false; // 邀请码来自剪贴板 / 官网落地页
+  bool _inviteDialogShown = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _prefillInvite();
+  }
+
+  /// 模块 A：自动预填邀请码（官网 ?ic= 落地页写入剪贴板 / 本地暂存）
+  Future<void> _prefillInvite() async {
+    final st = AppState.instance;
+    await st.restorePendingInviteCode();
+    var code = st.pendingInviteCode;
+    if (code.isEmpty) {
+      await st.captureClipboardInviteCode();
+      code = st.pendingInviteCode;
+    }
+    if (!mounted || code.isEmpty) return;
+    setState(() {
+      _inviteCtrl.text = code;
+      _detectedInvite = true;
+      _isRegister = true; // 带邀请码时默认落在注册页
+    });
+    _showInviteDialog(code);
+  }
+
+  void _showInviteDialog(String code) {
+    if (_inviteDialogShown || !mounted) return;
+    _inviteDialogShown = true;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('检测到邀请人'),
+        content: Text('检测到邀请码 $code，注册后将自动绑定为你的邀请人，'
+            '绑定后不可修改。是否绑定？'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() {
+                _inviteCtrl.clear();
+                _detectedInvite = false;
+              });
+            },
+            child: const Text('不绑定'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => _inviteCtrl.text = code);
+            },
+            child: const Text('确认绑定'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -86,6 +144,10 @@ class _LoginPageState extends State<LoginPage> {
 
     if (!mounted) return;
     if (result == null) {
+      if (_isRegister) {
+        await AppState.instance.clearPendingInviteCode();
+      }
+      if (!mounted) return;
       Navigator.pop(context, true);
     } else {
       setState(() {
@@ -147,6 +209,13 @@ class _LoginPageState extends State<LoginPage> {
                     onSelectionChanged: (s) => setState(() {
                       _isRegister = s.first;
                       _error = null;
+                      if (s.first &&
+                          _inviteCtrl.text.isEmpty &&
+                          AppState.instance.pendingInviteCode.isNotEmpty) {
+                        _inviteCtrl.text =
+                            AppState.instance.pendingInviteCode;
+                        _detectedInvite = true;
+                      }
                     }),
                     style: SegmentedButton.styleFrom(
                       selectedBackgroundColor: AppTheme.primary.withValues(alpha: 0.12),
@@ -237,10 +306,13 @@ class _LoginPageState extends State<LoginPage> {
                       controller: _inviteCtrl,
                       textInputAction: TextInputAction.done,
                       onSubmitted: (_) => _submit(),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: '邀请码（选填）',
-                        prefixIcon: Icon(Icons.redeem_outlined),
+                        prefixIcon: const Icon(Icons.redeem_outlined),
                         hintText: '填写好友邀请码，自动绑定推广关系',
+                        helperText: _detectedInvite
+                            ? '已自动填入邀请链接中的邀请码，可修改或清空'
+                            : null,
                       ),
                     ),
                   ],
