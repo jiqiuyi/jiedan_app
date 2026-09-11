@@ -431,6 +431,9 @@ class _WalletPageState extends State<WalletPage> {
     await _load();
   }
 
+  /// 充值入口开关：当前隐藏充值按钮（_startRecharge 实现保留，后续可恢复）
+  bool get _showRecharge => false;
+
   // ---------- 视图 ----------
 
   @override
@@ -451,14 +454,17 @@ class _WalletPageState extends State<WalletPage> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Row(
               children: [
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: _busy ? null : _startRecharge,
-                    icon: const Icon(Icons.add_card),
-                    label: const Text('充值'),
+                // 充值入口：当前产品策略隐藏按钮（_startRecharge 实现保留，后续可恢复）
+                if (_showRecharge) ...[
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: _busy ? null : _startRecharge,
+                      icon: const Icon(Icons.add_card),
+                      label: const Text('充值'),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: (_busy || _balance <= 0) ? null : _startWithdraw,

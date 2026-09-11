@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:gal/gal.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api_client.dart';
@@ -170,13 +170,6 @@ class _PaywallPageState extends State<PaywallPage> {
               subtitle: const Text('扫码支付，付款后自动开通'),
               onTap: () => Navigator.pop(ctx, 'alipay'),
             ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.more_horiz, color: AppTheme.textSub),
-              title: const Text('其他支付方式'),
-              subtitle: const Text('打开网页支付页面完成付款'),
-              onTap: () => Navigator.pop(ctx, 'other'),
-            ),
             const SizedBox(height: 6),
           ],
         ),
@@ -295,7 +288,7 @@ class _PaywallPageState extends State<PaywallPage> {
     messenger.showSnackBar(SnackBar(content: Text(err ?? '兑换成功，已开通专业版')));
   }
 
-  // 24h 退款入口：先查退款资格（开通 24h 内、每账号 1 次），再提交退款。
+  // 6h 退款入口：先查退款资格（开通 6h 内、每账号 1 次），再提交退款。
   // 退款原路退回，退款成功后专业版权益立即收回。
   Future<void> _showRefundDialog() async {
     final messenger = ScaffoldMessenger.of(context);
@@ -413,19 +406,21 @@ class _PaywallPageState extends State<PaywallPage> {
                         : Text(plans[_selected].buyText)),
               ),
               const SizedBox(height: 12),
-              const Center(
-                child: Text(
-                  '付款成功后由系统自动开通，无需等待人工确认。',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppTheme.textSub, fontSize: 12),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Center(
-                child: Text(
-                  '兑换码由系统后台核销开通，请从可靠渠道获取',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppTheme.textSub, fontSize: 12),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '付款成功后由系统自动开通，无需等待人工确认。',
+                      style: TextStyle(color: AppTheme.textSub, fontSize: 12),
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      '兑换码由系统后台核销开通，请从可靠渠道获取',
+                      style: TextStyle(color: AppTheme.textSub, fontSize: 12),
+                    ),
+                  ],
                 ),
               ),
               Center(
@@ -442,7 +437,7 @@ class _PaywallPageState extends State<PaywallPage> {
                     onPressed: _paying ? null : _showRefundDialog,
                     icon: const Icon(Icons.assignment_return_outlined,
                         size: 18),
-                    label: const Text('24 小时内可申请退款'),
+                    label: const Text('6 小时内可申请退款'),
                   ),
                 ),
             ],
@@ -870,7 +865,7 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
     );
   }
 
-  /// 保存二维码：下载二维码图片后走系统分享面板保存到相册 / 文件。
+  /// 保存二维码：下载二维码图片后直接写入系统相册（Android MediaStore / iOS Photos）。
   Future<void> _saveQr() async {
     if (_saving || widget.qrUrl.isEmpty) return;
     setState(() => _saving = true);
@@ -880,10 +875,16 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
       final dir = await getTemporaryDirectory();
       final f = File('${dir.path}/pay_qr_${widget.orderNo}.png');
       await f.writeAsBytes(resp.bodyBytes);
-      await Share.shareXFiles(
-        [XFile(f.path, mimeType: 'image/png')],
-        text: '扫码支付二维码',
-      );
+      // Android 10+ 通过 MediaStore 写入无需申请权限，低版本需存储权限
+      if (!await Gal.hasAccess()) {
+        await Gal.requestAccess();
+      }
+      await Gal.putImage(f.path);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('二维码已保存到相册')),
+        );
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -960,36 +961,63 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
           ],
         ),
       ),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       actions: [
-        if (h5)
-          FilledButton.icon(
-            onPressed: _openPayPage,
-            icon: const Icon(Icons.account_balance_wallet, size: 18),
-            label: const Text('打开支付宝继续支付'),
-          )
-        else
-          FilledButton.icon(
-            onPressed: _openPayApp,
-            icon: const Icon(Icons.chat_bubble, size: 18),
-            label: Text('打开$_methodName'),
-          ),
-        if (!h5 && hasQr)
-          TextButton(
-            onPressed: _saving ? null : _saveQr,
-            child: Text(_saving ? '处理中…' : '保存二维码'),
-          ),
-        if (!h5 && widget.payUrl.isNotEmpty)
-          TextButton(
-            onPressed: _openPayPage,
-            child: const Text('打开支付页'),
-          ),
-        TextButton(
-          onPressed: _checking ? null : _manualRefresh,
-          child: Text(_checking ? '刷新中…' : '我已支付，刷新'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('关闭'),
+        // 三个操作按钮等宽排成一行（微信 / 支付宝一致）；「关闭」按钮已移除，
+        // 用户可点弹层遮罩或按系统返回键关闭。
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton(
+                onPressed: h5 ? _openPayPage : _openPayApp,
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  textStyle: const TextStyle(
+                      fontSize: 12.5, fontWeight: FontWeight.w600),
+                ),
+                child: Text(
+                  h5 ? '打开支付宝' : '打开$_methodName',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+            if (hasQr) ...[
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _saving ? null : _saveQr,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 40),
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    textStyle: const TextStyle(fontSize: 12.5),
+                  ),
+                  child: Text(
+                    _saving ? '保存中…' : '保存二维码',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _checking ? null : _manualRefresh,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  textStyle: const TextStyle(fontSize: 12.5),
+                ),
+                child: Text(
+                  _checking ? '刷新中…' : '我已支付，刷新',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
