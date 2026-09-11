@@ -28,6 +28,10 @@ Future<void> main() async {
       return;
     }
     await AppState.instance.load();
+    // 模块 A：恢复暂存的邀请码；未登录时静默读取剪贴板中的邀请码
+    // （来源：官网 ?ic= 落地页 / 好友分享），供注册时自动带上
+    await AppState.instance.restorePendingInviteCode();
+    await AppState.instance.captureClipboardInviteCode();
     // 初始化本地催款提醒通知（完全本地，不涉及网络）
     await NotifyService.instance.init();
     // 初始化数据存储方式（v1.14.0）：读取持久化模式；

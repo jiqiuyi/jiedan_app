@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../app_state.dart';
 import '../constants.dart';
 import '../models.dart';
 import '../theme.dart';
 import 'login_page.dart';
+import 'payout_account_page.dart';
 
 /// 推广活动页（第15批过渡期：本地自动核验版）
 ///
@@ -24,6 +26,8 @@ class InvitePage extends StatefulWidget {
 class _InvitePageState extends State<InvitePage> {
   final _fmt = NumberFormat('#,##0.00');
   String _inviteCode = '';
+  String _inviteLink = '';
+  bool _applying = false;
   List<Invitee> _list = [];
   InviteStats _stats = const InviteStats(
       friendCount: 0, paidCount: 0, totalRebate: 0);
@@ -43,8 +47,12 @@ class _InvitePageState extends State<InvitePage> {
     final stats = await st.inviteStats();
     final list = await st.cloudInvitees();
     if (!mounted) return;
+    final rawLink = st.cloudMe?['inviteLink'];
     setState(() {
       _inviteCode = code;
+      _inviteLink = (rawLink is String && rawLink.isNotEmpty)
+          ? rawLink
+          : 'https://yurouyun.cn/?ic=$code';
       _stats = stats;
       _list = list;
       _loading = false;
@@ -64,6 +72,80 @@ class _InvitePageState extends State<InvitePage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('邀请码已复制')));
+  }
+
+  Future<void> _copyLink() async {
+    await Clipboard.setData(ClipboardData(text: _inviteLink));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('专属邀请链接已复制')));
+  }
+
+  Future<void> _share() async {
+    try {
+      await Share.share(
+        '我在用「接单管家」管报价、客户和项目，注册时填邀请码 $_inviteCode 即可：\n$_inviteLink',
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('分享失败，可复制链接后手动发送')));
+    }
+  }
+
+  /// 收款账户脱敏摘要（模块 B）
+  String _accountSummary() {
+    final p = AppState.instance.payoutInfo();
+    final method = (p['method'] ?? '').toString();
+    final name = (p['name'] ?? '').toString();
+    final account = (p['account'] ?? '').toString();
+    final wx = p['hasWechatQrcode'] == true;
+    final ali = p['hasAlipayQrcode'] == true;
+    if (method.isEmpty && name.isEmpty && account.isEmpty && !wx && !ali) {
+      return '尚未设置，设置后才能申请打款';
+    }
+    final label = method == 'alipay'
+        ? '支付宝'
+        : (method == 'wechat' ? '微信' : '未选方式');
+    final masked = account.length <= 4
+        ? account
+        : '${account.substring(0, 2)}****${account.substring(account.length - 2)}';
+    final codes = <String>[
+      if (wx) '已传微信码',
+      if (ali) '已传支付宝码',
+    ].join('、');
+    return '$label · ${name.isEmpty ? '未填姓名' : name} · ${masked.isEmpty ? '未填账号' : masked}'
+        '${codes.isEmpty ? ' · 未传收款码' : ' · $codes'}';
+  }
+
+  String _applyTimeText(int ts) => DateFormat('yyyy-MM-dd HH:mm')
+      .format(DateTime.fromMillisecondsSinceEpoch(ts));
+
+  Future<void> _openPayoutAccount() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PayoutAccountPage()),
+    );
+    if (!mounted) return;
+    await _load();
+  }
+
+  Future<void> _applyPayout() async {
+    if (_applying) return;
+    setState(() => _applying = true);
+    final r = await AppState.instance.applyPayout();
+    if (!mounted) return;
+    setState(() => _applying = false);
+    if (r.error != null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(r.error!)));
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+          '已提交 ${r.count} 笔、合计 ¥${_fmt.format(r.amount)}，打款后会更新状态'),
+    ));
+    await _load();
   }
 
   @override
@@ -161,6 +243,23 @@ class _InvitePageState extends State<InvitePage> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _Stat(
+                                label: '已打款',
+                                value: _fmt.format(_stats.paidRebate / 100),
+                                unit: '元'),
+                          ),
+                          Expanded(
+                            child: _Stat(
+                                label: '待打款',
+                                value: _fmt.format(_stats.pendingRebate / 100),
+                                unit: '元'),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         '推荐 ${_list.length}/$need 位有效好友，即可免费获得 VIP '
@@ -178,6 +277,94 @@ class _InvitePageState extends State<InvitePage> {
                           backgroundColor:
                               AppTheme.primary.withValues(alpha: 0.12),
                           color: AppTheme.accent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // ---- 专属邀请链接卡片 ----
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('专属邀请链接',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textMain)),
+                      const SizedBox(height: 6),
+                      Text(_inviteLink,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 12, color: AppTheme.textSub)),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          TextButton.icon(
+                            onPressed: _copyLink,
+                            icon: const Icon(Icons.link_rounded, size: 16),
+                            label: const Text('复制链接'),
+                          ),
+                          const Spacer(),
+                          FilledButton.tonalIcon(
+                            onPressed: _share,
+                            icon: const Icon(Icons.ios_share_rounded, size: 16),
+                            label: const Text('分享给好友'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // ---- 返现收款账户 & 申请打款（模块 B）----
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text('返现收款账户',
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.textMain)),
+                          ),
+                          TextButton(
+                            onPressed: _openPayoutAccount,
+                            child: Text(
+                                AppState.instance.payoutInfo().isEmpty
+                                    ? '去设置'
+                                    : '修改'),
+                          ),
+                        ],
+                      ),
+                      Text(_accountSummary(),
+                          style: const TextStyle(
+                              fontSize: 12, color: AppTheme.textSub)),
+                      const SizedBox(height: 8),
+                      Text(
+                        _stats.applyAt != null
+                            ? '已申请，等待打款（${_applyTimeText(_stats.applyAt!)}）'
+                            : '待打款 ¥${_fmt.format(_stats.pendingRebate / 100)}，可随时申请',
+                        style: const TextStyle(
+                            fontSize: 12, color: AppTheme.textSub),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: (_stats.pendingRebate <= 0 || _applying)
+                              ? null
+                              : _applyPayout,
+                          child: Text(_applying ? '提交中…' : '申请打款'),
                         ),
                       ),
                     ],
@@ -271,14 +458,21 @@ class _InviteeTile extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppTheme.accent.withValues(alpha: 0.12),
+                  color: (e.payoutAt != null
+                          ? AppTheme.accent
+                          : AppTheme.primary)
+                      .withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text('已返现',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: AppTheme.accent,
-                        fontWeight: FontWeight.w600)),
+                child: Text(
+                  e.payoutAt != null ? '已打款' : '待打款',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: e.payoutAt != null
+                          ? AppTheme.accent
+                          : AppTheme.primary,
+                      fontWeight: FontWeight.w600),
+                ),
               )
             : Container(
                 padding:

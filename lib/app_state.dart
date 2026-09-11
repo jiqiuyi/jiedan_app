@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart' show Hmac, sha256;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show Clipboard;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'api_client.dart';
@@ -412,6 +413,11 @@ class AppState extends ChangeNotifier {
         paidCount: paidCount,
         totalRebate: (_num(me['rebateTotal']) * 100).round(),
         bonusGranted: _bool(me['vipRewardGranted']),
+        // 模块 B：服务端现算的「已打款 / 待打款」与最早未处理申请时间
+        paidRebate: (_num(me['rebatePaid']) * 100).round(),
+        pendingRebate: (_num(me['rebatePending']) * 100).round(),
+        applyAt:
+            me['payoutApplyAt'] == null ? null : _intOrNow(me['payoutApplyAt']),
       );
     }
     // 云端未就绪时回落本地 MVP 统计
@@ -448,9 +454,13 @@ class AppState extends ChangeNotifier {
           invitedAt: invitedAt,
           paid: _bool(e['paid']),
           payAmount: (_num(e['payAmount']) * 100).round(),
-          // 后端 invitees 不返回 rebate，本地按返现比例结算展示
-          rebate: (_num(e['payAmount']) * AppConfig.rebateRate * 100).round(),
+          // 模块 B：后端 invitees 已直返该笔 rebate 与 payoutAt，
+          // 优先直读真值；后端未返回时回落本地按比例估算（兼容旧后端）
+          rebate: e['rebate'] == null
+              ? (_num(e['payAmount']) * AppConfig.rebateRate * 100).round()
+              : (_num(e['rebate']) * 100).round(),
           paidAt: paidAt,
+          payoutAt: e['payoutAt'] == null ? null : _intOrNow(e['payoutAt']),
         );
       }).toList();
     }
@@ -492,6 +502,118 @@ class AppState extends ChangeNotifier {
   Future<void> removeInvitee(int inviteeId) async {
     if (_cloudReady) return;
     await AppDb.instance.deleteInvitee(inviteeId);
+  }
+
+  // ==================== 模块 B：返现提现（服务端返现，与本地钱包严格分离） ====================
+
+  /// 本人收款账户摘要（me 的 payout 字段；云端未就绪返回空 Map）。
+  /// 后端不回传码图本体，仅给 hasWechatQrcode / hasAlipayQrcode 标记。
+  Map<String, dynamic> payoutInfo() {
+    final p = _cloudMe?['payout'];
+    return p is Map<String, dynamic> ? p : const <String, dynamic>{};
+  }
+
+  /// 保存返现收款账户：微信 / 支付宝 + 姓名 + 账号 + 收款码 base64。
+  /// 码图不重传时传空串（后端保留原图）。成功返回 null，失败返回提示文案。
+  Future<String?> savePayoutAccount({
+    required String method,
+    required String name,
+    required String account,
+    String wechatQrcode = '',
+    String alipayQrcode = '',
+  }) async {
+    if (!loggedIn) return '请先登录账号';
+    try {
+      await ApiClient.instance.savePayoutAccount(
+        method: method,
+        name: name,
+        account: account,
+        wechatQrcode: wechatQrcode,
+        alipayQrcode: alipayQrcode,
+      );
+      try {
+        await refreshCloud();
+      } catch (_) {
+        // 保存已成功，刷新失败不回滚、不打扰用户
+      }
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (_) {
+      return '保存失败，请稍后重试';
+    }
+  }
+
+  /// 申请返现打款：把本人名下全部「已付款、有返现、未打款」订单提交申请
+  /// （服务端写 applyAt 冻结金额 + 账户快照，幂等）。
+  /// 成功返回 (count, amount)；失败返回 (error)。
+  Future<({int count, double amount, String? error})> applyPayout() async {
+    if (!loggedIn) return (count: 0, amount: 0.0, error: '请先登录账号');
+    try {
+      final json = await ApiClient.instance.applyPayout();
+      try {
+        await refreshCloud();
+      } catch (_) {
+        // 申请已成功，刷新失败不影响结果展示
+      }
+      return (
+        count: (_num(json['applyCount'])).round(),
+        amount: _num(json['applyAmount']),
+        error: null,
+      );
+    } on ApiException catch (e) {
+      return (count: 0, amount: 0.0, error: e.message);
+    } catch (_) {
+      return (count: 0, amount: 0.0, error: '申请失败，请检查网络后重试');
+    }
+  }
+
+  // ==================== 模块 A：邀请码剪贴板无感绑定 ====================
+
+  static const String _pendingInviteCodeKey = 'pending_invite_code';
+  String _pendingInviteCode = '';
+  /// 剪贴板/落地页暂存的待绑定邀请码（注册页自动预填用）
+  String get pendingInviteCode => _pendingInviteCode;
+
+  /// 从任意文本中识别合法邀请码：
+  /// 支持专属链接 `?ic=JD1001`、`/invite/JD1001` 以及纯邀请码文本。
+  static String parseInviteCode(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty || t.length > 300) return '';
+    final m = RegExp(r'(?:[?&]ic=|/invite/)([A-Za-z0-9]{2,20})').firstMatch(t);
+    if (m != null) return m.group(1)!.toUpperCase();
+    final m2 = RegExp(r'JD\d{3,}').firstMatch(t.toUpperCase());
+    return m2?.group(0) ?? '';
+  }
+
+  /// 启动时恢复本地暂存的邀请码（App 重启后仍可自动预填）。
+  Future<void> restorePendingInviteCode() async {
+    final v = await AppDb.instance.getSetting(_pendingInviteCodeKey);
+    _pendingInviteCode = (v ?? '').trim();
+  }
+
+  /// 未登录时读取系统剪贴板、识别邀请码并暂存（注册时自动带上）。
+  /// 已登录 / 已暂存 / 剪贴板无合法码时直接跳过；失败静默，不阻塞启动。
+  Future<void> captureClipboardInviteCode() async {
+    if (loggedIn || _pendingInviteCode.isNotEmpty) return;
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      final code = parseInviteCode(data?.text ?? '');
+      if (code.isEmpty) return;
+      _pendingInviteCode = code;
+      await AppDb.instance.setSetting(_pendingInviteCodeKey, code);
+      notifyListeners();
+    } catch (_) {
+      // 剪贴板不可用（系统隐私限制等）时静默忽略，注册页仍可手动填写
+    }
+  }
+
+  /// 清除暂存邀请码（注册成功或用户拒绝绑定后调用）。
+  Future<void> clearPendingInviteCode() async {
+    if (_pendingInviteCode.isEmpty) return;
+    _pendingInviteCode = '';
+    await AppDb.instance.setSetting(_pendingInviteCodeKey, '');
+    notifyListeners();
   }
 
   /// 第15批过渡期：本地自动核验满 [AppConfig.inviteFreeVipFriends] 位已付款好友，
@@ -557,11 +679,17 @@ class InviteStats {
   final int paidCount; // 已真实付款人数
   final int totalRebate; // 累计返现金额（分，v9 统一改分）
   final bool bonusGranted; // 是否已触发过"推荐送 VIP"
+  final int paidRebate; // 已打款返现（分，模块 B 服务端现算）
+  final int pendingRebate; // 待打款返现（分，模块 B 服务端现算）
+  final int? applyAt; // 最早未处理申请时间（null = 尚未申请）
 
   const InviteStats({
     required this.friendCount,
     required this.paidCount,
     required this.totalRebate,
     this.bonusGranted = false,
+    this.paidRebate = 0,
+    this.pendingRebate = 0,
+    this.applyAt,
   });
 }

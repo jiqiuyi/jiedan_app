@@ -949,6 +949,8 @@ class Invitee {
   final int payAmount; // 真实付款金额（分，未付为 0）
   final int rebate; // 对应返现金额（分）= payAmount * rebateRate
   final int? paidAt;
+  /// 该笔返现的打款时间（模块 B：云端 me 直读；本地 MVP 恒为 null，不入本地表）
+  final int? payoutAt;
 
   const Invitee({
     this.id,
@@ -960,6 +962,7 @@ class Invitee {
     this.payAmount = 0,
     this.rebate = 0,
     this.paidAt,
+    this.payoutAt,
   });
 
   Map<String, Object?> toMap() => {
@@ -984,6 +987,7 @@ class Invitee {
         payAmount: (m['pay_amount'] as num?)?.toInt() ?? 0,
         rebate: (m['rebate'] as num?)?.toInt() ?? 0,
         paidAt: m['paid_at'] as int?,
+        payoutAt: (m['payout_at'] as num?)?.toInt(),
       );
 
   Invitee copyWith({
@@ -996,6 +1000,7 @@ class Invitee {
     int? payAmount,
     int? rebate,
     int? paidAt,
+    int? payoutAt,
   }) =>
       Invitee(
         id: id ?? this.id,
@@ -1007,5 +1012,6 @@ class Invitee {
         payAmount: payAmount ?? this.payAmount,
         rebate: rebate ?? this.rebate,
         paidAt: paidAt ?? this.paidAt,
+        payoutAt: payoutAt ?? this.payoutAt,
       );
 }
