@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api_client.dart';
 import '../app_state.dart';
 import '../theme.dart';
+import '../widgets/app_ui.dart';
 
 /// 支付确认弹层（过渡期个人收款码方案）。
 /// 展示本单随机金额与收款方式，点一下收款方式直接拉起对应支付；
@@ -15,12 +16,9 @@ Future<bool> showPaySheet(
   required Map<String, dynamic> order,
   required String planName,
 }) {
-  return showModalBottomSheet<bool>(
-    context: context,
+  return showAppSheet<bool>(
+    context,
     isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
     builder: (ctx) => _PaySheet(order: order, planName: planName),
   ).then((v) => v ?? false);
 }
@@ -225,12 +223,12 @@ class _PayChannelButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: Container(
         height: 84,
         decoration: BoxDecoration(
           color: enabled ? color.withValues(alpha: 0.08) : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           border: Border.all(
             color: enabled ? color.withValues(alpha: 0.35) : Colors.grey.shade300,
           ),

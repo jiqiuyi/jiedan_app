@@ -11,6 +11,7 @@ import '../widgets/show_payment_code.dart';
 import '../services/notify_service.dart';
 import 'quote_page.dart';
 import '../utils/money_input.dart';
+import '../widgets/app_ui.dart';
 
 class ProjectDetailPage extends StatefulWidget {
   final Project project;
@@ -92,10 +93,12 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
             '确定删除这笔 ¥${_fmt.format(p.amount / 100)} 的收款记录吗？\n删除后项目已收金额会相应减少。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+          AppButton(
+            label: '删除',
+            kind: AppButtonKind.danger,
+            size: AppButtonSize.medium,
+            expand: false,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
           ),
         ],
       ),
@@ -126,10 +129,12 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
         content: const Text('将删除该项目及其全部收款记录，不可恢复。确定吗？'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+          AppButton(
+            label: '删除',
+            kind: AppButtonKind.danger,
+            size: AppButtonSize.medium,
+            expand: false,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
           ),
         ],
       ),
@@ -324,10 +329,12 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
         content: Text('确定删除阶段「${ms.name}」吗？\n\n删除后该阶段进度标记将一并清除，不可恢复。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+          AppButton(
+            label: '删除',
+            kind: AppButtonKind.danger,
+            size: AppButtonSize.medium,
+            expand: false,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
           ),
         ],
       ),
@@ -412,7 +419,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
           minHeight: 6,
           backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
           color: AppTheme.primary,
-          borderRadius: BorderRadius.circular(3),
+          borderRadius: BorderRadius.circular(AppRadius.xxs),
         ),
         const SizedBox(height: 10),
         Row(
@@ -467,7 +474,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
           minHeight: 6,
           backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
           color: AppTheme.primary,
-          borderRadius: BorderRadius.circular(3),
+          borderRadius: BorderRadius.circular(AppRadius.xxs),
         ),
         const SizedBox(height: 4),
         Text('已完成 ${doneAmount / 100} 元 / 共 ${totalAmount / 100} 元',
@@ -564,7 +571,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoading()
           : ListView(
               padding: const EdgeInsets.only(top: 8, bottom: 32),
               children: [
@@ -595,7 +602,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                           minHeight: 6,
                           backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
                           color: AppTheme.accent,
-                          borderRadius: BorderRadius.circular(3),
+                          borderRadius: BorderRadius.circular(AppRadius.xxs),
                         ),
                         const SizedBox(height: 14),
                         Row(
@@ -680,9 +687,9 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                   ),
                 ),
                 if (_payments.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Center(child: Text('还没有收款记录', style: TextStyle(color: AppTheme.textSub))),
+                  const AppEmpty(
+                    icon: Icons.receipt_long_outlined,
+                    title: '还没有收款记录',
                   )
                 else
                   ..._payments.map((p) => Card(
@@ -697,11 +704,13 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                         ),
                       )),
                 const SizedBox(height: 12),
-                OutlinedButton.icon(
+                AppButton(
+                  label: '删除项目',
+                  icon: Icons.delete_outline,
+                  kind: AppButtonKind.dangerOutline,
+                  size: AppButtonSize.medium,
+                  expand: false,
                   onPressed: _deleteProject,
-                  style: OutlinedButton.styleFrom(foregroundColor: AppTheme.danger, side: const BorderSide(color: AppTheme.danger)),
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('删除项目'),
                 ),
               ],
             ),
@@ -758,7 +767,7 @@ class _StatusBadge extends StatelessWidget {
     final (color, icon) = map[status]!;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.sheet)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

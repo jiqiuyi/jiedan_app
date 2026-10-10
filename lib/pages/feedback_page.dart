@@ -8,6 +8,7 @@ import '../database.dart';
 import '../services/device_info_reporter.dart';
 import '../theme.dart';
 import 'login_page.dart';
+import '../widgets/app_ui.dart';
 
 /// 意见反馈页：在线提交 Bug / 更新建议 / 其他。
 /// v1.15.0：弃用邮箱上报方式，改为实时在线提交到服务器（需登录，token 鉴权），
@@ -157,10 +158,10 @@ class _FeedbackPageState extends State<FeedbackPage> {
             spacing: 8,
             children: [
               for (final t in FeedbackType.values)
-                ChoiceChip(
-                  label: Text(t.label),
+                AppFilterChip(
+                  label: t.label,
                   selected: _type == t,
-                  onSelected: (_) => setState(() => _type = t),
+                  onTap: () => setState(() => _type = t),
                 ),
             ],
           ),
@@ -177,7 +178,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
                   ? '请描述遇到的问题：在哪个页面、做了什么操作、出现什么现象'
                   : '请描述你的建议：希望新增什么功能、如何改进体验',
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               filled: true,
               fillColor: Colors.white,
@@ -192,7 +193,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
             decoration: InputDecoration(
               hintText: '手机号 / 微信 / 邮箱，方便开发者回复你',
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               filled: true,
               fillColor: Colors.white,
@@ -321,10 +322,9 @@ class _MyFeedbackPageState extends State<MyFeedbackPage> {
             ? ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: const [
-                  SizedBox(height: 160),
-                  Center(
-                    child: Text('还没有提交过反馈，下拉可刷新',
-                        style: TextStyle(color: AppTheme.textSub)),
+                  AppEmpty(
+                    icon: Icons.feedback_outlined,
+                    title: '还没有提交过反馈，下拉可刷新',
                   ),
                 ],
               )
@@ -378,7 +378,7 @@ class _FeedbackCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: AppTheme.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(AppRadius.xs),
                   ),
                   child: Text(
                     type.label,
@@ -395,7 +395,7 @@ class _FeedbackCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: AppTheme.warn.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: BorderRadius.circular(AppRadius.xs),
                     ),
                     child: const Text(
                       '未同步',
@@ -432,7 +432,7 @@ class _FeedbackCard extends StatelessWidget {
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: AppTheme.success.withValues(alpha: 0.09),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppRadius.xs),
                   border: Border.all(
                       color: AppTheme.success.withValues(alpha: 0.35)),
                 ),

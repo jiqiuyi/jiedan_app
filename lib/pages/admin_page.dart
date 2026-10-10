@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../api_client.dart';
 import '../theme.dart';
+import '../widgets/app_ui.dart';
 
 /// 管理后台（仅管理员角色可见）。
 /// Tab 划分：待确认 / 抽查 / 返现 / 待打款 / 收款配置 / 服务状态 / 操作日志。
@@ -94,20 +95,20 @@ class _ConfirmingTabState extends State<_ConfirmingTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppLoading();
     }
     if (_error != null) {
       return Center(child: Text(_error!));
     }
     if (_orders.isEmpty) {
-      return const Center(
-          child: Text('暂无待确认订单', style: TextStyle(color: AppTheme.textSub)));
+      return const AppEmpty(
+          icon: Icons.inbox_outlined, title: '暂无待确认订单');
     }
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
         itemCount: _orders.length,
-        separatorBuilder: (_, _) => const Divider(height: 1),
+        separatorBuilder: (_, _) => const AppCardDivider(),
         itemBuilder: (c, i) {
           final o = _orders[i];
           return ListTile(
@@ -184,20 +185,20 @@ class _SpotcheckTabState extends State<_SpotcheckTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppLoading();
     }
     if (_error != null) {
       return Center(child: Text(_error!));
     }
     if (_items.isEmpty) {
-      return const Center(
-          child: Text('暂无抽查单', style: TextStyle(color: AppTheme.textSub)));
+      return const AppEmpty(
+          icon: Icons.fact_check_outlined, title: '暂无抽查单');
     }
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
         itemCount: _items.length,
-        separatorBuilder: (_, _) => const Divider(height: 1),
+        separatorBuilder: (_, _) => const AppCardDivider(),
         itemBuilder: (c, i) {
           final it = _items[i];
           final order = it['order'] is Map
@@ -289,7 +290,7 @@ class _RebateTabState extends State<_RebateTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppLoading();
     }
     return ListView(
       children: [
@@ -360,12 +361,11 @@ class _PayoutTabState extends State<_PayoutTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppLoading();
     }
     if (_payouts.isEmpty) {
-      return const Center(
-          child: Text('暂无可打款返现',
-              style: TextStyle(color: AppTheme.textSub)));
+      return const AppEmpty(
+          icon: Icons.paid_outlined, title: '暂无可打款返现');
     }
     return ListView(
       children: [
@@ -458,7 +458,7 @@ class _QrcodeTabState extends State<_QrcodeTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppLoading();
     }
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -550,7 +550,7 @@ class _ListenerTabState extends State<_ListenerTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppLoading();
     }
     final items = <(String, dynamic)>[
       ('今日上报', _data['todayReports'] ?? 0),
@@ -615,17 +615,17 @@ class _LogTabState extends State<_LogTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppLoading();
     }
     if (_logs.isEmpty) {
-      return const Center(
-          child: Text('暂无操作日志', style: TextStyle(color: AppTheme.textSub)));
+      return const AppEmpty(
+          icon: Icons.history_outlined, title: '暂无操作日志');
     }
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
         itemCount: _logs.length,
-        separatorBuilder: (_, _) => const Divider(height: 1),
+        separatorBuilder: (_, _) => const AppCardDivider(),
         itemBuilder: (c, i) {
           final l = _logs[i];
           return ListTile(

@@ -9,6 +9,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import '../theme.dart';
 
+/// 报价单 PDF 文档内区块圆角（导出件自带样式，与 App UI 圆角刻度解耦）。
+const double _pdfBlockRadius = 4;
+
 /// 报价单 PDF 导出数据（从 UI 状态组装，PDF 专属字段与落款一并带上）。
 class QuotePdfData {
   final String title; // 报价名称
@@ -184,7 +187,7 @@ class QuotePdfService {
       padding: const pw.EdgeInsets.all(12),
       decoration: pw.BoxDecoration(
         border: pw.Border.all(color: PdfColors.grey400, width: 0.6),
-        borderRadius: pw.BorderRadius.circular(4),
+        borderRadius: pw.BorderRadius.circular(_pdfBlockRadius),
       ),
       child: pw.TableHelper.fromTextArray(
         border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.4),
@@ -306,7 +309,7 @@ class QuotePdfService {
           decoration: pw.BoxDecoration(
             color: PdfColors.blueGrey50,
             border: pw.Border.all(color: PdfColors.grey400, width: 0.6),
-            borderRadius: pw.BorderRadius.circular(4),
+            borderRadius: pw.BorderRadius.circular(_pdfBlockRadius),
           ),
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -340,7 +343,7 @@ class QuotePdfService {
       decoration: pw.BoxDecoration(
         color: PdfColors.blueGrey50,
         border: pw.Border.all(color: PdfColors.grey400, width: 0.6),
-        borderRadius: pw.BorderRadius.circular(4),
+        borderRadius: pw.BorderRadius.circular(_pdfBlockRadius),
       ),
       child: pw.Row(
         children: [
@@ -362,7 +365,7 @@ class QuotePdfService {
       padding: const pw.EdgeInsets.all(10),
       decoration: pw.BoxDecoration(
         border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
-        borderRadius: pw.BorderRadius.circular(4),
+        borderRadius: pw.BorderRadius.circular(_pdfBlockRadius),
       ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,

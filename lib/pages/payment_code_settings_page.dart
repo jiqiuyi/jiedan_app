@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../app_state.dart';
 import '../database.dart';
 import '../theme.dart';
+import '../widgets/app_ui.dart';
 
 /// 收款设置：配置微信 / 支付宝个人收款码图片。
 /// 配置后可在项目收款时一键"出示收款码"给客户扫码。
@@ -86,7 +87,7 @@ class _PaymentCodeSettingsPageState extends State<PaymentCodeSettingsPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('收款设置')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoading()
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [

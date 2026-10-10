@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../widgets/app_ui.dart';
 
 /// 通用「起止日期」选择弹层（v1.42.0 新增）。
 ///
@@ -18,13 +19,9 @@ Future<DateTimeRange?> showDateRangeSheet({
   DateTime? lastDate,
   String title = '选择起止日期',
 }) {
-  return showModalBottomSheet<DateTimeRange>(
-    context: context,
+  return showAppSheet<DateTimeRange>(
+    context,
     isScrollControlled: true,
-    backgroundColor: Colors.white,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
     builder: (_) => _DateRangeSheet(
       start: start,
       end: end,
@@ -204,14 +201,14 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: active
               ? AppTheme.primary.withValues(alpha: 0.08)
               : AppTheme.bgCard,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           border: Border.all(
             color: active ? AppTheme.primary : const Color(0xFFE4E7EF),
             width: active ? 1.4 : 1,
@@ -250,14 +247,14 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
       children: [
         for (final y in years)
           InkWell(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppRadius.xs),
             onTap: () => _pickYear(y),
             child: Container(
               decoration: BoxDecoration(
                 color: y == _viewYear
                     ? AppTheme.primary
                     : AppTheme.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.xs),
               ),
               alignment: Alignment.center,
               child: Text(
@@ -298,7 +295,7 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
             Expanded(
               child: InkWell(
                 onTap: () => setState(() => _yearMode = true),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppRadius.xs),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Row(
@@ -368,12 +365,12 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
     }
 
     return InkWell(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(AppRadius.xs),
       onTap: disabled ? null : () => _onDayTap(d),
       child: Container(
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.xs),
         ),
         alignment: Alignment.center,
         child: Text(

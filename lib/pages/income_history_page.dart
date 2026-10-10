@@ -5,6 +5,8 @@ import '../database.dart';
 import '../constants.dart';
 import '../theme.dart';
 import '../widgets/date_range_picker_sheet.dart';
+import '../widgets/range_filter_bar.dart';
+import '../widgets/app_ui.dart';
 
 /// 收入记录页：按 年 / 月 / 周 / 自定义日期区间 筛选历史收入，
 /// 展示所选时间段的收入合计与该时间段收款明细。
@@ -16,16 +18,8 @@ class IncomeHistoryPage extends StatefulWidget {
   State<IncomeHistoryPage> createState() => _IncomeHistoryPageState();
 }
 
-/// 筛选模式（枚举本身仅定义可选模式，界面展示顺序见 _modeOrder）
+/// 筛选模式（枚举本身仅定义可选模式，界面展示顺序见 RangeFilterBar 的 items）
 enum _RangeMode { month, week, year, range }
-
-/// 筛选模式在界面上的展示顺序：按周 → 按月 → 按年 → 自定义
-const List<_RangeMode> _modeOrder = [
-  _RangeMode.week,
-  _RangeMode.month,
-  _RangeMode.year,
-  _RangeMode.range,
-];
 
 class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
   final _fmt = NumberFormat('#,##0.00');
@@ -163,21 +157,15 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
         _RangeMode.range => _rangeLabel(_rStart, _rEnd),
       };
 
-  /// 起止区间文案：始终带年份，跨年时两端都带年份
+  /// 起止区间文案：起止两端都带年份（同年也不省略，保证信息完整）
   String _rangeLabel(DateTime s, DateTime e) {
-    if (s.year == e.year) {
-      return '${s.year}年${s.month}月${s.day}日 - ${e.month}月${e.day}日';
-    }
     return '${s.year}年${s.month}月${s.day}日 - ${e.year}年${e.month}月${e.day}日';
   }
 
   String get _weekNavLabel {
     final ws = _weekStartOf(_weekAnchor);
     final we = ws.add(const Duration(days: 6));
-    if (ws.year == we.year) {
-      return '${ws.year}年${ws.month}月${ws.day}日 - ${we.month}月${we.day}日';
-    }
-    return '${ws.year}年${ws.month}月${ws.day}日 - ${we.year}年${we.month}月${we.day}日';
+    return _rangeLabel(ws, we);
   }
 
   /// 当前所选范围是否为"当前"范围（用于“回到当前”按钮显隐）
@@ -201,11 +189,8 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
     final now = DateTime.now();
     switch (_mode) {
       case _RangeMode.month:
-        final picked = await showModalBottomSheet<DateTime>(
-          context: context,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
+        final picked = await showAppSheet<DateTime>(
+          context,
           builder: (_) => _MonthPickerSheet(year: _mYear, month: _mMonth),
         );
         if (picked == null) return;
@@ -280,31 +265,20 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
       body: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         children: [
-          // 筛选模式切换
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (final mode in _modeOrder) ...[
-                  _ModeChip(
-                    label: switch (mode) {
-                      _RangeMode.month => '按月',
-                      _RangeMode.week => '按周',
-                      _RangeMode.year => '按年',
-                      _RangeMode.range => '自定义',
-                    },
-                    selected: _mode == mode,
-                    onTap: () {
-                      if (_mode == mode) return;
-                      setState(() => _mode = mode);
-                      _load();
-                    },
-                  ),
-                  if (mode != _modeOrder.last) const SizedBox(width: 8),
-                ],
-              ],
-            ),
+          // 筛选模式切换（与收入统计页共用 RangeFilterBar：左对齐、间距一致、无图标）
+          RangeFilterBar<_RangeMode>(
+            items: const [
+              RangeFilterItem(_RangeMode.week, '按周'),
+              RangeFilterItem(_RangeMode.month, '按月'),
+              RangeFilterItem(_RangeMode.year, '按年'),
+              RangeFilterItem(_RangeMode.range, '自定义'),
+            ],
+            value: _mode,
+            onChanged: (mode) {
+              if (_mode == mode) return;
+              setState(() => _mode = mode);
+              _load();
+            },
           ),
           // 时间切换条
           Padding(
@@ -324,7 +298,7 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
                 Expanded(
                   child: InkWell(
                     onTap: _pickCenter,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       child: Text(
@@ -398,37 +372,6 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
   }
 }
 
-/// 筛选模式 chip
-class _ModeChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  const _ModeChip({required this.label, required this.selected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected ? AppTheme.primary : AppTheme.primary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            color: selected ? Colors.white : AppTheme.textMain,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// 单条收款明细（数据库行解析）
 class _IncomeRow {
   final int projectId;
@@ -491,7 +434,7 @@ class _IncomeRowTile extends StatelessWidget {
           height: 46,
           decoration: BoxDecoration(
             color: AppTheme.primary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppRadius.md),
           ),
           alignment: Alignment.center,
           child: Column(
@@ -550,7 +493,7 @@ class _SummaryCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -626,7 +569,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                 final selected = _year == widget.year && m == widget.month;
                 final isFuture = _year == now.year && m > now.month;
                 return InkWell(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppRadius.xs),
                   onTap: isFuture ? null : () => setState(() => _month = m),
                   child: Container(
                     decoration: BoxDecoration(
@@ -635,7 +578,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                           : isFuture
                               ? Colors.transparent
                               : AppTheme.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(AppRadius.xs),
                     ),
                     alignment: Alignment.center,
                     child: Text(

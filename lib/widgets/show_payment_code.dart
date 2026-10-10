@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../services/pay_service.dart';
 import '../pages/payment_code_settings_page.dart';
 import '../utils/money_input.dart';
+import '../widgets/app_ui.dart';
 
 /// 出示收款码底部弹层（方案A：个人收款码 + 手动确认到账）。
 /// 展示已配置的微信 / 支付宝收款码，供客户扫码付款。
@@ -49,12 +50,9 @@ Future<void> showPaymentCodeSheet(BuildContext context) async {
     return;
   }
 
-  await showModalBottomSheet(
-    context: context,
+  await showAppSheet(
+    context,
     isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
     builder: (ctx) => _Sheet(
       wxPath: hasWx ? wxPath : null,
       aliPath: hasAli ? aliPath : null,
@@ -105,7 +103,7 @@ class _SheetState extends State<_Sheet> {
             const SizedBox(height: 12),
             if (current != null)
               ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
                 child: Image.file(
                   File(current),
                   width: 280,
@@ -128,7 +126,7 @@ class _SheetState extends State<_Sheet> {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: AppTheme.accent.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -206,12 +204,9 @@ Future<bool> showProjectCollectSheet(
     return false;
   }
 
-  final done = await showModalBottomSheet<bool>(
-    context: context,
+  final done = await showAppSheet<bool>(
+    context,
     isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
     builder: (ctx) => _ProjectCollectSheet(
       projectId: projectId,
       projectTitle: projectTitle,
@@ -362,7 +357,7 @@ class _ProjectCollectSheetState extends State<_ProjectCollectSheet> {
               Center(
                 child: current != null
                     ? ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
                         child: Image.file(
                           File(current),
                           width: 240,

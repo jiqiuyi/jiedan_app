@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../state/ticker.dart';
 import '../widgets/show_payment_code.dart';
 import 'income_history_page.dart';
+import '../widgets/app_ui.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -81,19 +82,15 @@ class _DashboardPageState extends State<DashboardPage> {
       );
       return;
     }
-    final selected = await showModalBottomSheet<Project>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+    final selected = await showAppSheet<Project>(
+      context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Padding(
               padding: EdgeInsets.all(14),
-              child: Text('选择要收款的项目',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              child: AppSheetHeader(title: '选择要收款的项目'),
             ),
             Flexible(
               child: ListView(
@@ -157,10 +154,12 @@ class _DashboardPageState extends State<DashboardPage> {
         content: Text('确定删除「${p.title}」的待收记录吗？'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+          AppButton(
+            label: '删除',
+            kind: AppButtonKind.danger,
+            size: AppButtonSize.medium,
+            expand: false,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
           ),
         ],
       ),
@@ -238,9 +237,9 @@ class _DashboardPageState extends State<DashboardPage> {
             child: Text('最近项目', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textMain)),
           ),
           if (_recent.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(32),
-              child: Center(child: Text('还没有项目，去「项目」页建一个吧', style: TextStyle(color: AppTheme.textSub))),
+            const AppEmpty(
+              icon: Icons.folder_open_outlined,
+              title: '还没有项目，去「项目」页建一个吧',
             )
           else
             ..._recent.map((pr) => _RecentCard(project: pr)),
@@ -267,7 +266,7 @@ class _IncomeCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -356,7 +355,7 @@ class _StatusBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.sheet),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

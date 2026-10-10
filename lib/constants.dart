@@ -5,7 +5,9 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.42.0+54';
+  static const String version = '1.43.3+58';
+  // 工信部 ICP 备案号（Android 合规要求：App 内显著位置可查，展示于「我的」页底部）
+  static const String icpCode = '苏ICP备2026065744号-3A';
 
   // ---- 检查更新 ----
   // 版本清单（静态 JSON 放官网，走 HTTPS）：发布新版时更新该 JSON 并覆盖官网 latest 安装包，
@@ -15,13 +17,13 @@ class AppConfig {
   // ---- 云端后端 ----
   // 账号 / 订阅 / 订单 / 推广数据均走云端；业务数据（客户/项目/收款）存储方式
   // 由用户选择（仅本地 / 仅服务器 / 本地+服务器），见 StorageMode。
-  static const String apiBaseUrl = 'http://121.41.97.109:8090';
+  static const String apiBaseUrl = 'https://yurouyun.cn';
   // ---- HTTPS 证书固定（防破解 P1）----
-  // 当前默认仍走 http://121.41.97.109:8090 保持可连；待正式 HTTPS 证书签发后：
-  //   1) apiBaseUrl 切为 https://域名；
-  //   2) 用 openssl x509 -in server.pem -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -hex
-  //      生成服务器证书公钥 SHA-256 指纹填入下方 pinnedCertSha256；
-  // 届时客户端仅信任该指纹证书，防止重打包应用把请求劫持到伪造服务器。
+  // 现状：HTTPS 域名已启用（apiBaseUrl 走 https://yurouyun.cn）；pinnedCertSha256 留空，
+  // 暂未强制证书固定，客户端不校验服务器证书指纹。
+  // 后续如需启用固定：用 openssl x509 -in server.pem -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -hex
+  // 生成服务器证书公钥 SHA-256 指纹填入下方 pinnedCertSha256，客户端即仅信任该指纹证书，
+  // 防止重打包应用把请求劫持到伪造服务器。
   static const String pinnedCertSha256 = '';
 
   // ---- 防重打包自签名校验（防破解 P3）----

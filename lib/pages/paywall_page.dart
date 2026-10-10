@@ -12,6 +12,7 @@ import '../app_state.dart';
 import '../constants.dart';
 import '../theme.dart';
 import 'login_page.dart';
+import '../widgets/app_ui.dart';
 
 class PaywallPage extends StatefulWidget {
   final String title;
@@ -130,12 +131,8 @@ class _PaywallPageState extends State<PaywallPage> {
 
   /// 支付方式选择：微信 / 支付宝走扫码支付，其他方式走网页支付页面。
   Future<String?> _choosePayMethod(_Plan plan) {
-    return showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
+    return showAppSheet<String>(
+      context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -406,9 +403,10 @@ class _PaywallPageState extends State<PaywallPage> {
                         : Text(plans[_selected].buyText)),
               ),
               const SizedBox(height: 12),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4),
+              // 两行说明小字：起点对齐（同一左边缘），整体在页面内水平居中
+              const Center(
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -505,7 +503,7 @@ class _PlanCard extends StatelessWidget {
                   ? AppTheme.primary
                   : AppTheme.primary.withValues(alpha: 0.08))
               : Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(
             color: selected
                 ? AppTheme.primary
@@ -557,7 +555,7 @@ class _PlanCard extends StatelessWidget {
                             color: selected
                                 ? Colors.white.withValues(alpha: 0.2)
                                 : AppTheme.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(AppRadius.xs),
                           ),
                           child: Text(
                             '限时',
@@ -968,53 +966,34 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
         Row(
           children: [
             Expanded(
-              child: FilledButton(
+              child: AppButton(
+                label: h5 ? '打开支付宝' : '打开$_methodName',
+                kind: AppButtonKind.primary,
+                size: AppButtonSize.small,
+                expand: false,
                 onPressed: h5 ? _openPayPage : _openPayApp,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(0, 40),
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  textStyle: const TextStyle(
-                      fontSize: 12.5, fontWeight: FontWeight.w600),
-                ),
-                child: Text(
-                  h5 ? '打开支付宝' : '打开$_methodName',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
               ),
             ),
             if (hasQr) ...[
               const SizedBox(width: 8),
               Expanded(
-                child: OutlinedButton(
+                child: AppButton(
+                  label: _saving ? '保存中…' : '保存二维码',
+                  kind: AppButtonKind.secondary,
+                  size: AppButtonSize.small,
+                  expand: false,
                   onPressed: _saving ? null : _saveQr,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 40),
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    textStyle: const TextStyle(fontSize: 12.5),
-                  ),
-                  child: Text(
-                    _saving ? '保存中…' : '保存二维码',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
                 ),
               ),
             ],
             const SizedBox(width: 8),
             Expanded(
-              child: OutlinedButton(
+              child: AppButton(
+                label: _checking ? '刷新中…' : '我已支付，刷新',
+                kind: AppButtonKind.secondary,
+                size: AppButtonSize.small,
+                expand: false,
                 onPressed: _checking ? null : _manualRefresh,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(0, 40),
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  textStyle: const TextStyle(fontSize: 12.5),
-                ),
-                child: Text(
-                  _checking ? '刷新中…' : '我已支付，刷新',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
               ),
             ),
           ],

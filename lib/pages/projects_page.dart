@@ -14,6 +14,7 @@ import 'project_detail_page.dart';
 import 'paywall_page.dart';
 import '../widgets/payment_dialog.dart';
 import '../utils/money_input.dart';
+import '../widgets/app_ui.dart';
 
 class ProjectsPage extends StatefulWidget {
   const ProjectsPage({super.key});
@@ -246,10 +247,12 @@ class _ProjectsPageState extends State<ProjectsPage> {
         content: Text('确定删除项目「${pr.title}」吗？\n其名下全部收款记录将一并删除，不可恢复。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+          AppButton(
+            label: '删除',
+            kind: AppButtonKind.danger,
+            size: AppButtonSize.medium,
+            expand: false,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
           ),
         ],
       ),
@@ -294,7 +297,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
                 fillColor: AppTheme.textSub.withValues(alpha: 0.05),
                 contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                   borderSide: BorderSide.none,
                 ),
               ),
@@ -324,7 +327,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppLoading()
                 : items.isEmpty
                     ? Center(
                         child: Text(
@@ -355,14 +358,14 @@ class _ProjectsPageState extends State<ProjectsPage> {
                                   onPressed: (_) => _editProject(pr),
                                   backgroundColor: AppTheme.primary,
                                   foregroundColor: Colors.white,
-                                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
+                                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(AppRadius.md)),
                                   child: const SlidableActionContent(icon: Icons.edit_outlined, label: '编辑'),
                                 ),
                                 CustomSlidableAction(
                                   onPressed: (_) => _removeProject(pr),
                                   backgroundColor: AppTheme.danger,
                                   foregroundColor: Colors.white,
-                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(12)),
+                                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(AppRadius.md)),
                                   child: const SlidableActionContent(icon: Icons.delete_outline, label: '删除'),
                                 ),
                               ],
@@ -423,7 +426,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
                                     minHeight: 4,
                                     backgroundColor: AppTheme.primary.withValues(alpha: 0.1),
                                     color: pr.progress >= 100 ? AppTheme.accent : AppTheme.primary,
-                                    borderRadius: BorderRadius.circular(2),
+                                    borderRadius: BorderRadius.circular(AppRadius.xxs),
                                   ),
                                   const SizedBox(height: 4),
                                   Row(
@@ -486,7 +489,7 @@ class _StatusBadge extends StatelessWidget {
     final (color, icon) = map[status]!;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(AppRadius.sheet)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

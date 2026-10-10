@@ -10,6 +10,7 @@ import '../services/pay_service.dart';
 import '../widgets/show_payment_code.dart';
 import 'payment_code_settings_page.dart';
 import '../utils/money_input.dart';
+import '../widgets/app_ui.dart';
 
 /// 钱包页：余额（收款 + 充值 - 提现）、充值、提现、往来记录。
 /// MVP：收款码手动确认入账，真实通道接入后由回调自动处理。
@@ -134,9 +135,10 @@ class _WalletPageState extends State<WalletPage> {
                 runSpacing: 8,
                 children: [
                   for (final q in quickAmounts)
-                    ActionChip(
-                      label: Text('¥${q.toStringAsFixed(0)}'),
-                      onPressed: () {
+                    AppFilterChip(
+                      label: '¥${q.toStringAsFixed(0)}',
+                      selected: amountCtrl.text == q.toStringAsFixed(0),
+                      onTap: () {
                         amountCtrl.text = q.toStringAsFixed(0);
                         setDialogState(() {});
                       },
@@ -279,7 +281,7 @@ class _WalletPageState extends State<WalletPage> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AppTheme.primary.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
               child: Text(
                 '提现至【${_account.method.label}】${_account.name} ${_account.no}',
@@ -348,12 +350,9 @@ class _WalletPageState extends State<WalletPage> {
     final methodCtrl = ValueNotifier<WithdrawMethod>(_account.method);
     final nameCtrl = TextEditingController(text: _account.name);
     final noCtrl = TextEditingController(text: _account.no);
-    await showModalBottomSheet(
-      context: context,
+    await showAppSheet(
+      context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
           left: 16,
@@ -511,12 +510,9 @@ class _WalletPageState extends State<WalletPage> {
                     color: AppTheme.textMain)),
           ),
           if (_recharges.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(
-                child: Text('还没有充值记录',
-                    style: TextStyle(color: AppTheme.textSub)),
-              ),
+            const AppEmpty(
+              icon: Icons.account_balance_wallet_outlined,
+              title: '还没有充值记录',
             )
           else
             ..._recharges.map((r) => _RechargeTile(
@@ -536,13 +532,9 @@ class _WalletPageState extends State<WalletPage> {
                     color: AppTheme.textMain)),
           ),
           if (_withdrawals.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(
-                child: Text('还没有提现记录\n收款到账后可在这里申请提现',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: AppTheme.textSub, height: 1.6)),
-              ),
+            const AppEmpty(
+              icon: Icons.savings_outlined,
+              title: '还没有提现记录\n收款到账后可在这里申请提现',
             )
           else
             ..._withdrawals.map((w) => _WithdrawTile(
@@ -584,7 +576,7 @@ class _BalanceCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -650,7 +642,7 @@ class _RechargeTile extends StatelessWidget {
           height: 46,
           decoration: BoxDecoration(
             color: AppTheme.accent.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppRadius.md),
           ),
           alignment: Alignment.center,
           child: Icon(r.method == RechargeMethod.wechat
@@ -678,7 +670,7 @@ class _RechargeTile extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: statusColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppRadius.xs),
               ),
               child: Text(r.status.label,
                   style: TextStyle(
@@ -687,12 +679,12 @@ class _RechargeTile extends StatelessWidget {
                       fontWeight: FontWeight.w600)),
             ),
             if (onMarkDone != null)
-              TextButton(
+              AppButton(
+                label: '标记到账',
+                kind: AppButtonKind.ghost,
+                size: AppButtonSize.small,
+                expand: false,
                 onPressed: onMarkDone,
-                style: TextButton.styleFrom(
-                    minimumSize: const Size(0, 28),
-                    padding: const EdgeInsets.symmetric(horizontal: 8)),
-                child: const Text('标记到账', style: TextStyle(fontSize: 12)),
               ),
           ],
         ),
@@ -724,7 +716,7 @@ class _WithdrawTile extends StatelessWidget {
           height: 46,
           decoration: BoxDecoration(
             color: AppTheme.primary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppRadius.md),
           ),
           alignment: Alignment.center,
           child: Text(w.method.label.characters.first,
@@ -753,7 +745,7 @@ class _WithdrawTile extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: statusColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppRadius.xs),
               ),
               child: Text(w.status.label,
                   style: TextStyle(
@@ -762,12 +754,12 @@ class _WithdrawTile extends StatelessWidget {
                       fontWeight: FontWeight.w600)),
             ),
             if (onMarkDone != null)
-              TextButton(
+              AppButton(
+                label: '标记到账',
+                kind: AppButtonKind.ghost,
+                size: AppButtonSize.small,
+                expand: false,
                 onPressed: onMarkDone,
-                style: TextButton.styleFrom(
-                    minimumSize: const Size(0, 28),
-                    padding: const EdgeInsets.symmetric(horizontal: 8)),
-                child: const Text('标记到账', style: TextStyle(fontSize: 12)),
               ),
           ],
         ),

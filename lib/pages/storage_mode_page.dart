@@ -13,6 +13,7 @@ import '../theme.dart';
 import '../utils/backup_util.dart';
 import '../widgets/conflict_resolver_sheet.dart';
 import 'login_page.dart';
+import '../widgets/app_ui.dart';
 
 /// 从含服务器模式切回「仅本地」时，用户在弹窗中的两档处理选择（+ 取消）。
 enum LocalSwitchChoice { cancel, keepServer, deleteServer }
@@ -129,7 +130,7 @@ class _StorageModePageState extends State<StorageModePage> {
                   Container(
                     decoration: BoxDecoration(
                       color: AppTheme.bgCard,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                       border: Border.all(color: AppTheme.divider),
                     ),
                     child: RadioGroup<LocalSwitchChoice>(
@@ -153,7 +154,7 @@ class _StorageModePageState extends State<StorageModePage> {
                             ),
                             secondary: const Icon(Icons.archive_outlined),
                           ),
-                          const Divider(height: 1),
+                          const AppCardDivider(),
                           // 选项二：删除服务器数据（危险项，警示色，未登录置灰）。
                           RadioListTile<LocalSwitchChoice>(
                             value: LocalSwitchChoice.deleteServer,
@@ -192,17 +193,19 @@ class _StorageModePageState extends State<StorageModePage> {
                 onPressed: () => Navigator.pop(ctx, LocalSwitchChoice.cancel),
                 child: const Text('取消'),
               ),
-              FilledButton(
-                style: keepServer
-                    ? null
-                    : FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+              AppButton(
+                label: keepServer ? '确认切换' : '确认删除并切换',
+                kind: keepServer
+                    ? AppButtonKind.primary
+                    : AppButtonKind.danger,
+                size: AppButtonSize.medium,
+                expand: false,
                 onPressed: () => Navigator.pop(
                   ctx,
                   keepServer
                       ? LocalSwitchChoice.keepServer
                       : LocalSwitchChoice.deleteServer,
                 ),
-                child: Text(keepServer ? '确认切换' : '确认删除并切换'),
               ),
             ],
           );
@@ -298,7 +301,7 @@ class _StorageModePageState extends State<StorageModePage> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: AppTheme.bgCard,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                     border: Border.all(color: AppTheme.divider),
                   ),
                   child: Column(
@@ -330,7 +333,7 @@ class _StorageModePageState extends State<StorageModePage> {
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: AppTheme.warn.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                       border:
                           Border.all(color: AppTheme.warn.withValues(alpha: 0.3)),
                     ),
@@ -452,10 +455,12 @@ class _StorageModePageState extends State<StorageModePage> {
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('取消'),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+          AppButton(
+            label: '继续，选择备份文件',
+            kind: AppButtonKind.danger,
+            size: AppButtonSize.medium,
+            expand: false,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('继续，选择备份文件'),
           ),
         ],
       ),
@@ -492,10 +497,12 @@ class _StorageModePageState extends State<StorageModePage> {
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('取消'),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+          AppButton(
+            label: '确认恢复',
+            kind: AppButtonKind.danger,
+            size: AppButtonSize.medium,
+            expand: false,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认恢复'),
           ),
         ],
       ),
@@ -590,21 +597,15 @@ class _StorageModePageState extends State<StorageModePage> {
   Future<void> _showConflictPolicyDialog() async {
     final sync = SyncService.instance;
     final cur = sync.conflictPolicy;
-    final picked = await showModalBottomSheet<SyncConflictPolicy>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+    final picked = await showAppSheet<SyncConflictPolicy>(
+      context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 14, 16, 6),
-              child: Text(
-                '同步冲突处理策略',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-              ),
+              child: AppSheetHeader(title: '同步冲突处理策略'),
             ),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
@@ -684,7 +685,7 @@ class _StorageModePageState extends State<StorageModePage> {
                   child: Card(
                     margin: EdgeInsets.zero,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
                       side: BorderSide(
                         color: _selected == m
                             ? AppTheme.primary
@@ -692,7 +693,7 @@ class _StorageModePageState extends State<StorageModePage> {
                       ),
                     ),
                     child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
                       onTap: () => _onPick(m),
                       child: Padding(
                         padding: const EdgeInsets.all(16),
@@ -758,7 +759,7 @@ class _StorageModePageState extends State<StorageModePage> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: AppTheme.bgCard,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
                   child: Column(
                     children: [
@@ -804,9 +805,9 @@ class _StorageModePageState extends State<StorageModePage> {
                         const SizedBox(height: 10),
                         Material(
                           color: AppTheme.danger.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(AppRadius.sm),
                           child: InkWell(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
                             onTap: () => _showConflicts(),
                             child: Padding(
                               padding: const EdgeInsets.all(10),
@@ -835,7 +836,7 @@ class _StorageModePageState extends State<StorageModePage> {
                       // 同步冲突处理策略（v1.20.0）。
                       const SizedBox(height: 10),
                       InkWell(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
                         onTap: _showConflictPolicyDialog,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
@@ -883,7 +884,7 @@ class _StorageModePageState extends State<StorageModePage> {
               const SizedBox(height: 8),
               Card(
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
                 ),
                 child: ListTile(
                   leading: const Icon(Icons.upload_file_outlined,
@@ -898,7 +899,7 @@ class _StorageModePageState extends State<StorageModePage> {
               const SizedBox(height: 8),
               Card(
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
                   side: BorderSide(
                       color: AppTheme.danger.withValues(alpha: 0.4)),
                 ),

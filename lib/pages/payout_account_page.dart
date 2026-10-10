@@ -264,7 +264,7 @@ class _MethodChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
@@ -274,7 +274,7 @@ class _MethodChip extends StatelessWidget {
           border: Border.all(
             color: selected ? AppTheme.primary : AppTheme.textSub.withValues(alpha: 0.3),
           ),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -316,7 +316,7 @@ class _QrRow extends StatelessWidget {
           height: 64,
           decoration: BoxDecoration(
             color: AppTheme.textSub.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppRadius.xs),
           ),
           clipBehavior: Clip.antiAlias,
           child: path != null

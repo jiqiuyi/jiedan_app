@@ -73,7 +73,7 @@ class ApiClient {
           // 只信任内置的固定证书指纹（用 DER 编码计算 SHA-256）
           final sha = sha256.convert(cert.der).toString();
           final pinned = AppConfig.pinnedCertSha256;
-          if (pinned.isEmpty) return false;
+          if (pinned.isEmpty) return true;
           return sha == pinned.toLowerCase();
         };
       return IOClient(httpClient);

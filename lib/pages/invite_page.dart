@@ -9,6 +9,7 @@ import '../models.dart';
 import '../theme.dart';
 import 'login_page.dart';
 import 'payout_account_page.dart';
+import '../widgets/app_ui.dart';
 
 /// 推广活动页（第15批过渡期：本地自动核验版）
 ///
@@ -166,7 +167,7 @@ class _InvitePageState extends State<InvitePage> {
             });
           }
           if (_loading) {
-            return const Center(child: CircularProgressIndicator());
+            return const AppLoading();
           }
           final need = AppConfig.inviteFreeVipFriends;
           final progress = (_list.length / need).clamp(0.0, 1.0);
@@ -270,7 +271,7 @@ class _InvitePageState extends State<InvitePage> {
                       ),
                       const SizedBox(height: 8),
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(AppRadius.xxs),
                         child: LinearProgressIndicator(
                           value: progress,
                           minHeight: 8,
@@ -373,13 +374,9 @@ class _InvitePageState extends State<InvitePage> {
               ),
               // ---- 好友列表 ----
               if (_list.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(28),
-                  child: Center(
-                    child: Text('还没有好友通过你的邀请码注册\n把邀请码发给朋友，注册后自动出现在这里',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: AppTheme.textSub)),
-                  ),
+                const AppEmpty(
+                  icon: Icons.group_add_outlined,
+                  title: '还没有好友通过你的邀请码注册\n把邀请码发给朋友，注册后自动出现在这里',
                 )
               else
                 ..._list.map((e) => _InviteeTile(e: e)),
@@ -462,7 +459,7 @@ class _InviteeTile extends StatelessWidget {
                           ? AppTheme.accent
                           : AppTheme.primary)
                       .withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppRadius.xs),
                 ),
                 child: Text(
                   e.payoutAt != null ? '已打款' : '待打款',
@@ -479,7 +476,7 @@ class _InviteeTile extends StatelessWidget {
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: AppTheme.textSub.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppRadius.xs),
                 ),
                 child: const Text('待付款',
                     style: TextStyle(

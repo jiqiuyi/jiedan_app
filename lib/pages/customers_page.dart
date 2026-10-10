@@ -11,6 +11,7 @@ import '../constants.dart';
 import '../state/ticker.dart';
 import '../theme.dart';
 import 'paywall_page.dart';
+import '../widgets/app_ui.dart';
 
 class CustomersPage extends StatefulWidget {
   const CustomersPage({super.key});
@@ -233,10 +234,12 @@ class _CustomersPageState extends State<CustomersPage> {
             '确定删除客户「${c.name}」吗？\n其名下全部项目及收款记录将被一并删除，不可恢复。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+          AppButton(
+            label: '删除',
+            kind: AppButtonKind.danger,
+            size: AppButtonSize.medium,
+            expand: false,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
           ),
         ],
       ),
@@ -375,7 +378,7 @@ class _CustomersPageState extends State<CustomersPage> {
         child: const Icon(Icons.add),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoading()
           : Column(
               children: [
                 Padding(
@@ -398,7 +401,7 @@ class _CustomersPageState extends State<CustomersPage> {
                       fillColor: AppTheme.textSub.withValues(alpha: 0.05),
                       contentPadding: const EdgeInsets.symmetric(vertical: 10),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
                         borderSide: BorderSide.none,
                       ),
                     ),
@@ -428,14 +431,14 @@ class _CustomersPageState extends State<CustomersPage> {
                                         onPressed: (_) => _addOrEdit(c),
                                         backgroundColor: AppTheme.primary,
                                         foregroundColor: Colors.white,
-                                        borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
+                                        borderRadius: const BorderRadius.horizontal(left: Radius.circular(AppRadius.md)),
                                         child: const SlidableActionContent(icon: Icons.edit_outlined, label: '编辑'),
                                       ),
                                       CustomSlidableAction(
                                         onPressed: (_) => _remove(c),
                                         backgroundColor: AppTheme.danger,
                                         foregroundColor: Colors.white,
-                                        borderRadius: const BorderRadius.horizontal(right: Radius.circular(12)),
+                                        borderRadius: const BorderRadius.horizontal(right: Radius.circular(AppRadius.md)),
                                         child: const SlidableActionContent(icon: Icons.delete_outline, label: '删除'),
                                       ),
                                     ],
@@ -464,7 +467,7 @@ class _CustomersPageState extends State<CustomersPage> {
                                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                               decoration: BoxDecoration(
                                                 color: AppTheme.primary.withValues(alpha: 0.1),
-                                                borderRadius: BorderRadius.circular(4),
+                                                borderRadius: BorderRadius.circular(AppRadius.xs),
                                               ),
                                               child: Text(c.industry,
                                                   style: const TextStyle(fontSize: 11, color: AppTheme.primary, fontWeight: FontWeight.w600)),
@@ -505,11 +508,11 @@ class _Empty extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.people_outline, size: 56, color: AppTheme.textSub),
-          SizedBox(height: 12),
-          Text('还没有客户', style: TextStyle(fontSize: 16, color: AppTheme.textSub)),
-          SizedBox(height: 4),
-          Text('点右下角 + 新建一个吧', style: TextStyle(color: AppTheme.textSub)),
+          AppEmpty(
+            icon: Icons.people_outline,
+            title: '还没有客户',
+            hint: '点右下角 + 新建一个吧',
+          ),
         ],
       ),
     );
@@ -566,7 +569,7 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
     return Scaffold(
       appBar: AppBar(title: Text(c.name)),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoading()
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -602,12 +605,9 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
                         fontSize: 15, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
                 if (_projects.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Center(
-                      child: Text('暂无项目',
-                          style: TextStyle(color: AppTheme.textSub)),
-                    ),
+                  const AppEmpty(
+                    icon: Icons.folder_open_outlined,
+                    title: '暂无项目',
                   )
                 else
                   for (final p in _projects)
@@ -626,7 +626,7 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
                               horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
                             color: AppTheme.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(AppRadius.sheet),
                           ),
                           child: Text(
                             p.status.label,
@@ -691,12 +691,9 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
     if (!mounted) return;
     final sel = <int>{for (final t in _tags) t.id!};
     final tags = [...all];
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
+    final saved = await showAppSheet<bool>(
+      context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) {
           void commit() {
@@ -760,7 +757,12 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
                               shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(20)),
                             ),
-                          OutlinedButton.icon(
+                          AppButton(
+                            label: '新建标签',
+                            icon: Icons.add,
+                            kind: AppButtonKind.secondary,
+                            size: AppButtonSize.small,
+                            expand: false,
                             onPressed: () async {
                               final t = await _createTagDialog();
                               if (t != null) {
@@ -771,10 +773,6 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
                                 });
                               }
                             },
-                            icon: const Icon(Icons.add, size: 16),
-                            label: const Text('新建标签'),
-                            style: OutlinedButton.styleFrom(
-                                shape: const StadiumBorder()),
                           ),
                           TextButton.icon(
                             onPressed: () async {
@@ -944,7 +942,7 @@ class _TagChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: c.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(AppRadius.xs),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1100,10 +1098,12 @@ class _TagManagePageState extends State<_TagManagePage> {
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('取消')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+          AppButton(
+            label: '删除',
+            kind: AppButtonKind.danger,
+            size: AppButtonSize.medium,
+            expand: false,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
           ),
         ],
       ),
@@ -1126,11 +1126,11 @@ class _TagManagePageState extends State<_TagManagePage> {
         label: const Text('新建标签'),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoading()
           : _summaries.isEmpty
-              ? const Center(
-                  child: Text('还没有标签，点右下角新建',
-                      style: TextStyle(color: AppTheme.textSub)))
+              ? const AppEmpty(
+                  icon: Icons.sell_outlined,
+                  title: '还没有标签，点右下角新建')
               : ListView(
                   padding: const EdgeInsets.only(bottom: 88),
                   children: [

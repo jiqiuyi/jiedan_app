@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../services/sync_service.dart';
 import '../theme.dart';
+import '../widgets/app_ui.dart';
 
 /// 云端同步冲突解决弹层（v1.20.0）。
 ///
@@ -11,12 +12,9 @@ import '../theme.dart';
 ///   采用云端 = 用服务器版本覆盖本地；保留本地 = 保持本地版本（本行不再重复提示）。
 /// 业务数据始终保存在本地 SQLite，本弹层只决定同步数据的合并方向，不改变存储。
 Future<void> showConflictResolverSheet(BuildContext context) {
-  return showModalBottomSheet<void>(
-    context: context,
+  return showAppSheet<void>(
+    context,
     isScrollControlled: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
     builder: (ctx) => const _ConflictSheet(),
   );
 }
@@ -89,7 +87,7 @@ class _ConflictSheetState extends State<_ConflictSheet> {
                           padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
                           decoration: BoxDecoration(
                             color: AppTheme.bgCard,
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(AppRadius.sm),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,28 +127,24 @@ class _ConflictSheetState extends State<_ConflictSheet> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
-                                  TextButton.icon(
+                                  AppButton(
+                                    label: '保留本地',
+                                    icon: Icons.phone_android,
+                                    kind: AppButtonKind.ghost,
+                                    size: AppButtonSize.small,
+                                    expand: false,
                                     onPressed: () =>
                                         _sync.keepLocalVersions([c]),
-                                    icon: const Icon(Icons.phone_android,
-                                        size: 16),
-                                    label: const Text('保留本地'),
-                                    style: TextButton.styleFrom(
-                                        foregroundColor: AppTheme.textMain),
                                   ),
                                   const SizedBox(width: 4),
-                                  FilledButton.icon(
+                                  AppButton(
+                                    label: '采用云端',
+                                    icon: Icons.cloud_done,
+                                    kind: AppButtonKind.primary,
+                                    size: AppButtonSize.small,
+                                    expand: false,
                                     onPressed: () =>
                                         _sync.applyServerVersions([c]),
-                                    icon: const Icon(Icons.cloud_done,
-                                        size: 16),
-                                    label: const Text('采用云端'),
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: AppTheme.primary,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 12, vertical: 8),
-                                    ),
                                   ),
                                 ],
                               ),
@@ -161,47 +155,40 @@ class _ConflictSheetState extends State<_ConflictSheet> {
                     },
                   ),
                 ),
-                const Divider(height: 1),
+                const AppCardDivider(),
                 Padding(
                   padding: const EdgeInsets.all(12),
                   child: Row(
                     children: [
                       Expanded(
-                        child: OutlinedButton(
+                        child: AppButton(
+                          label: '暂时不管',
+                          kind: AppButtonKind.secondary,
+                          size: AppButtonSize.small,
+                          expand: true,
                           onPressed: _sync.clearPendingConflicts,
-                          style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 10, horizontal: 8)),
-                          child: const Text('暂时不管',
-                              style: TextStyle(
-                                  fontSize: 13, color: AppTheme.textMain)),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: OutlinedButton(
+                        child: AppButton(
+                          label: '全部保留本地',
+                          kind: AppButtonKind.secondary,
+                          size: AppButtonSize.small,
+                          expand: true,
                           onPressed: () =>
                               _sync.keepLocalVersions(List.of(conflicts)),
-                          style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 10, horizontal: 8)),
-                          child: const Text('全部保留本地',
-                              style: TextStyle(
-                                  fontSize: 13, color: AppTheme.textMain)),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: FilledButton(
+                        child: AppButton(
+                          label: '全部采用云端',
+                          kind: AppButtonKind.primary,
+                          size: AppButtonSize.small,
+                          expand: true,
                           onPressed: () =>
                               _sync.applyServerVersions(List.of(conflicts)),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppTheme.primary,
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 10, horizontal: 8),
-                          ),
-                          child: const Text('全部采用云端',
-                              style: TextStyle(fontSize: 13)),
                         ),
                       ),
                     ],

@@ -43,7 +43,7 @@ class AppTheme {
         elevation: 0,
         margin: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(14)),
+          borderRadius: BorderRadius.all(Radius.circular(AppRadius.lg)),
           side: BorderSide(color: Color(0xFFECEEF4)),
         ),
       ),
@@ -53,9 +53,69 @@ class AppTheme {
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(48),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppRadius.md),
           ),
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primary,
+          minimumSize: const Size(0, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          side: const BorderSide(color: Color(0xFFD7DCE8)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: primary,
+          minimumSize: const Size(0, 36),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md),
+          ),
+          textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
+        titleTextStyle: const TextStyle(
+          color: textMain,
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+        ),
+        contentTextStyle: const TextStyle(
+          color: textMain,
+          fontSize: 14,
+          height: 1.5,
+        ),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+        ),
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          textStyle: const WidgetStatePropertyAll(
+            TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+            ),
+          ),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -64,18 +124,90 @@ class AppTheme {
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           borderSide: const BorderSide(color: Color(0xFFE4E7EF)),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           borderSide: const BorderSide(color: Color(0xFFE4E7EF)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           borderSide: const BorderSide(color: primary, width: 1.6),
         ),
       ),
     );
   }
+}
+
+/// 统一圆角刻度（以工程内主流样式为基准收敛）。
+///
+/// 语义约定：同类组件在所有页面取同一个值。
+/// - [xxs] 进度条 / 细状态条；
+/// - [xs] 状态徽章 / 小标签 / 日历格 / 内嵌小元素；
+/// - [sm] 输入框 / 内嵌面板 / 选择项 / 图片缩略图；
+/// - [md] 按钮 / 列表项 / 分段控件 / 图标块 / 次级容器；
+/// - [lg] 卡片容器（含主卡片与渐变卡片）；
+/// - [sheet] 底部弹层 / 胶囊标签 / 大圆角块。
+class AppRadius {
+  /// 进度条 / 细状态条。
+  static const double xxs = 4;
+
+  /// 状态徽章 / 小标签 / 日历格 / 内嵌小元素。
+  static const double xs = 8;
+
+  /// 输入框 / 内嵌面板 / 选择项 / 图片缩略图。
+  static const double sm = 10;
+
+  /// 按钮 / 列表项 / 分段控件 / 图标块 / 次级容器。
+  static const double md = 12;
+
+  /// 卡片容器。
+  static const double lg = 14;
+
+  /// 底部弹层顶部 / 胶囊标签 / 大圆角块。
+  static const double sheet = 20;
+
+  /// 半尺寸圆角（头像、正方形元素等本身应为圆形/半尺寸的场景）：
+  /// 集中保留 `size / 2` 的数学表达，避免在各处散写。
+  static BorderRadius half(double size) => BorderRadius.circular(size / 2);
+}
+
+/// 统一字号阶梯（正文与控件；展示型大数字不在此列）。
+class AppFont {
+  /// 辅助说明。
+  static const double caption = 11;
+
+  /// 标签 / 次要信息。
+  static const double tag = 12;
+
+  /// 正文次要。
+  static const double body = 13;
+
+  /// 正文。
+  static const double bodyLg = 14;
+
+  /// 卡片标题 / 弹层标题。
+  static const double title = 16;
+
+  /// 页面标题。
+  static const double appBar = 17;
+}
+
+/// 统一间距刻度。
+class AppSpace {
+  /// 4。
+  static const double xs = 4;
+
+  /// 8。
+  static const double sm = 8;
+
+  /// 12。
+  static const double md = 12;
+
+  /// 16。
+  static const double lg = 16;
+
+  /// 24。
+  static const double xl = 24;
 }

@@ -181,7 +181,7 @@ class _LoginPageState extends State<LoginPage> {
                           end: Alignment.bottomRight,
                           colors: [AppTheme.primary, AppTheme.primaryDark],
                         ),
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(AppRadius.sheet),
                       ),
                       child: const Icon(Icons.work_outline,
                           color: Colors.white, size: 36),
@@ -224,7 +224,7 @@ class _LoginPageState extends State<LoginPage> {
                       textStyle: const TextStyle(fontWeight: FontWeight.w600),
                       side: const BorderSide(color: Color(0xFFE4E7EF)),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
                       ),
                     ),
                   ),
@@ -347,7 +347,7 @@ class _LoginPageState extends State<LoginPage> {
                           horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
                         color: AppTheme.danger.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
                       ),
                       child: Row(
                         children: [

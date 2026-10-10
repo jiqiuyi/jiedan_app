@@ -6,6 +6,7 @@ import '../constants.dart';
 import '../database.dart';
 import '../theme.dart';
 import 'paywall_page.dart';
+import '../widgets/app_ui.dart';
 
 /// 对账页（v1.10.0 项目维度汇总 + 第17批 v1.28.0 收款流水明细）：
 /// 上方保留每个项目 约定总额 / 已收 / 待收 汇总；
@@ -95,7 +96,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('对账汇总')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoading()
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
@@ -111,12 +112,9 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
                   const SizedBox(height: 6),
                   if (_rows.isEmpty)
                     const Card(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Center(
-                          child: Text('还没有项目收款数据',
-                              style: TextStyle(color: AppTheme.textSub)),
-                        ),
+                      child: AppEmpty(
+                        icon: Icons.assessment_outlined,
+                        title: '还没有项目收款数据',
                       ),
                     )
                   else
@@ -192,10 +190,9 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
         ),
         const SizedBox(height: 8),
         if (_flows.isEmpty)
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: Text('暂无收款流水，登记收款后在此对账',
-                style: TextStyle(color: AppTheme.textSub, fontSize: 12)),
+          const AppEmpty(
+            icon: Icons.receipt_long_outlined,
+            title: '暂无收款流水，登记收款后在此对账',
           )
         else
           Card(
@@ -204,7 +201,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
               children: [
                 for (int i = 0; i < _flows.length; i++) ...[
                   if (i > 0)
-                    const Divider(height: 1, indent: 14, endIndent: 14),
+                    const AppCardDivider(),
                   _FlowRow(
                     flow: _flows[i],
                     fmt: _fmt,
@@ -228,7 +225,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
     final customer = (r['customer_name'] as String?)?.trim() ?? '';
     return Column(
       children: [
-        if (index > 0) const Divider(height: 1, indent: 14, endIndent: 14),
+        if (index > 0) const AppCardDivider(),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           child: Column(
@@ -280,7 +277,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
               ),
               const SizedBox(height: 8),
               ClipRRect(
-                borderRadius: BorderRadius.circular(3),
+                borderRadius: BorderRadius.circular(AppRadius.xxs),
                 child: LinearProgressIndicator(
                   value: ratio,
                   minHeight: 6,
@@ -311,7 +308,7 @@ class _Tag extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.xs),
       ),
       child: Text(text,
           style: TextStyle(
@@ -438,19 +435,11 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChoiceChip(
-      label: Text(label),
+    return AppFilterChip(
+      label: label,
       selected: selected,
-      onSelected: (_) => onTap(),
-      showCheckmark: false,
-      selectedColor: color.withValues(alpha: 0.15),
-      labelStyle: TextStyle(
-        fontSize: 12,
-        color: selected ? color : AppTheme.textMain,
-        fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-      ),
-      visualDensity: VisualDensity.compact,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      color: color,
+      onTap: onTap,
     );
   }
 }

@@ -14,6 +14,7 @@ import '../database.dart';
 import '../services/quote_pdf_service.dart';
 import '../services/quote_web_service.dart';
 import '../utils/money_input.dart';
+import '../widgets/app_ui.dart';
 
 /// 报价页 AppBar 右侧图标区总宽度（3 × 40 + 4 = 124）。
 /// 标题居中时用作左侧空白占位宽度，保证「报价单」在全宽中绝对居中。
@@ -55,9 +56,8 @@ class _QuotePageState extends State<QuotePage>
   String _imagePath = '';
 
   // ================= 详细报价状态（保留原有能力） =================
-  final _lines = <QuoteLine>[
-    const QuoteLine(itemName: '设计服务', hours: 8, hourRate: AppConfig.defaultHourRate),
-  ];
+  // v1.43.3：明细行不再预填任何实值，默认给一行空白明细（仅灰色占位提示）
+  final _lines = <QuoteLine>[const QuoteLine(itemName: '')];
   double _taxRate = AppConfig.defaultTaxRate;
   final _fmt = NumberFormat('#,##0.00');
   final _clientCtrl = TextEditingController();
@@ -195,7 +195,7 @@ class _QuotePageState extends State<QuotePage>
               GestureDetector(
                 onTap: _viewQuoteImage,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                   child: Image.file(
                     File(_imagePath),
                     width: 120,
@@ -411,8 +411,7 @@ class _QuotePageState extends State<QuotePage>
       _imagePath = '';
       _lines
         ..clear()
-        ..add(const QuoteLine(
-            itemName: '设计服务', hours: 8, hourRate: AppConfig.defaultHourRate));
+        ..add(const QuoteLine(itemName: '')); // v1.43.3：重置为一行空白明细，不预填实值
     });
   }
 
@@ -459,8 +458,8 @@ class _QuotePageState extends State<QuotePage>
     final flows = await AppDb.instance.paymentsByQuote(id);
     if (!mounted) return;
     final fmt = NumberFormat('#,##0.00');
-    await showModalBottomSheet<void>(
-      context: context,
+    await showAppSheet<void>(
+      context,
       builder: (sctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -474,19 +473,18 @@ class _QuotePageState extends State<QuotePage>
               subtitle: Text('报价：${q.title}',
                   maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
-            const Divider(height: 1),
+            const AppCardDivider(),
             Flexible(
               child: flows.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('该报价单暂无关联收款流水',
-                          style: TextStyle(color: AppTheme.textSub)),
+                  ? const AppEmpty(
+                      icon: Icons.receipt_long_outlined,
+                      title: '该报价单暂无关联收款流水',
                     )
                   : ListView.separated(
                       shrinkWrap: true,
                       itemCount: flows.length,
                       separatorBuilder: (_, _) =>
-                          const Divider(height: 1, indent: 16, endIndent: 16),
+                          const AppCardDivider(),
                       itemBuilder: (_, i) {
                         final f = flows[i];
                         final amt =
@@ -603,7 +601,7 @@ class _QuotePageState extends State<QuotePage>
                   }),
                 ),
                 const SizedBox(height: 12),
-                const Divider(),
+                const AppCardDivider(),
                 const Text('或新建客户：',
                     style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
                 const SizedBox(height: 6),
@@ -695,12 +693,9 @@ class _QuotePageState extends State<QuotePage>
       );
       return;
     }
-    final editQuote = await showModalBottomSheet<Quote>(
-      context: context,
+    final editQuote = await showAppSheet<Quote>(
+      context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.7,
@@ -731,6 +726,9 @@ class _QuotePageState extends State<QuotePage>
                           onPressed: (_) => _shareWeb(ctx, q),
                           backgroundColor: AppTheme.primary,
                           foregroundColor: Colors.white,
+                          // 首项左圆角（验收口径：首左末右、中间直角）
+                          borderRadius: const BorderRadius.horizontal(
+                              left: Radius.circular(AppRadius.md)),
                           child: const SlidableActionContent(
                               icon: Icons.public, label: '网页分享'),
                         ),
@@ -764,7 +762,7 @@ class _QuotePageState extends State<QuotePage>
                                               _viewImagePath(q.imagePath),
                                           child: ClipRRect(
                                             borderRadius:
-                                                BorderRadius.circular(8),
+                                                BorderRadius.circular(AppRadius.sm),
                                             child: Image.file(
                                               File(q.imagePath),
                                               height: 200,
@@ -810,8 +808,6 @@ class _QuotePageState extends State<QuotePage>
                           },
                           backgroundColor: AppTheme.accent,
                           foregroundColor: Colors.white,
-                          borderRadius: const BorderRadius.horizontal(
-                              left: Radius.circular(12)),
                           child: const SlidableActionContent(
                               icon: Icons.content_copy, label: '复制'),
                         ),
@@ -830,8 +826,8 @@ class _QuotePageState extends State<QuotePage>
                           onPressed: (_) async {
                             final messenger =
                                 ScaffoldMessenger.of(context);
-                            final action = await showModalBottomSheet<String>(
-                              context: ctx,
+                            final action = await showAppSheet<String>(
+                              ctx,
                               builder: (sctx) => SafeArea(
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
@@ -923,12 +919,13 @@ class _QuotePageState extends State<QuotePage>
                                       onPressed: () =>
                                           Navigator.pop(dctx, false),
                                       child: const Text('取消')),
-                                  FilledButton(
-                                    style: FilledButton.styleFrom(
-                                        backgroundColor: AppTheme.danger),
+                                  AppButton(
+                                    label: '删除',
+                                    kind: AppButtonKind.danger,
+                                    size: AppButtonSize.medium,
+                                    expand: false,
                                     onPressed: () =>
                                         Navigator.pop(dctx, true),
-                                    child: const Text('删除'),
                                   ),
                                 ],
                               ),
@@ -944,7 +941,7 @@ class _QuotePageState extends State<QuotePage>
                           backgroundColor: AppTheme.danger,
                           foregroundColor: Colors.white,
                           borderRadius: const BorderRadius.horizontal(
-                              right: Radius.circular(12)),
+                              right: Radius.circular(AppRadius.md)),
                           child: const SlidableActionContent(
                               icon: Icons.delete_outline, label: '删除'),
                         ),
@@ -973,7 +970,7 @@ class _QuotePageState extends State<QuotePage>
                                               ? AppTheme.primary
                                               : AppTheme.accent)
                                           .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(4),
+                                      borderRadius: BorderRadius.circular(AppRadius.xs),
                                     ),
                                     child: Text(
                                       q.isSimple ? '简单报价' : '详细报价',
@@ -1078,7 +1075,7 @@ class _QuotePageState extends State<QuotePage>
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
           color: _quoteStatusColor(q.status).withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(AppRadius.xs),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1103,19 +1100,15 @@ class _QuotePageState extends State<QuotePage>
   /// 报价状态快速切换选择器
   Future<QuoteStatus?> _quoteStatusPicker(
       BuildContext ctx, QuoteStatus current) {
-    return showModalBottomSheet<QuoteStatus>(
-      context: ctx,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+    return showAppSheet<QuoteStatus>(
+      ctx,
       builder: (sctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Padding(
               padding: EdgeInsets.all(14),
-              child: Text('报价状态',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              child: AppSheetHeader(title: '报价状态'),
             ),
             for (final s in QuoteStatus.values)
               ListTile(
@@ -1201,12 +1194,9 @@ class _QuotePageState extends State<QuotePage>
       );
       return;
     }
-    final picked = await showModalBottomSheet<Quote>(
-      context: context,
+    final picked = await showAppSheet<Quote>(
+      context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) => DraggableScrollableSheet(
         expand: false,
         initialChildSize: 0.6,
@@ -1245,7 +1235,7 @@ class _QuotePageState extends State<QuotePage>
                                     ? AppTheme.primary
                                     : AppTheme.accent)
                                 .withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: BorderRadius.circular(AppRadius.xs),
                           ),
                           child: Text(
                             t.isSimple ? '简单' : '详细',
@@ -1279,12 +1269,13 @@ class _QuotePageState extends State<QuotePage>
                                       onPressed: () =>
                                           Navigator.pop(dctx, false),
                                       child: const Text('取消')),
-                                  FilledButton(
-                                    style: FilledButton.styleFrom(
-                                        backgroundColor: AppTheme.danger),
+                                  AppButton(
+                                    label: '删除',
+                                    kind: AppButtonKind.danger,
+                                    size: AppButtonSize.medium,
+                                    expand: false,
                                     onPressed: () =>
                                         Navigator.pop(dctx, true),
-                                    child: const Text('删除'),
                                   ),
                                 ],
                               ),
@@ -1355,12 +1346,7 @@ class _QuotePageState extends State<QuotePage>
       _lines
         ..clear()
         ..addAll(t.lines.isEmpty
-            ? [
-                const QuoteLine(
-                    itemName: '设计服务',
-                    hours: 8,
-                    hourRate: AppConfig.defaultHourRate)
-              ]
+            ? [const QuoteLine(itemName: '')] // v1.43.3：模板无明细时给一行空白明细
             : t.lines);
     });
   }
@@ -1458,7 +1444,7 @@ class _QuotePageState extends State<QuotePage>
       _lines
         ..clear()
         ..addAll(q.lines.isEmpty
-            ? [const QuoteLine(itemName: '设计服务', hours: 8, hourRate: AppConfig.defaultHourRate)]
+            ? [const QuoteLine(itemName: '')] // v1.43.3：历史无明细时给一行空白明细
             : q.lines);
     });
   }
@@ -1560,7 +1546,7 @@ class _QuotePageState extends State<QuotePage>
                     const SizedBox(height: 8),
                     // 关联项目：轻量入口 + 底部弹层选择（v1.12.0 改，替代原丑下拉）
                     InkWell(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                       onTap: _pickSimpleProject,
                       child: InputDecorator(
                         decoration: const InputDecoration(
@@ -1609,7 +1595,7 @@ class _QuotePageState extends State<QuotePage>
                     const SizedBox(height: 8),
                     // 关联客户档案：轻量入口 + 底部弹层选择
                     InkWell(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
                       onTap: _pickSimpleCustomer,
                       child: InputDecorator(
                         decoration: const InputDecoration(
@@ -2196,51 +2182,35 @@ class _QuotePageState extends State<QuotePage>
               child: Row(
                 children: [
                   Expanded(
-                    child: FilledButton(
-                      onPressed: isSimple ? _copySimpleToClipboard : _copyToClipboard,
-                      style: FilledButton.styleFrom(
-                        textStyle: const TextStyle(fontSize: 14),
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                      ),
-                      child: const Text('生成并复制',
-                          maxLines: 1,
-                          softWrap: false,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center),
+                    child: AppButton(
+                      label: '生成并复制',
+                      kind: AppButtonKind.primary,
+                      size: AppButtonSize.medium,
+                      expand: false,
+                      onPressed:
+                          isSimple ? _copySimpleToClipboard : _copyToClipboard,
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: FilledButton.tonal(
+                    child: AppButton(
+                      label: isSimple
+                          ? (_simpleQuoteId == null ? '保存到历史' : '更新保存')
+                          : (_quoteId == null ? '保存到历史' : '更新保存'),
+                      kind: AppButtonKind.tonal,
+                      size: AppButtonSize.medium,
+                      expand: false,
                       onPressed: isSimple ? _saveSimpleQuote : _saveQuote,
-                      style: FilledButton.styleFrom(
-                        textStyle: const TextStyle(fontSize: 14),
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                      ),
-                      child: Text(
-                        isSimple
-                            ? (_simpleQuoteId == null ? '保存到历史' : '更新保存')
-                            : (_quoteId == null ? '保存到历史' : '更新保存'),
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: FilledButton.tonal(
+                    child: AppButton(
+                      label: '导出PDF',
+                      kind: AppButtonKind.tonal,
+                      size: AppButtonSize.medium,
+                      expand: false,
                       onPressed: isSimple ? _exportSimplePdf : _exportFullPdf,
-                      style: FilledButton.styleFrom(
-                        textStyle: const TextStyle(fontSize: 14),
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                      ),
-                      child: const Text('导出PDF',
-                          maxLines: 1,
-                          softWrap: false,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center),
                     ),
                   ),
                 ],
@@ -2323,11 +2293,11 @@ class _LineCardState extends State<_LineCard> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         border: const OutlineInputBorder(),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           borderSide: BorderSide(color: AppTheme.textSub.withValues(alpha: 0.35)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
           borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
         ),
       );
@@ -2461,7 +2431,7 @@ class _ProjectPickerSheet extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
       ),
       padding: const EdgeInsets.only(top: 12, bottom: 24),
       child: Column(
@@ -2474,7 +2444,7 @@ class _ProjectPickerSheet extends StatelessWidget {
               height: 4,
               decoration: BoxDecoration(
                 color: const Color(0xFFE4E7EF),
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(AppRadius.xxs),
               ),
             ),
           ),
@@ -2491,7 +2461,7 @@ class _ProjectPickerSheet extends StatelessWidget {
             child: Text('选中后若未填客户名会自动回填所属客户',
                 style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
           ),
-          const Divider(height: 1),
+          const AppCardDivider(),
           Flexible(
             child: ListView(
               shrinkWrap: true,
@@ -2508,12 +2478,9 @@ class _ProjectPickerSheet extends StatelessWidget {
                   onTap: () => Navigator.pop(context, -1),
                 ),
                 if (!hasProjects)
-                  const Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Text('还没有项目，可在项目页先添加',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 13, color: AppTheme.textSub)),
+                  const AppEmpty(
+                    icon: Icons.folder_open_outlined,
+                    title: '还没有项目，可在项目页先添加',
                   ),
                 ...projects.map((pr) => ListTile(
                       leading: CircleAvatar(
@@ -2565,7 +2532,7 @@ class _CustomerPickerSheet extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
       ),
       padding: const EdgeInsets.only(top: 12, bottom: 24),
       child: Column(
@@ -2578,7 +2545,7 @@ class _CustomerPickerSheet extends StatelessWidget {
               height: 4,
               decoration: BoxDecoration(
                 color: const Color(0xFFE4E7EF),
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(AppRadius.xxs),
               ),
             ),
           ),
@@ -2595,7 +2562,7 @@ class _CustomerPickerSheet extends StatelessWidget {
             child: Text('选中后自动回填客户名称',
                 style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
           ),
-          const Divider(height: 1),
+          const AppCardDivider(),
           Flexible(
             child: ListView(
               shrinkWrap: true,
@@ -2612,12 +2579,9 @@ class _CustomerPickerSheet extends StatelessWidget {
                   onTap: () => Navigator.pop(context, -1),
                 ),
                 if (!hasCustomers)
-                  const Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Text('还没有客户档案，可在客户页先添加',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 13, color: AppTheme.textSub)),
+                  const AppEmpty(
+                    icon: Icons.people_outline,
+                    title: '还没有客户档案，可在客户页先添加',
                   ),
                 ...customers.map((c) => ListTile(
                       leading: CircleAvatar(

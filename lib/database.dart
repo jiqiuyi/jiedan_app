@@ -227,54 +227,7 @@ class AppDb {
       path,
       version: AppConfig.dbVersion,
       onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE customers(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            contact TEXT,
-            note TEXT,
-            industry TEXT,
-            source TEXT,
-            location TEXT,
-            last_contact_at INTEGER DEFAULT 0,
-            created_at INTEGER,
-            updated_at INTEGER
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE projects(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            customer_id INTEGER,
-            title TEXT,
-            status INTEGER,
-            amount_total INTEGER DEFAULT 0,
-            created_at INTEGER,
-            updated_at INTEGER,
-            due_date INTEGER DEFAULT 0,
-            remind_at INTEGER DEFAULT 0,
-            progress INTEGER DEFAULT 0,
-            deliver_date INTEGER DEFAULT 0
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE payments(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            project_id INTEGER,
-            amount INTEGER DEFAULT 0, -- 金额单位：分，禁止 double
-            type INTEGER,
-            type_label TEXT,
-            paid_at INTEGER,
-            note TEXT,
-            reconciled INTEGER DEFAULT 0, -- 已/未对账标记（0 未对账 / 1 已对账，默认 0）
-            quote_id INTEGER -- 关联报价单 id（可空，未关联时为 NULL）
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE settings(
-            key TEXT PRIMARY KEY,
-            value TEXT
-          )
-        ''');
+        await _createCoreTables(db);
         await _createUsers(db);
         await _createFeedbacks(db);
         await _createInvitees(db);
@@ -286,6 +239,16 @@ class AppDb {
         await _createContracts(db);
         await _createSubscriptionOrders(db);
         await _createTags(db);
+        await _ensureSchema(db);
+      },
+      // 打开数据库后的幂等结构自愈（v1.43.2）：历史版本的 onCreate 建表语句未与
+      // 迁移链最终结构同步，全新安装（onCreate 不走 onUpgrade）的库会缺
+      // sync_tombstones 墓碑表，且 payments / pending_collections / milestones /
+      // contracts 缺 updated_at 列。删除客户 / 项目要写墓碑，直接抛「表不存在」
+      // 使整个删除失败，表现为「操作未能完成，请稍后重试」。此处每次打开都补齐，
+      // 存量库与新库一并修复，无需提升 dbVersion。
+      onOpen: (db) async {
+        await _ensureSchema(db);
       },
       // 逐版本迁移（if(oldVersion<X) 保证老用户数据不丢、每个版本只补差量）：
       // 新增未来版本时，只需在下方追加 if(oldVersion<N+1){ await _migrateToVN+1(db); }，
@@ -353,6 +316,60 @@ class AppDb {
     final prev = rows.isEmpty ? '' : '${rows.first['value']}\n';
     await db.insert('settings', {'key': _kDbMigrationLogKey, 'value': '$prev$line'},
         conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  // 核心业务表（customers / projects / payments / settings）。
+  // onCreate 与 onOpen 的幂等结构自愈共用：全部使用 CREATE TABLE IF NOT EXISTS，
+  // 表已存在时零副作用，表缺失时按当前最新结构建表。
+  Future<void> _createCoreTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS customers(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        contact TEXT,
+        note TEXT,
+        industry TEXT,
+        source TEXT,
+        location TEXT,
+        last_contact_at INTEGER DEFAULT 0,
+        created_at INTEGER,
+        updated_at INTEGER
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS projects(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER,
+        title TEXT,
+        status INTEGER,
+        amount_total INTEGER DEFAULT 0,
+        created_at INTEGER,
+        updated_at INTEGER,
+        due_date INTEGER DEFAULT 0,
+        remind_at INTEGER DEFAULT 0,
+        progress INTEGER DEFAULT 0,
+        deliver_date INTEGER DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS payments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER,
+        amount INTEGER DEFAULT 0, -- 金额单位：分，禁止 double
+        type INTEGER,
+        type_label TEXT,
+        paid_at INTEGER,
+        note TEXT,
+        reconciled INTEGER DEFAULT 0, -- 已/未对账标记（0 未对账 / 1 已对账，默认 0）
+        quote_id INTEGER -- 关联报价单 id（可空，未关联时为 NULL）
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS settings(
+        key TEXT PRIMARY KEY,
+        value TEXT
+      )
+    ''');
   }
 
   // v2 新增：本地账号表
@@ -561,6 +578,13 @@ class AppDb {
         await db.execute('ALTER TABLE $t ADD COLUMN updated_at INTEGER');
       }
     }
+    await _createSyncTombstones(db);
+  }
+
+  // 墓碑表（sync_tombstones）：记录本地删除操作，供增量同步回传删除。
+  // 幂等创建，供 onCreate / onOpen 自愈 / v11 迁移共用；此前只写在 v11 迁移里，
+  // 导致全新安装（onCreate 不走 onUpgrade）的库缺表，删除客户 / 项目必失败。
+  Future<void> _createSyncTombstones(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sync_tombstones(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -570,6 +594,50 @@ class AppDb {
       )
     ''');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_tomb_table ON sync_tombstones(table_name)');
+  }
+
+  // 结构自愈（v1.43.2）：统一保证「只在迁移链里增补过」的表 / 列在任意来源的库上
+  // 都存在。历史遗留根因：onCreate 的建表语句未与迁移链最终结构保持同步，而全新
+  // 安装只走 onCreate（不触发 onUpgrade 的 ALTER / CREATE），于是新库缺
+  // sync_tombstones 表，且 payments / pending_collections / milestones / contracts
+  // 缺 updated_at 列。前者让删除客户 / 项目（删除链写墓碑）必然失败，后者让这些表
+  // 经同步通道写入时报「no such column: updated_at」。
+  // 幂等：先探测再补，重复执行无副作用；同时覆盖存量老库与全新库。
+  Future<void> _ensureSchema(Database db) async {
+    // 1) 墓碑表：删除客户 / 项目 / 报价时写入。历史版本的 onCreate 建表语句漏建该表，
+    //    导致删除整链在写墓碑时抛「no such table」，表现为「操作未能完成，请稍后重试」。
+    await _createSyncTombstones(db);
+    // 2) 核心业务表 + 其余业务表：各建表函数内部均为 CREATE TABLE IF NOT EXISTS，
+    //    表已存在时零副作用；表缺失时按当前最新结构补齐（历史版本 onCreate 曾漏建
+    //    tags / customer_tags / subscription_orders 等表，会让删除 / 同步链同样失败）。
+    await _createCoreTables(db);
+    await _createUsers(db);
+    await _createFeedbacks(db);
+    await _createInvitees(db);
+    await _createWithdrawals(db);
+    await _createRecharges(db);
+    await _createQuotes(db);
+    await _createPendingCollections(db);
+    await _createMilestones(db);
+    await _createContracts(db);
+    await _createSubscriptionOrders(db);
+    await _createTags(db);
+    // 3) 补齐历史库缺失的 updated_at 列（同步写入路径会引用该列）。
+    const needUpdatedAt = <String>[
+      'customers',
+      'payments',
+      'quotes',
+      'pending_collections',
+      'milestones',
+      'contracts',
+    ];
+    for (final t in needUpdatedAt) {
+      final cols = await db.rawQuery('PRAGMA table_info($t)');
+      if (cols.isEmpty) continue; // 表尚未创建，交由对应建表 / 迁移负责
+      if (!cols.any((c) => c['name'] == 'updated_at')) {
+        await db.execute('ALTER TABLE $t ADD COLUMN updated_at INTEGER');
+      }
+    }
   }
 
   // v12 迁移：feedbacks 补作者回复字段。

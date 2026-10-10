@@ -6,7 +6,9 @@ import '../constants.dart';
 import '../database.dart';
 import '../theme.dart';
 import '../widgets/date_range_picker_sheet.dart';
+import '../widgets/range_filter_bar.dart';
 import 'paywall_page.dart';
+import '../widgets/app_ui.dart';
 
 /// 统计看板（v1.10.0 新增，v1.22.0 增强）：
 /// 收入/应收统计支持时间范围筛选（本月/上月/近12个月/自定义起止日期）与月度对比、
@@ -120,8 +122,11 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
       case _RangeMode.last12:
         return '近12个月';
       case _RangeMode.custom:
-        final f = NumberFormat('yyyy-MM-dd');
-        return '${f.format(_rStart)} 至 ${f.format(_rEnd)}';
+        // 与「收入记录」页共用同一套区间文案：起止两端都带年份。
+        // 注意：此处必须用字符串拼接，不能再走 NumberFormat 格式化 DateTime，
+        // 否则运行期会抛 NoSuchMethodError(isNegative) 导致整页白屏。
+        return '${_rStart.year}年${_rStart.month}月${_rStart.day}日 - '
+            '${_rEnd.year}年${_rEnd.month}月${_rEnd.day}日';
     }
   }
 
@@ -140,7 +145,7 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('统计看板')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoading()
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
@@ -180,61 +185,41 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
     );
   }
 
-  // 时间范围筛选条：本月 / 上月 / 近12个月 / 自定义（四个筛选项固定一行等宽排列，
-  // 自定义区间入口单独一行展示当前区间，避免文字过长挤压筛选行）
+  // 时间范围筛选条：本月 / 上月 / 近12个月 / 自定义。
+  // 统一使用 RangeFilterBar：左对齐、间距一致、按内容宽度排列（不做等宽拉伸）；
+  // 自定义区间入口单独一行展示当前区间，避免文字挤压筛选行。
   Widget _buildRangeSelector() {
-    const items = [
-      (_RangeMode.month, '本月'),
-      (_RangeMode.lastMonth, '上月'),
-      (_RangeMode.last12, '近12个月'),
-      (_RangeMode.custom, '自定义'),
-    ];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              for (int i = 0; i < items.length; i++) ...[
-                if (i > 0) const SizedBox(width: 6),
-                Expanded(
-                  child: ChoiceChip(
-                    label: Text(
-                      items[i].$2,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    selected: _mode == items[i].$1,
-                    onSelected: (_) {
-                      if (_mode == items[i].$1) return;
-                      setState(() => _mode = items[i].$1);
-                      _load();
-                    },
-                    showCheckmark: false,
-                    visualDensity: VisualDensity.compact,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    labelPadding: const EdgeInsets.symmetric(horizontal: 2),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 4, vertical: 2),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          if (_mode == _RangeMode.custom) ...[
-            const SizedBox(height: 8),
-            InkWell(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        RangeFilterBar<_RangeMode>(
+          items: const [
+            RangeFilterItem(_RangeMode.month, '本月'),
+            RangeFilterItem(_RangeMode.lastMonth, '上月'),
+            RangeFilterItem(_RangeMode.last12, '近12个月'),
+            RangeFilterItem(_RangeMode.custom, '自定义'),
+          ],
+          value: _mode,
+          onChanged: (mode) {
+            if (_mode == mode) return;
+            setState(() => _mode = mode);
+            _load();
+          },
+        ),
+        if (_mode == _RangeMode.custom) ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: InkWell(
               onTap: _pickCustomRange,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(AppRadius.sm),
               child: Container(
                 width: double.infinity,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: AppTheme.primary.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
                 ),
                 child: Row(
                   children: [
@@ -255,9 +240,9 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
                 ),
               ),
             ),
-          ],
+          ),
         ],
-      ),
+      ],
     );
   }
 
@@ -299,7 +284,7 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -436,11 +421,10 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
                 (_GroupMode.quoteType, '按报价类型'),
                 (_GroupMode.projectStatus, '按项目阶段'),
               ])
-                ChoiceChip(
-                  label: Text(label),
+                AppFilterChip(
+                  label: label,
                   selected: _group == g,
-                  onSelected: (_) => setState(() => _group = g),
-                  visualDensity: VisualDensity.compact,
+                  onTap: () => setState(() => _group = g),
                 ),
             ],
           ),
@@ -500,12 +484,9 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
     if (rows.isEmpty) {
       return const Card(
         margin: EdgeInsets.symmetric(horizontal: 16),
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Center(
-            child: Text('暂无数据',
-                style: TextStyle(color: AppTheme.textSub)),
-          ),
+        child: AppEmpty(
+          icon: Icons.inbox_outlined,
+          title: '暂无数据',
         ),
       );
     }
@@ -542,7 +523,7 @@ class _Metric extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -668,7 +649,7 @@ class _MonthlyBarChart extends StatelessWidget {
                                   end: Alignment.bottomCenter,
                                 ),
                                 borderRadius: const BorderRadius.vertical(
-                                    top: Radius.circular(4)),
+                                    top: Radius.circular(AppRadius.xxs)),
                               ),
                             ),
                           ],

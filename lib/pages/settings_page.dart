@@ -26,6 +26,7 @@ import 'privacy_policy_page.dart';
 import 'reconciliation_page.dart';
 import 'storage_mode_page.dart';
 import 'wallet_page.dart';
+import '../widgets/app_ui.dart';
 
 /// 「我的」页（v1.38.0 改版）。
 ///
@@ -102,19 +103,15 @@ class _SettingsPageState extends State<SettingsPage> {
   /// 更换头像：相册选择 / 恢复默认
   Future<void> _editAvatar() async {
     final hasCustom = AvatarService.instance.path.value != null;
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+    final action = await showAppSheet<String>(
+      context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
-              child: Text('更换头像',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              child: AppSheetHeader(title: '更换头像'),
             ),
             ListTile(
               leading:
@@ -159,10 +156,12 @@ class _SettingsPageState extends State<SettingsPage> {
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('取消')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+          AppButton(
+            label: '退出',
+            kind: AppButtonKind.danger,
+            size: AppButtonSize.medium,
+            expand: false,
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('退出'),
           ),
         ],
       ),
@@ -245,9 +244,20 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 8),
                 Center(
-                  child: Text(
-                    '接单管家 v${AppConfig.version}',
-                    style: const TextStyle(color: AppTheme.textSub, fontSize: 12),
+                  child: Column(
+                    children: [
+                      Text(
+                        '接单管家 v${AppConfig.version}',
+                        style: const TextStyle(
+                            color: AppTheme.textSub, fontSize: 12),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        AppConfig.icpCode,
+                        style: const TextStyle(
+                            color: AppTheme.textSub, fontSize: 12),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -319,7 +329,7 @@ class _ProfileHeader extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(AppRadius.sheet)),
       ),
       child: Column(
         children: [
@@ -506,7 +516,7 @@ class _LevelBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.22),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.sheet),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -594,7 +604,7 @@ class _SubscriptionCard extends StatelessWidget {
 
     return Card(
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -629,7 +639,7 @@ class _SubscriptionCard extends StatelessWidget {
                         horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: AppTheme.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(AppRadius.sheet),
                     ),
                     child: Text(
                       isPro ? '续费' : '升级',
@@ -643,7 +653,7 @@ class _SubscriptionCard extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               ClipRRect(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(AppRadius.xxs),
                 child: LinearProgressIndicator(
                   value: ratio,
                   minHeight: 6,
@@ -726,7 +736,7 @@ class _FunctionGrid extends StatelessWidget {
               itemBuilder: (context, i) {
                 final it = items[i];
                 return InkWell(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
                   onTap: it.onTap,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -736,7 +746,7 @@ class _FunctionGrid extends StatelessWidget {
                         height: 44,
                         decoration: BoxDecoration(
                           color: it.color.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(AppRadius.md),
                         ),
                         child: Icon(it.icon, size: 22, color: it.color),
                       ),
@@ -858,7 +868,7 @@ class _CardDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Divider(height: 1, indent: 16, endIndent: 16);
+    return const AppCardDivider();
   }
 }
 
