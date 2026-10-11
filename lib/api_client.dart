@@ -149,6 +149,7 @@ class ApiClient {
       'password': password,
       'nickname': nickname,
       'inviteCode': inviteCode,
+      'source': 'app',
     });
     await _saveToken(json['token'] as String?);
     return json;
@@ -247,6 +248,7 @@ class ApiClient {
     return _call('POST', '/api/jianpay/create', {
       'plan': plan,
       'payMethod': payMethod,
+      'source': 'app',
     }, authRequired: true);
   }
 
