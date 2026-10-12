@@ -534,6 +534,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
+    final int monthColumns = MediaQuery.sizeOf(context).width >= 600 ? 6 : 4;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -558,7 +559,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
               ],
             ),
             GridView.count(
-              crossAxisCount: 4,
+              crossAxisCount: monthColumns,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               mainAxisSpacing: 8,

@@ -78,6 +78,7 @@ class _SheetState extends State<_Sheet> {
     final ali = widget.aliPath != null;
     if (_tab == 1 && !ali) _tab = 0;
     final current = _tab == 0 ? widget.wxPath : widget.aliPath;
+    final double qrSize = (MediaQuery.sizeOf(context).width - 32).clamp(200.0, 280.0);
 
     return SafeArea(
       child: Padding(
@@ -106,8 +107,8 @@ class _SheetState extends State<_Sheet> {
                 borderRadius: BorderRadius.circular(AppRadius.sm),
                 child: Image.file(
                   File(current),
-                  width: 280,
-                  height: 280,
+                  width: qrSize,
+                  height: qrSize,
                   fit: BoxFit.contain,
                   errorBuilder: (_, _, _) => const Padding(
                     padding: EdgeInsets.all(32),
@@ -316,6 +317,7 @@ class _ProjectCollectSheetState extends State<_ProjectCollectSheet> {
     final ali = widget.aliPath != null;
     if (_tab == 1 && !ali) _tab = 0;
     final current = _tab == 0 ? widget.wxPath : widget.aliPath;
+    final double qrSize = (MediaQuery.sizeOf(context).width - 32).clamp(180.0, 240.0);
 
     return Padding(
       padding: EdgeInsets.only(
@@ -360,8 +362,8 @@ class _ProjectCollectSheetState extends State<_ProjectCollectSheet> {
                         borderRadius: BorderRadius.circular(AppRadius.sm),
                         child: Image.file(
                           File(current),
-                          width: 240,
-                          height: 240,
+                          width: qrSize,
+                          height: qrSize,
                           fit: BoxFit.contain,
                           errorBuilder: (_, _, _) => const Padding(
                             padding: EdgeInsets.all(24),

@@ -701,6 +701,10 @@ class _FunctionGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 响应式列数：宽屏（平板等宽度 >= 600）时 8 个入口合并为一行；
+    // 窄屏（手机竖屏）保持 4 列两行。
+    final double screenWidth = MediaQuery.sizeOf(context).width;
+    final int columns = screenWidth >= 600 ? 8 : 4;
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(8, 16, 8, 6),
@@ -727,8 +731,8 @@ class _FunctionGrid extends StatelessWidget {
               primary: false,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: items.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
                 mainAxisSpacing: 14,
                 crossAxisSpacing: 4,
                 childAspectRatio: 0.88,

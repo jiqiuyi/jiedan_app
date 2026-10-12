@@ -237,8 +237,9 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
     final years = [
       for (int y = _minDay.year; y <= _maxDay.year; y++) y,
     ];
+    final int yearColumns = MediaQuery.sizeOf(context).width >= 600 ? 6 : 4;
     return GridView.count(
-      crossAxisCount: 4,
+      crossAxisCount: yearColumns,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 8,
