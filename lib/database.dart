@@ -1239,7 +1239,7 @@ class AppDb {
   Future<List<String>> getTagItems(String kind) async {
     final rows = await _all('tag_items',
         where: 'kind=?', whereArgs: [kind], orderBy: 'created_at ASC');
-    return rows.map((r) => '').toList();
+    return rows.map((r) => (r['name'] ?? '').toString()).toList();
   }
 
   Future<bool> addTagItem(String kind, String name) async {

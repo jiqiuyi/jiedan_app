@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../models.dart';
 import '../widgets/slidable_action.dart';
 import '../database.dart';
+import '../data/regions.dart';
 import '../app_state.dart';
 import '../constants.dart';
 import '../state/ticker.dart';
@@ -96,7 +97,39 @@ class _CustomersPageState extends State<CustomersPage> {
     final industryCtrl = TextEditingController(text: c?.industry ?? '');
     final sourceCtrl = TextEditingController(text: c?.source ?? '');
     final locationCtrl = TextEditingController(text: c?.location ?? '');
-    var newLastContactAt = c?.lastContactAt ?? 0;
+    // 省市区级联快捷选择（仅用于回填输入框，输入框仍可自由编辑）
+    String? selProvince;
+    String? selCity;
+    String? selDistrict;
+    var manualEdit = false;
+    {
+      final initParts = (c?.location ?? '')
+          .split(RegExp(r'[\s·,，/、]+'))
+          .where((e) => e.isNotEmpty)
+          .toList();
+      if (initParts.isNotEmpty && kRegions.containsKey(initParts[0])) {
+        selProvince = initParts[0];
+        final cities = regionCities(initParts[0]);
+        if (initParts.length > 1 && cities.contains(initParts[1])) {
+          selCity = initParts[1];
+          final districts = regionDistricts(initParts[0], initParts[1]);
+          if (initParts.length > 2 && districts.contains(initParts[2])) {
+            selDistrict = initParts[2];
+          }
+        }
+      }
+    }
+    void syncLocationText() {
+      final parts = <String>[
+        if (selProvince != null) selProvince!,
+        if (selCity != null) selCity!,
+        if (selDistrict != null) selDistrict!,
+      ];
+      if (parts.isEmpty) return;
+      locationCtrl.text = parts.join(' ');
+      locationCtrl.selection =
+          TextSelection.collapsed(offset: locationCtrl.text.length);
+    }
     // 行业 / 来源标签下拉：底部弹层选择已维护标签，回填输入框；仍可手动输入。
     Future<void> pickTag(TextEditingController ctrl, String kind,
         String label) async {
@@ -160,6 +193,93 @@ class _CustomersPageState extends State<CustomersPage> {
         ),
       );
     }
+    Future<void> pickRegion() async {
+      var level = 0;
+      if (selProvince != null && selCity != null) {
+        level = 2;
+      } else if (selProvince != null) {
+        level = 1;
+      }
+      await showModalBottomSheet<void>(
+        context: context,
+        builder: (sheetCtx) => StatefulBuilder(
+          builder: (sheetCtx, setSheet) {
+            final List<String> items = switch (level) {
+              0 => regionProvinces(),
+              1 => regionCities(selProvince!),
+              _ => regionDistricts(selProvince!, selCity!),
+            };
+            final String headTitle = switch (level) {
+              0 => '选择省份',
+              1 => '选择城市 · $selProvince',
+              _ => '选择区县 · $selProvince $selCity',
+            };
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      if (level > 0)
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          tooltip: '返回',
+                          onPressed: () => setSheet(() => level--),
+                        )
+                      else
+                        const SizedBox(width: 48),
+                      Expanded(
+                        child: Text(
+                          headTitle,
+                          style: const TextStyle(
+                              fontSize: AppFont.body,
+                              fontWeight: FontWeight.w600),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        tooltip: '关闭',
+                        onPressed: () => Navigator.pop(sheetCtx),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 1),
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: items.length,
+                      itemBuilder: (_, i) => ListTile(
+                        dense: true,
+                        title: Text(items[i]),
+                        onTap: () {
+                          if (level == 0) {
+                            selProvince = items[i];
+                            selCity = null;
+                            selDistrict = null;
+                            setSheet(() => level = 1);
+                          } else if (level == 1) {
+                            selCity = items[i];
+                            selDistrict = null;
+                            setSheet(() => level = 2);
+                          } else {
+                            selDistrict = items[i];
+                            syncLocationText();
+                            Navigator.pop(sheetCtx);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
+    }
+    var newLastContactAt = c?.lastContactAt ?? 0;
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -199,8 +319,21 @@ class _CustomersPageState extends State<CustomersPage> {
                 const SizedBox(height: 10),
                 TextField(
                     controller: locationCtrl,
-                    decoration: const InputDecoration(
-                        labelText: '所在地', hintText: '如：杭州')),
+                    onChanged: (_) => manualEdit = true,
+                    onTap: manualEdit ? null : () => pickRegion(),
+                    decoration: InputDecoration(
+                        labelText: '所在地',
+                        hintText: '如：浙江省 杭州市 西湖区',
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.location_on_outlined),
+                          tooltip: '选择省市区',
+                          onPressed: () => pickRegion(),
+                        ))),
+                const SizedBox(height: 4),
+                const Text(
+                  '点击「所在地」输入框可选择省市区，也可直接手动输入',
+                  style: TextStyle(fontSize: AppFont.caption, color: AppTheme.textSub),
+                ),
                 const SizedBox(height: 10),
                 InkWell(
                   onTap: () async {

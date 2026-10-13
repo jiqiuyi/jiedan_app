@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../database.dart';
 import '../models.dart';
 import '../constants.dart';
+import '../api_client.dart';
 import '../theme.dart';
 import '../state/ticker.dart';
 import '../widgets/show_payment_code.dart';
@@ -28,12 +29,22 @@ class _DashboardPageState extends State<DashboardPage> {
   List<Project> _recent = [];
   List<PendingCollection> _pendings = [];
   StreamSubscription<int>? _sub;
+  Map<String, dynamic> _announce = {'title': '', 'content': '', 'active': false};
+  bool _announceHidden = false;
 
   @override
   void initState() {
     super.initState();
     _refesh();
     _sub = Ticker.counterStream.listen((_) => _refesh());
+    _loadAnnounce();
+  }
+
+  /// 拉取 App 公告（后台配置；失败静默，不打扰使用）
+  Future<void> _loadAnnounce() async {
+    final a = await ApiClient.instance.fetchAnnouncement();
+    if (!mounted) return;
+    setState(() => _announce = a);
   }
 
   @override
@@ -183,6 +194,14 @@ class _DashboardPageState extends State<DashboardPage> {
       body: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         children: [
+          if (!_announceHidden &&
+              _announce['active'] == true &&
+              (_announce['title'] as String? ?? '').isNotEmpty)
+            _AnnounceCard(
+              title: (_announce['title'] as String? ?? '').toString(),
+              content: (_announce['content'] as String? ?? '').toString(),
+              onClose: () => setState(() => _announceHidden = true),
+            ),
           GestureDetector(
             onTap: () => Navigator.push(
               context,
@@ -410,6 +429,68 @@ class _PendingCard extends StatelessWidget {
               icon: const Icon(Icons.delete_outline,
                   size: 20, color: AppTheme.textSub),
               onPressed: onDelete,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 看板顶部公告横幅（后台「公告管理」→ App 公告）
+class _AnnounceCard extends StatelessWidget {
+  final String title;
+  final String content;
+  final VoidCallback onClose;
+  const _AnnounceCard({
+    required this.title,
+    required this.content,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: const Color(0xFFEEF2FF),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Icon(Icons.campaign_outlined,
+                  size: 18, color: AppTheme.primary),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textMain)),
+                  if (content.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(content,
+                          style: const TextStyle(
+                              fontSize: 13,
+                              height: 1.5,
+                              color: AppTheme.textSub)),
+                    ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: '关闭',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.close, size: 16, color: AppTheme.textSub),
+              onPressed: onClose,
             ),
           ],
         ),

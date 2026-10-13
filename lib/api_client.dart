@@ -155,6 +155,15 @@ class ApiClient {
     return json;
   }
 
+  /// 拉取 App 公告（后台「公告管理」配置；未启用/无公告时返回空）
+  Future<Map<String, dynamic>> fetchAnnouncement() async {
+    try {
+      return await _call('GET', '/api/announcement/app', null);
+    } catch (_) {
+      return {'title': '', 'content': '', 'active': false};
+    }
+  }
+
   Future<Map<String, dynamic>> login({
     required String phone,
     required String password,
