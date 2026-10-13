@@ -97,6 +97,69 @@ class _CustomersPageState extends State<CustomersPage> {
     final sourceCtrl = TextEditingController(text: c?.source ?? '');
     final locationCtrl = TextEditingController(text: c?.location ?? '');
     var newLastContactAt = c?.lastContactAt ?? 0;
+    // 行业 / 来源标签下拉：底部弹层选择已维护标签，回填输入框；仍可手动输入。
+    Future<void> pickTag(TextEditingController ctrl, String kind,
+        String label) async {
+      final tags = await AppDb.instance.getTagItems(kind);
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        builder: (sheetCtx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                child: Text(
+                  '选择$label',
+                  style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textMain),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  '也可直接在输入框中手动输入自定义内容',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSub),
+                ),
+              ),
+              Flexible(
+                child: tags.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text(
+                          '暂无标签，请先在「我的 - 标签维护」中添加',
+                          style: TextStyle(
+                              fontSize: 13, color: AppTheme.textSub),
+                        ),
+                      )
+                    : ListView(
+                        shrinkWrap: true,
+                        children: tags
+                            .map((t) => ListTile(
+                                  dense: true,
+                                  title: Text(t),
+                                  trailing: const Icon(Icons.chevron_right,
+                                      size: 18, color: AppTheme.textSub),
+                                  onTap: () {
+                                    ctrl.text = t;
+                                    ctrl.selection = TextSelection.collapsed(
+                                        offset: ctrl.text.length);
+                                    Navigator.pop(sheetCtx);
+                                  },
+                                ))
+                            .toList(),
+                      ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      );
+    }
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -118,13 +181,21 @@ class _CustomersPageState extends State<CustomersPage> {
                 const SizedBox(height: 10),
                 TextField(
                     controller: industryCtrl,
-                    decoration: const InputDecoration(
-                        labelText: '行业', hintText: '如：餐饮、电商、装修')),
+                    onTap: () => pickTag(industryCtrl, 'industry', '行业标签'),
+                    decoration: InputDecoration(
+                        labelText: '行业',
+                        hintText: '如：餐饮、电商、装修',
+                        suffixIcon: const Icon(Icons.arrow_drop_down,
+                            color: AppTheme.textSub))),
                 const SizedBox(height: 10),
                 TextField(
                     controller: sourceCtrl,
-                    decoration: const InputDecoration(
-                        labelText: '客户来源', hintText: '如：朋友介绍、小红书、老客')),
+                    onTap: () => pickTag(sourceCtrl, 'source', '来源标签'),
+                    decoration: InputDecoration(
+                        labelText: '客户来源',
+                        hintText: '如：朋友介绍、小红书、老客',
+                        suffixIcon: const Icon(Icons.arrow_drop_down,
+                            color: AppTheme.textSub))),
                 const SizedBox(height: 10),
                 TextField(
                     controller: locationCtrl,

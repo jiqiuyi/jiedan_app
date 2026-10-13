@@ -296,6 +296,7 @@ class AppDb {
       if (oldVersion < 16) await _migrateToV16(db);
       if (oldVersion < 17) await _migrateToV17(db);
       if (oldVersion < 18) await _migrateToV18(db);
+      if (oldVersion < 19) await _migrateToV19(db);
       await _appendMigrationLog(db, '成功 v$oldVersion -> v$newVersion @ $now()');
     } catch (e, st) {
       // 记录失败日志后抛出统一中文异常；平台事务回滚后数据库保持旧版本与全部数据，
@@ -791,6 +792,20 @@ class AppDb {
     await _seedTags(db);
   }
 
+  // 行业 / 来源标签字典表（v1.43.5 标签维护）：kind='industry' 或 'source'，
+  // 同一 kind 内 name 唯一；不预置种子，由用户在「标签维护」页自定义维护。
+  Future<void> _createTagItems(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS tag_items(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        created_at INTEGER,
+        UNIQUE(kind, name)
+      )
+    ''');
+  }
+
   // 预设标签池种子（第19批）：6 个常用标签 + 各自默认颜色，随建表/迁移落库。
   // 幂等：name 有 UNIQUE 约束，INSERT OR IGNORE 保证重复执行不产生重复数据；
   // 用户可后续自定义新增 / 改色 / 删除，本批不重置已存在的同名标签。
@@ -818,6 +833,16 @@ class AppDb {
     final cols = await db.rawQuery('PRAGMA table_info(tags)');
     if (cols.isEmpty) {
       await _createTags(db);
+    }
+  }
+
+  // v19 迁移（v1.43.5 标签维护）：新增 tag_items 行业 / 来源标签字典表。
+  // 与第19批客户标签（tags + customer_tags 多对多）语义独立，专门承载
+  // 「新增客户表单行业 / 来源下拉」与「客户列表筛选下拉」共用的标签选项。
+  Future<void> _migrateToV19(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(tag_items)');
+    if (cols.isEmpty) {
+      await _createTagItems(db);
     }
   }
 
@@ -1208,6 +1233,32 @@ class AppDb {
   Future<List<Tag>> getTags() async {
     final rows = await _all('tags', orderBy: 'created_at ASC');
     return rows.map(Tag.fromMap).toList();
+  }
+
+  // ---- 标签维护（行业 / 来源标签字典） ----
+  Future<List<String>> getTagItems(String kind) async {
+    final rows = await _all('tag_items',
+        where: 'kind=?', whereArgs: [kind], orderBy: 'created_at ASC');
+    return rows.map((r) => '').toList();
+  }
+
+  Future<bool> addTagItem(String kind, String name) async {
+    final t = name.trim();
+    if (t.isEmpty) return false;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    try {
+      await _insert('tag_items', {'kind': kind, 'name': t, 'created_at': now});
+      return true;
+    } on DbConstraintException {
+      return false; // 同名标签已存在，忽略重复
+    } on DatabaseException {
+      return false;
+    }
+  }
+
+  Future<void> deleteTagItem(String kind, String name) async {
+    await _deleteByWhere('tag_items',
+        where: 'kind=? AND name=?', whereArgs: [kind, name]);
   }
 
   Future<int> insertTag(String name, int color) async {

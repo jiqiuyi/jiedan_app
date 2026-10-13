@@ -25,6 +25,7 @@ import 'paywall_page.dart';
 import 'privacy_policy_page.dart';
 import 'reconciliation_page.dart';
 import 'storage_mode_page.dart';
+import 'tag_management_page.dart';
 import 'wallet_page.dart';
 import '../widgets/app_ui.dart';
 
@@ -227,6 +228,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         '数据管理', () => _push(const DataManagementPage())),
                     _FuncItem(Icons.cloud_outlined, const Color(0xFF2F80ED),
                         '数据存储', () => _push(const StorageModePage())),
+                    _FuncItem(Icons.label_outline, const Color(0xFF00A67E),
+                        '标签维护', () => _push(const TagManagementPage())),
                     _FuncItem(Icons.feedback_outlined, AppTheme.textSub,
                         '意见反馈', () => _push(const FeedbackPage())),
                   ],
@@ -701,10 +704,10 @@ class _FunctionGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 响应式列数：宽屏（平板等宽度 >= 600）时 8 个入口合并为一行；
-    // 窄屏（手机竖屏）保持 4 列两行。
+    // 响应式列数：宽屏（平板等宽度 >= 600）时 9 个入口合并为一行；
+    // 窄屏（手机竖屏）保持 4 列三行。
     final double screenWidth = MediaQuery.sizeOf(context).width;
-    final int columns = screenWidth >= 600 ? 8 : 4;
+    final int columns = screenWidth >= 600 ? 9 : 4;
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(8, 16, 8, 6),
