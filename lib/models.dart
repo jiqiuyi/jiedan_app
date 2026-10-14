@@ -101,12 +101,14 @@ class Tag {
   final String name;
   final int color; // ARGB 色值，默认品牌蓝
   final int createdAt;
+  final int updatedAt; // 云端同步水位（v1.45.0 标签上云）
 
   const Tag({
     this.id,
     required this.name,
     this.color = 0xFF4C9AFF,
     this.createdAt = 0,
+    this.updatedAt = 0,
   });
 
   Map<String, Object?> toMap() => {
@@ -114,6 +116,7 @@ class Tag {
         'name': name,
         'color': color,
         'created_at': createdAt,
+        'updated_at': updatedAt,
       };
 
   factory Tag.fromMap(Map<String, Object?> m) => Tag(
@@ -121,15 +124,17 @@ class Tag {
         name: (m['name'] as String?) ?? '',
         color: (m['color'] as num?)?.toInt() ?? 0xFF4C9AFF,
         createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
+        updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
       );
 
   bool isValidTag() => name.trim().isNotEmpty;
 
-  Tag copyWith({String? name, int? color}) => Tag(
-        id: id,
+  Tag copyWith({int? id, String? name, int? color, int? createdAt, int? updatedAt}) => Tag(
+        id: id ?? this.id,
         name: name ?? this.name,
         color: color ?? this.color,
-        createdAt: createdAt,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
       );
 }
 

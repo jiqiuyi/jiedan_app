@@ -82,6 +82,9 @@ class SyncService extends ChangeNotifier {
     'pending_collections',
     'milestones',
     'contracts',
+    'tags', // v1.45.0 客户分类标签上云：App 与网页端共享标签字典与颜色
+    'customer_tags', // v21 客户挂标签关联上云：App 与网页端共享客户-标签多对多关系
+    'tag_items', // v21 行业/来源标签字典上云：App 与网页端共享字典条目
   ];
 
   StorageMode _mode = StorageMode.local;
@@ -466,6 +469,8 @@ class SyncService extends ChangeNotifier {
     'pending_collections' => '待收款',
     'milestones' => '里程碑',
     'contracts' => '合同',
+    'customer_tags' => '客户标签关联',
+    'tag_items' => '行业来源标签',
     _ => t,
   };
 

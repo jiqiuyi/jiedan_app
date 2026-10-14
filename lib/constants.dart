@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.44.0+61';
+  static const String version = '1.45.0+62';
   // 工信部 ICP 备案号（Android 合规要求：App 内显著位置可查，展示于「我的」页底部）
   static const String icpCode = '苏ICP备2026065744号-3A';
 
@@ -65,7 +65,8 @@ class AppConfig {
   // v17：第15批 订阅裂变 —— 新增 subscription_orders 订阅订单表（本地闭环/兑换码/邀请送月）
   // v18：第19批 标签系统 —— 新增 tags 标签表 + customer_tags 客户-标签多对多关联表
   // v19：标签维护 —— 新增 tag_items 行业/来源标签字典表（表单与筛选下拉共用）
-  static const int dbVersion = 19;
+  // v20：客户分类标签上云 —— tags 表补 updated_at 列并入同步通道（App 与网页端共享颜色/增删改）
+  static const int dbVersion = 21;
 
   // ---- 数据存储方式（v1.14.0）----
   // 存储方式的持久化键（settings 表）

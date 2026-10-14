@@ -970,9 +970,13 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
                             onPressed: () async {
                               final t = await _createTagDialog();
                               if (t != null) {
+                                // 新建标签先落库拿 id（v1.45.0 标签上云走同步通道），
+                                // 再加入列表并选中；直接 t.id! 会因 id 为空崩溃。
+                                final id =
+                                    await AppDb.instance.insertTag(t.name, t.color);
                                 setSheet(() {
-                                  tags.add(t);
-                                  sel.add(t.id!);
+                                  tags.add(t.copyWith(id: id));
+                                  sel.add(id);
                                   commit();
                                 });
                               }

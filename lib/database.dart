@@ -297,6 +297,8 @@ class AppDb {
       if (oldVersion < 17) await _migrateToV17(db);
       if (oldVersion < 18) await _migrateToV18(db);
       if (oldVersion < 19) await _migrateToV19(db);
+      if (oldVersion < 20) await _migrateToV20(db);
+      if (oldVersion < 21) await _migrateToV21(db);
       await _appendMigrationLog(db, '成功 v$oldVersion -> v$newVersion @ $now()');
     } catch (e, st) {
       // 记录失败日志后抛出统一中文异常；平台事务回滚后数据库保持旧版本与全部数据，
@@ -631,6 +633,7 @@ class AppDb {
       'pending_collections',
       'milestones',
       'contracts',
+      'tag_items',
     ];
     for (final t in needUpdatedAt) {
       final cols = await db.rawQuery('PRAGMA table_info($t)');
@@ -638,6 +641,28 @@ class AppDb {
       if (!cols.any((c) => c['name'] == 'updated_at')) {
         await db.execute('ALTER TABLE $t ADD COLUMN updated_at INTEGER');
       }
+    }
+    // 4) customer_tags 同步化自愈：缺 id 列的老库（v20 及以前结构）按 v21 重建，
+    //    幂等：已有 id 列则跳过；表缺失时交由 _createTags 按最新结构创建。
+    final ctCols = await db.rawQuery('PRAGMA table_info(customer_tags)');
+    if (ctCols.isNotEmpty && !ctCols.any((c) => c['name'] == 'id')) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await db.execute('ALTER TABLE customer_tags RENAME TO customer_tags_old');
+      await db.execute('''
+        CREATE TABLE customer_tags(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          customer_id INTEGER NOT NULL,
+          tag_id INTEGER NOT NULL,
+          created_at INTEGER,
+          updated_at INTEGER,
+          UNIQUE(customer_id, tag_id)
+        )
+      ''');
+      await db.execute('''
+        INSERT INTO customer_tags(customer_id, tag_id, created_at, updated_at)
+        SELECT customer_id, tag_id, ?, ? FROM customer_tags_old
+      ''', [now, now]);
+      await db.execute('DROP TABLE customer_tags_old');
     }
   }
 
@@ -784,9 +809,12 @@ class AppDb {
     ''');
     await db.execute('''
       CREATE TABLE IF NOT EXISTS customer_tags(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         customer_id INTEGER NOT NULL,
         tag_id INTEGER NOT NULL,
-        PRIMARY KEY (customer_id, tag_id)
+        created_at INTEGER,
+        updated_at INTEGER,
+        UNIQUE(customer_id, tag_id)
       )
     ''');
     await _seedTags(db);
@@ -801,6 +829,7 @@ class AppDb {
         kind TEXT NOT NULL,
         name TEXT NOT NULL,
         created_at INTEGER,
+        updated_at INTEGER,
         UNIQUE(kind, name)
       )
     ''');
@@ -821,7 +850,7 @@ class AppDb {
     final now = DateTime.now().millisecondsSinceEpoch;
     for (final s in seed) {
       await db.insert('tags',
-          {'name': s['name'], 'color': s['color'], 'created_at': now},
+          {'name': s['name'], 'color': s['color'], 'created_at': now, 'updated_at': now},
           conflictAlgorithm: ConflictAlgorithm.ignore);
     }
   }
@@ -843,6 +872,56 @@ class AppDb {
     final cols = await db.rawQuery('PRAGMA table_info(tag_items)');
     if (cols.isEmpty) {
       await _createTagItems(db);
+    }
+  }
+
+  // v20 迁移（v1.45.0 客户分类标签上云）：tags 表补 updated_at 列。
+  // 存量标签的 updated_at 统一回填为 created_at（视为首次同步水位），
+  // 种子标签再次 INSERT OR IGNORE 幂等补写 updated_at（老库种子行无该列值）。
+  Future<void> _migrateToV20(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(tags)');
+    if (!cols.any((c) => c['name'] == 'updated_at')) {
+      await db.execute('ALTER TABLE tags ADD COLUMN updated_at INTEGER');
+    }
+    await db.execute(
+        'UPDATE tags SET updated_at = COALESCE(updated_at, created_at, 0) WHERE updated_at IS NULL OR updated_at = 0');
+    await _seedTags(db);
+  }
+
+  // v21 迁移（三端互联）：customer_tags / tag_items 上云。
+  // 同步契约要求每张同步表都含 id 与 updated_at（索引层按 id 读写、墓碑按 id 删）。
+  // ① customer_tags 原为 (customer_id, tag_id) 复合主键、无 id/updated_at，SQLite 无法
+  //    ALTER 加主键，故用「新表 + 拷贝 + 换名」重建：保留业务唯一约束 UNIQUE(customer_id, tag_id)，
+  //    存量关联行统一回填 created_at/updated_at = 当前时间（视为首次同步水位）。
+  // ② tag_items 已含 id/created_at，仅缺 updated_at，ALTER 补列并回填 created_at。
+  Future<void> _migrateToV21(Database db) async {
+    // 1) tag_items 补 updated_at
+    final tiCols = await db.rawQuery('PRAGMA table_info(tag_items)');
+    if (tiCols.isNotEmpty && !tiCols.any((c) => c['name'] == 'updated_at')) {
+      await db.execute('ALTER TABLE tag_items ADD COLUMN updated_at INTEGER');
+    }
+    await db.execute(
+        'UPDATE tag_items SET updated_at = COALESCE(updated_at, created_at, 0) WHERE updated_at IS NULL OR updated_at = 0');
+    // 2) customer_tags 重建：老表无 id / created_at / updated_at
+    final ctCols = await db.rawQuery('PRAGMA table_info(customer_tags)');
+    if (ctCols.isNotEmpty && !ctCols.any((c) => c['name'] == 'id')) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await db.execute('ALTER TABLE customer_tags RENAME TO customer_tags_old');
+      await db.execute('''
+        CREATE TABLE customer_tags(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          customer_id INTEGER NOT NULL,
+          tag_id INTEGER NOT NULL,
+          created_at INTEGER,
+          updated_at INTEGER,
+          UNIQUE(customer_id, tag_id)
+        )
+      ''');
+      await db.execute('''
+        INSERT INTO customer_tags(customer_id, tag_id, created_at, updated_at)
+        SELECT customer_id, tag_id, ?, ? FROM customer_tags_old
+      ''', [now, now]);
+      await db.execute('DROP TABLE customer_tags_old');
     }
   }
 
@@ -1205,7 +1284,11 @@ class AppDb {
 
   // 级联删除：先删该客户全部项目（deleteProject 已级联子表），再删待收/报价，最后删客户。
   Future<void> deleteCustomer(int id) async {
-    await _deleteByWhere('customer_tags', where: 'customer_id=?', whereArgs: [id]);
+    final links = await _all('customer_tags',
+        where: 'customer_id=?', whereArgs: [id]);
+    for (final r in links) {
+      await _deleteSyncById('customer_tags', r['id'] as int);
+    }
     final projects =
         await _all('projects', where: 'customer_id=?', whereArgs: [id]);
     for (final pr in projects) {
@@ -1242,12 +1325,21 @@ class AppDb {
     return rows.map((r) => (r['name'] ?? '').toString()).toList();
   }
 
+  // 行业 / 来源标签字典（tag_items）v21 起并入云同步通道：
+  // 以 (kind, name) 为业务唯一键，存在则复用 id 更新（updated_at 刷新触发同步），
+  // 不存在则 _insertSync 新建；两端按同键去重，保证跨端同一标签同一 id。
   Future<bool> addTagItem(String kind, String name) async {
     final t = name.trim();
     if (t.isEmpty) return false;
     final now = DateTime.now().millisecondsSinceEpoch;
+    final exist =
+        await _one('tag_items', where: 'kind=? AND name=?', whereArgs: [kind, t]);
     try {
-      await _insert('tag_items', {'kind': kind, 'name': t, 'created_at': now});
+      if (exist != null) {
+        await _updateSyncById('tag_items', {'kind': kind, 'name': t}, exist['id'] as int);
+        return true;
+      }
+      await _insertSync('tag_items', {'kind': kind, 'name': t, 'created_at': now});
       return true;
     } on DbConstraintException {
       return false; // 同名标签已存在，忽略重复
@@ -1256,24 +1348,37 @@ class AppDb {
     }
   }
 
+  // 删除行业 / 来源标签：按 (kind, name) 定位行 id，走同步删除（写墓碑，云端联动）。
   Future<void> deleteTagItem(String kind, String name) async {
-    await _deleteByWhere('tag_items',
-        where: 'kind=? AND name=?', whereArgs: [kind, name]);
+    final exist =
+        await _one('tag_items', where: 'kind=? AND name=?', whereArgs: [kind, name]);
+    if (exist != null) {
+      await _deleteSyncById('tag_items', exist['id'] as int);
+    }
   }
 
+  // 客户分类标签（tags）v1.45.0 起并入云同步通道：
+  // insertTag / updateTag / deleteTag 走 _insertSync / _updateSyncById / _deleteSyncById，
+  // 自动补 updated_at 并触发同步，App 端改色/增删会推送到网页端（共享 DATA.tags 行）。
   Future<int> insertTag(String name, int color) async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    return _insert('tags', {'name': name.trim(), 'color': color, 'created_at': now});
+    return _insertSync('tags',
+        {'name': name.trim(), 'color': color, 'created_at': now});
   }
 
   Future<void> updateTag(Tag t) async {
-    await _updateById('tags', t.toMap()..remove('id'), t.id!);
+    await _updateSyncById('tags', t.toMap()..remove('id'), t.id!);
   }
 
-  // 删除标签：同时移除该标签与全部客户的关联（级联清理 customer_tags）。
+  // 删除标签：同时移除该标签与全部客户的关联（级联清理 customer_tags，v21 起逐行走
+  // 同步删除写墓碑，云端关联行联动删除）。
   Future<void> deleteTag(int id) async {
-    await _deleteByWhere('customer_tags', where: 'tag_id=?', whereArgs: [id]);
-    await _deleteById('tags', id);
+    final links = await _all('customer_tags',
+        where: 'tag_id=?', whereArgs: [id]);
+    for (final r in links) {
+      await _deleteSyncById('customer_tags', r['id'] as int);
+    }
+    await _deleteSyncById('tags', id);
   }
 
   // 单客户的已打标签
@@ -1305,18 +1410,35 @@ class AppDb {
     return map;
   }
 
-  // 覆盖式保存客户标签（先清后插，事务包裹保证原子性）。
+  // 覆盖式保存客户标签（v21 起 diff 走同步通道）：
+  // 以 (customer_id, tag_id) 为业务唯一键，删除侧逐行 _deleteSyncById 写墓碑，
+  // 新增侧复用云端已有行 id（_updateSyncById 刷新 updated_at），两端按同键去重，
+  // 保证跨端同一关联同一 id；不做整表清空，避免误伤云端同步下来的关联行。
   Future<void> setCustomerTags(int customerId, List<int> tagIds) async {
-    final d = await db;
-    await d.transaction((txn) async {
-      await txn.delete('customer_tags',
-          where: 'customer_id=?', whereArgs: [customerId]);
-      for (final tid in tagIds) {
-        await txn.insert(
-            'customer_tags', {'customer_id': customerId, 'tag_id': tid},
-            conflictAlgorithm: ConflictAlgorithm.replace);
+    final existing = await _all('customer_tags',
+        where: 'customer_id=?', whereArgs: [customerId]);
+    final existIds = existing.map((r) => r['tag_id'] as int).toSet();
+    final wantIds = tagIds.toSet();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // 移除侧：本地有但目标没有
+    for (final r in existing) {
+      if (!wantIds.contains(r['tag_id'])) {
+        await _deleteSyncById('customer_tags', r['id'] as int);
       }
-    });
+    }
+    // 新增侧：目标有但本地没有（含本地从未建立、或云端同步来的同键行）
+    for (final tid in wantIds) {
+      if (existIds.contains(tid)) continue;
+      final dup = await _one('customer_tags',
+          where: 'customer_id=? AND tag_id=?', whereArgs: [customerId, tid]);
+      if (dup != null) {
+        await _updateSyncById('customer_tags', {'customer_id': customerId, 'tag_id': tid},
+            dup['id'] as int);
+      } else {
+        await _insertSync('customer_tags',
+            {'customer_id': customerId, 'tag_id': tid, 'created_at': now});
+      }
+    }
   }
 
   // 标签维度汇总（轻量，第19批）：每标签下客户数 + 标签下客户累计收款合计（分）。
@@ -2125,6 +2247,9 @@ class AppDb {
 
   // 按主键 upsert 一行服务器下发的数据（剥离内部字段 _ts / _deleted）。
   // 不触发数据变更通知（同步回写不应再次触发推送）。
+  // customer_tags / tag_items 额外按业务唯一键去重：云端可能同时存在两端各自生成的
+  // 同键行（App 推 id=A、网页推 id=B），落地时删除本地同键旧行（静默，不写墓碑），
+  // 保证本地最终只保留服务器最新一份，避免渲染 / 统计出现重复。
   Future<void> upsertSyncRow(String table, Map<String, Object?> row) async {
     final clean = Map<String, Object?>.from(row)
       ..remove('_ts')
@@ -2132,11 +2257,34 @@ class AppDb {
     final id = clean['id'];
     if (id == null) return;
     final d = await db;
-    await _guard(() => d.insert(
-          table,
-          clean,
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        ));
+    await _guard(() async {
+      if (table == 'customer_tags') {
+        final cid = clean['customer_id'];
+        final tid = clean['tag_id'];
+        if (cid != null && tid != null) {
+          final dup = await _one(table,
+              where: 'customer_id=? AND tag_id=?', whereArgs: [cid, tid]);
+          if (dup != null && dup['id'] != id) {
+            await d.delete(table, where: 'id=?', whereArgs: [dup['id']]);
+          }
+        }
+      } else if (table == 'tag_items') {
+        final kind = clean['kind'];
+        final name = clean['name'];
+        if (kind != null && name != null) {
+          final dup = await _one(table,
+              where: 'kind=? AND name=?', whereArgs: [kind, name]);
+          if (dup != null && dup['id'] != id) {
+            await d.delete(table, where: 'id=?', whereArgs: [dup['id']]);
+          }
+        }
+      }
+      await d.insert(
+        table,
+        clean,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    });
   }
 
   // 静默删除一行（同步应用服务器删除时使用，不再产生墓碑）。
@@ -2165,6 +2313,9 @@ class AppDb {
       'pending_collections',
       'milestones',
       'contracts',
+      'tags',
+      'customer_tags',
+      'tag_items',
     ];
     final d = await db;
     final counts = <String, int>{};
@@ -2231,8 +2382,9 @@ const Map<String, Set<String>> expectedColumns = {
     'id', 'user_id', 'phone', 'plan_key', 'plan_name', 'amount', 'channel',
     'status', 'ref_no', 'synced', 'created_at', 'updated_at',
   },
-  'tags': {'id', 'name', 'color', 'created_at'},
-  'customer_tags': {'customer_id', 'tag_id'},
+  'tags': {'id', 'name', 'color', 'created_at', 'updated_at'},
+  'customer_tags': {'id', 'customer_id', 'tag_id', 'created_at', 'updated_at'},
+  'tag_items': {'id', 'kind', 'name', 'created_at', 'updated_at'},
 };
 
 /// 单表结构完整性检查结果。
