@@ -85,6 +85,7 @@ class SyncService extends ChangeNotifier {
     'tags', // v1.45.0 客户分类标签上云：App 与网页端共享标签字典与颜色
     'customer_tags', // v21 客户挂标签关联上云：App 与网页端共享客户-标签多对多关系
     'tag_items', // v21 行业/来源标签字典上云：App 与网页端共享字典条目
+    'ledger_entries', // v23 日常记账：三餐/交通/日用等日常开支（与项目收款解耦，可挂项目）
   ];
 
   StorageMode _mode = StorageMode.local;
@@ -471,6 +472,7 @@ class SyncService extends ChangeNotifier {
     'contracts' => '合同',
     'customer_tags' => '客户标签关联',
     'tag_items' => '行业来源标签',
+    'ledger_entries' => '记账',
     _ => t,
   };
 

@@ -269,47 +269,100 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
 
   // ================= 里程碑 / 阶段管理（v1.10.0） =================
   Future<void> _addMilestone() async {
-    final nameCtrl = TextEditingController();
-    final amountCtrl = TextEditingController();
+    await _showMilestoneDialog();
+  }
+
+  Future<void> _editMilestone(Milestone ms) async {
+    await _showMilestoneDialog(ms);
+  }
+
+  // 新增 / 编辑阶段共用弹窗：新增时 existing 为 null；编辑时预填名称 / 金额 / 到期日期。
+  Future<void> _showMilestoneDialog([Milestone? existing]) async {
+    final nameCtrl = TextEditingController(text: existing?.name ?? '');
+    final amountCtrl = TextEditingController(
+        text: existing != null && existing.amount > 0 ? (existing.amount / 100).toString() : '');
+    var dueDate = existing?.dueDate ?? 0;
+    final fmt = DateFormat('yyyy-MM-dd');
     await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('添加阶段'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: '阶段名称', hintText: '如：设计稿 / 首款 / 尾款'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: amountCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: moneyInputFormatters,
-              decoration: const InputDecoration(labelText: '阶段金额（元）'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          title: Text(existing == null ? '添加阶段' : '编辑阶段'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: '阶段名称', hintText: '如：设计稿 / 首款 / 尾款'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: amountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: moneyInputFormatters,
+                decoration: const InputDecoration(labelText: '阶段金额（元）'),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Text('到期日期', style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final now = DateTime.now();
+                      final initial = dueDate > 0
+                          ? DateTime.fromMillisecondsSinceEpoch(dueDate)
+                          : DateTime(now.year, now.month, now.day);
+                      final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: initial,
+                        firstDate: DateTime(now.year - 1, 1, 1),
+                        lastDate: DateTime(now.year + 5, 12, 31),
+                        helpText: '选择到期日期',
+                      );
+                      if (picked != null) setDlg(() => dueDate = picked.millisecondsSinceEpoch);
+                    },
+                    icon: const Icon(Icons.event_outlined, size: 18),
+                    label: Text(
+                      dueDate > 0 ? fmt.format(DateTime.fromMillisecondsSinceEpoch(dueDate)) : '未设置',
+                    ),
+                  ),
+                  if (dueDate > 0)
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.close, size: 16, color: AppTheme.textSub),
+                      onPressed: () => setDlg(() => dueDate = 0),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(
+              onPressed: () {
+                final name = nameCtrl.text.trim();
+                final amount = (double.tryParse(amountCtrl.text.trim()) ?? 0) * 100;
+                if (name.isEmpty) return;
+                Navigator.pop(ctx, true);
+                if (existing == null) {
+                  AppDb.instance.insertMilestone(Milestone(
+                    projectId: _project.id!,
+                    name: name,
+                    amount: amount.round(),
+                    dueDate: dueDate,
+                    createdAt: DateTime.now().millisecondsSinceEpoch,
+                  )).then((_) => _load());
+                } else {
+                  AppDb.instance.updateMilestone(
+                      existing.copyWith(name: name, amount: amount.round(), dueDate: dueDate)).then((_) => _load());
+                }
+              },
+              child: const Text('保存'),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(
-            onPressed: () {
-              final name = nameCtrl.text.trim();
-              final amount = (double.tryParse(amountCtrl.text.trim()) ?? 0) * 100;
-              if (name.isEmpty) return;
-              Navigator.pop(ctx, true);
-              AppDb.instance.insertMilestone(Milestone(
-                projectId: _project.id!,
-                name: name,
-                amount: amount.round(),
-                createdAt: DateTime.now().millisecondsSinceEpoch,
-              )).then((_) => _load());
-            },
-            child: const Text('保存'),
-          ),
-        ],
       ),
     );
     nameCtrl.dispose();
@@ -491,11 +544,20 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                     decoration: m.done ? TextDecoration.lineThrough : null,
                     color: m.done ? AppTheme.textSub : null,
                   )),
-              subtitle: Text('¥${_fmt.format(m.amount / 100)}',
+              subtitle: Text('¥${_fmt.format(m.amount / 100)}${m.dueDate > 0 ? ' · 到期 ${DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(m.dueDate))}' : ''}',
                   style: const TextStyle(fontSize: 12)),
-              secondary: IconButton(
-                icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.textSub),
-                onPressed: () => _deleteMilestone(m),
+              secondary: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 18, color: AppTheme.textSub),
+                    onPressed: () => _editMilestone(m),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.textSub),
+                    onPressed: () => _deleteMilestone(m),
+                  ),
+                ],
               ),
             )),
       ],

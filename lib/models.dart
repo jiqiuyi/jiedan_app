@@ -761,6 +761,7 @@ class Milestone {
   final String name; // 阶段名称
   final int amount; // 阶段金额（分）
   final bool done; // 是否完成
+  final int dueDate; // 到期日期（ms 时间戳，0=未设置）
   final int createdAt;
   final int updatedAt; // 最后修改时间（ms），同步用
 
@@ -770,6 +771,7 @@ class Milestone {
     required this.name,
     this.amount = 0,
     this.done = false,
+    this.dueDate = 0,
     required this.createdAt,
     this.updatedAt = 0,
   });
@@ -780,6 +782,7 @@ class Milestone {
         'name': name,
         'amount': amount,
         'done': done ? 1 : 0,
+        'due_date': dueDate,
         'created_at': createdAt,
         'updated_at': updatedAt,
       };
@@ -790,16 +793,18 @@ class Milestone {
         name: (m['name'] as String?) ?? '',
         amount: (m['amount'] as num?)?.toInt() ?? 0,
         done: (m['done'] as int?) == 1,
+        dueDate: (m['due_date'] as num?)?.toInt() ?? 0,
         createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
         updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
       );
 
-  Milestone copyWith({String? name, int? amount, bool? done}) => Milestone(
+  Milestone copyWith({String? name, int? amount, bool? done, int? dueDate}) => Milestone(
         id: id,
         projectId: projectId,
         name: name ?? this.name,
         amount: amount ?? this.amount,
         done: done ?? this.done,
+        dueDate: dueDate ?? this.dueDate,
         createdAt: createdAt,
         updatedAt: updatedAt,
       );
@@ -1018,5 +1023,79 @@ class Invitee {
         rebate: rebate ?? this.rebate,
         paidAt: paidAt ?? this.paidAt,
         payoutAt: payoutAt ?? this.payoutAt,
+      );
+}
+
+/// 日常记账条目（v23，同步表 ledger_entries）。
+/// 金额统一「分」存储，展示「元」；kind: 0=支出 / 1=收入；
+/// category 取 AppConfig.ledgerCategories；「项目支出」关联 project_id，其余默认 0。
+class LedgerEntry {
+  final int? id;
+  final int amount; // 金额（分），禁止 double
+  final int kind; // 0=支出 / 1=收入
+  final String category;
+  final String note;
+  final int projectId; // 关联项目 id，0=未挂项目
+  final int entryDate; // 记账日期（ms，当天 0 点时间戳）
+  final int createdAt;
+  final int updatedAt; // 最后修改时间（ms），同步用
+
+  const LedgerEntry({
+    this.id,
+    required this.amount,
+    required this.kind,
+    required this.category,
+    this.note = '',
+    this.projectId = 0,
+    required this.entryDate,
+    required this.createdAt,
+    this.updatedAt = 0,
+  });
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'amount': amount,
+        'kind': kind,
+        'category': category,
+        'note': note,
+        'project_id': projectId,
+        'entry_date': entryDate,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+      };
+
+  factory LedgerEntry.fromMap(Map<String, Object?> m) => LedgerEntry(
+        id: m['id'] as int?,
+        amount: (m['amount'] as num?)?.toInt() ?? 0,
+        kind: (m['kind'] as num?)?.toInt() ?? 0,
+        category: (m['category'] as String?) ?? '',
+        note: (m['note'] as String?) ?? '',
+        projectId: (m['project_id'] as num?)?.toInt() ?? 0,
+        entryDate: (m['entry_date'] as num?)?.toInt() ?? 0,
+        createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
+        updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
+      );
+
+  LedgerEntry copyWith({
+    int? id,
+    int? amount,
+    int? kind,
+    String? category,
+    String? note,
+    int? projectId,
+    int? entryDate,
+    int? createdAt,
+    int? updatedAt,
+  }) =>
+      LedgerEntry(
+        id: id ?? this.id,
+        amount: amount ?? this.amount,
+        kind: kind ?? this.kind,
+        category: category ?? this.category,
+        note: note ?? this.note,
+        projectId: projectId ?? this.projectId,
+        entryDate: entryDate ?? this.entryDate,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
       );
 }

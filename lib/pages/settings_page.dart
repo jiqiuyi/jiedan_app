@@ -18,6 +18,7 @@ import 'data_management_page.dart';
 import 'feedback_page.dart';
 import 'income_stats_page.dart';
 import 'invite_page.dart';
+import 'ledger_page.dart';
 import 'login_page.dart';
 import 'pay_notice_guide_page.dart';
 import 'payment_code_settings_page.dart';
@@ -214,6 +215,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 _FunctionGrid(
                   items: [
+                    _FuncItem(Icons.receipt_long_outlined, AppTheme.accent, '记账',
+                        () => _push(const LedgerPage())),
                     _FuncItem(Icons.account_balance_wallet_outlined,
                         AppTheme.primary, '钱包', () => _push(const WalletPage())),
                     _FuncItem(Icons.qr_code_2, AppTheme.accent, '收款设置',

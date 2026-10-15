@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.45.0+62';
+  static const String version = '1.46.0+64';
   // 工信部 ICP 备案号（Android 合规要求：App 内显著位置可查，展示于「我的」页底部）
   static const String icpCode = '苏ICP备2026065744号-3A';
 
@@ -66,7 +66,14 @@ class AppConfig {
   // v18：第19批 标签系统 —— 新增 tags 标签表 + customer_tags 客户-标签多对多关联表
   // v19：标签维护 —— 新增 tag_items 行业/来源标签字典表（表单与筛选下拉共用）
   // v20：客户分类标签上云 —— tags 表补 updated_at 列并入同步通道（App 与网页端共享颜色/增删改）
-  static const int dbVersion = 21;
+  static const int dbVersion = 23;
+
+  /// 日常记账分类（v23）：与网页端约定同一套；「项目支出」允许关联 project_id，
+  /// 其余分类默认 project_id=0（纯日常开支，不挂项目）。
+  // ignore: constant_identifier_names
+  static const List<String> LEDGER_CATEGORIES = [
+    '三餐', '交通', '日用', '居住', '娱乐', '医疗', '人情', '项目支出', '其他',
+  ];
 
   // ---- 数据存储方式（v1.14.0）----
   // 存储方式的持久化键（settings 表）

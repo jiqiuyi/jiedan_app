@@ -236,6 +236,7 @@ class AppDb {
         await _createQuotes(db);
         await _createPendingCollections(db);
         await _createMilestones(db);
+        await _createLedgerEntries(db);
         await _createContracts(db);
         await _createSubscriptionOrders(db);
         await _createTags(db);
@@ -299,6 +300,8 @@ class AppDb {
       if (oldVersion < 19) await _migrateToV19(db);
       if (oldVersion < 20) await _migrateToV20(db);
       if (oldVersion < 21) await _migrateToV21(db);
+      if (oldVersion < 22) await _migrateToV22(db);
+      if (oldVersion < 23) await _migrateToV23(db);
       await _appendMigrationLog(db, '成功 v$oldVersion -> v$newVersion @ $now()');
     } catch (e, st) {
       // 记录失败日志后抛出统一中文异常；平台事务回滚后数据库保持旧版本与全部数据，
@@ -504,8 +507,27 @@ class AppDb {
         project_id INTEGER,
         name TEXT,
         amount INTEGER DEFAULT 0, -- 金额单位：分，禁止 double
+        due_date INTEGER DEFAULT 0, -- 到期日期（ms 时间戳，0=未设置）
         done INTEGER DEFAULT 0,
         created_at INTEGER
+      )
+    ''');
+  }
+
+  // v23 新增：日常记账表（与项目收款解耦，但「项目支出」可挂 project_id）。
+  Future<void> _createLedgerEntries(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ledger_entries(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount INTEGER DEFAULT 0, -- 金额单位：分，禁止 double
+        kind INTEGER DEFAULT 0, -- 0=支出 / 1=收入
+        category TEXT,
+        note TEXT,
+        project_id INTEGER DEFAULT 0, -- 关联项目 id，0=未挂项目
+        entry_date INTEGER, -- 记账日期（ms，当天 0 点时间戳）
+        created_at INTEGER,
+        updated_at INTEGER DEFAULT 0,
+        _deleted INTEGER DEFAULT 0
       )
     ''');
   }
@@ -622,6 +644,7 @@ class AppDb {
     await _createQuotes(db);
     await _createPendingCollections(db);
     await _createMilestones(db);
+    await _createLedgerEntries(db);
     await _createContracts(db);
     await _createSubscriptionOrders(db);
     await _createTags(db);
@@ -922,6 +945,23 @@ class AppDb {
         SELECT customer_id, tag_id, ?, ? FROM customer_tags_old
       ''', [now, now]);
       await db.execute('DROP TABLE customer_tags_old');
+    }
+  }
+
+  // v22 迁移（里程碑到期日）：milestones 表补 due_date 列（ms 时间戳，0=未设置）。
+  Future<void> _migrateToV22(Database db) async {
+    final cols = await db.rawQuery('PRAGMA table_info(milestones)');
+    if (!cols.any((c) => c['name'] == 'due_date')) {
+      await db.execute('ALTER TABLE milestones ADD COLUMN due_date INTEGER DEFAULT 0');
+    }
+  }
+
+  // v23 迁移（日常记账表）：PRAGMA 防重入，幂等建表（参考 _createMilestones）。
+  Future<void> _migrateToV23(Database db) async {
+    final cols = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='ledger_entries'");
+    if (cols.isEmpty) {
+      await _createLedgerEntries(db);
     }
   }
 
@@ -1939,6 +1979,24 @@ class AppDb {
     await _deleteSyncById('milestones', id);
   }
 
+  // ---------- ledger_entries（日常记账 v23，同步表）----------
+  Future<List<LedgerEntry>> getLedgerEntries() async {
+    final rows = await _all('ledger_entries', orderBy: 'entry_date DESC, id DESC');
+    return rows.map(LedgerEntry.fromMap).toList();
+  }
+
+  Future<int> insertLedgerEntry(LedgerEntry entry) async {
+    return _insertSync('ledger_entries', entry.toMap()..remove('id'));
+  }
+
+  Future<void> updateLedgerEntry(LedgerEntry entry) async {
+    await _updateSyncById('ledger_entries', entry.toMap(), entry.id!);
+  }
+
+  Future<void> deleteLedgerEntry(int id) async {
+    await _deleteSyncById('ledger_entries', id);
+  }
+
   // ---------- contracts（合同/协议 v10，同步表）----------
   Future<List<Contract>> getContracts() async {
     final rows = await _all('contracts', orderBy: 'signed_at DESC');
@@ -2316,6 +2374,7 @@ class AppDb {
       'tags',
       'customer_tags',
       'tag_items',
+      'ledger_entries',
     ];
     final d = await db;
     final counts = <String, int>{};
@@ -2372,7 +2431,7 @@ const Map<String, Set<String>> expectedColumns = {
     'id', 'project_id', 'quote_id', 'customer_id', 'title', 'amount',
     'due_date', 'status', 'created_at', 'settled_at',
   },
-  'milestones': {'id', 'project_id', 'name', 'amount', 'done', 'created_at'},
+  'milestones': {'id', 'project_id', 'name', 'amount', 'done', 'due_date', 'created_at'},
   'contracts': {
     'id', 'target', 'amount', 'project_id', 'status', 'signed_at',
     'contract_no', 'note',
@@ -2385,6 +2444,10 @@ const Map<String, Set<String>> expectedColumns = {
   'tags': {'id', 'name', 'color', 'created_at', 'updated_at'},
   'customer_tags': {'id', 'customer_id', 'tag_id', 'created_at', 'updated_at'},
   'tag_items': {'id', 'kind', 'name', 'created_at', 'updated_at'},
+  'ledger_entries': {
+    'id', 'amount', 'kind', 'category', 'note', 'project_id', 'entry_date',
+    'created_at', 'updated_at', '_deleted',
+  },
 };
 
 /// 单表结构完整性检查结果。
