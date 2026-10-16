@@ -38,6 +38,9 @@ class AppUpdater {
     try {
       await FlutterDownloader.initialize(debug: false);
       _port = ReceivePort();
+      // 防热重启/重复注册：先移除旧 port（旧 isolate 已销毁时 lookup 会拿到
+      // 死 port 导致回调丢失），再注册当前 port。
+      IsolateNameServer.removePortNameMapping(_portName);
       IsolateNameServer.registerPortWithName(_port!.sendPort, _portName);
       _port!.listen(_onDownloadEvent);
       await FlutterDownloader.registerCallback(_downloadCallback);
@@ -65,7 +68,10 @@ class AppUpdater {
         savedDir: dir.path,
         fileName: fileName,
         showNotification: true, // 通知栏展示下载进度
-        openFileFromNotification: false, // 下载完成后由本服务自动拉起安装
+        // 下载完成通知点击直接打开 APK 拉起系统安装界面（flutter_downloader
+        // 1.12.1 仅当此项为 true 时才会为完成通知设置 contentIntent，否则
+        // 点击通知无任何响应，App 也不会被唤起）
+        openFileFromNotification: true,
       );
       if (taskId == null || taskId.isEmpty) {
         _showSnack('开始下载失败，请稍后重试');
@@ -99,15 +105,67 @@ class AppUpdater {
 
   Future<void> _installByTaskId(String taskId) async {
     try {
+      String? path;
       final tasks = await FlutterDownloader.loadTasks();
-      if (tasks == null) return;
-      final task = tasks.where((t) => t.taskId == taskId).firstOrNull;
-      if (task == null || task.filename == null) return;
-      final path =
-          '${task.savedDir}${Platform.pathSeparator}${task.filename}';
+      if (tasks != null) {
+        final task = tasks.where((t) => t.taskId == taskId).firstOrNull;
+        if (task != null && task.filename != null) {
+          path =
+              '${task.savedDir}${Platform.pathSeparator}${task.filename}';
+        }
+      }
+      // 兜底：回调里 loadTasks 匹配不到 taskId（release 树摇 / 数据库丢失）时，
+      // 扫描下载目录中最新的 .apk 直接安装，避免静默失败。
+      path ??= await _findLatestApk();
+      if (path == null) {
+        _showSnack('新版本已下载，但未找到安装包，请稍后重试');
+        return;
+      }
       await _installApk(path);
     } catch (_) {
       _showSnack('下载完成但安装失败，请稍后重试');
+    }
+  }
+
+  /// 扫描下载目录中最新的 .apk 文件（taskId 匹配失败时的兜底）。
+  Future<String?> _findLatestApk() async {
+    try {
+      final dir = await _ensureDownloadDir();
+      final files = dir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.toLowerCase().endsWith('.apk'))
+          .toList()
+        ..sort((a, b) =>
+            b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+      if (files.isEmpty) return null;
+      return files.first.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 消费原生侧记录的通知点击 / APK 打开意图并触发安装。
+  /// 冷启动（onCreate 置位）与前台恢复（onNewIntent 置位）后由 main.dart 调用。
+  Future<void> checkPendingInstall() async {
+    try {
+      final pending = await _installChannel
+          .invokeMapMethod<String, dynamic>('consumeNotificationInstall');
+      if (pending == null || pending.isEmpty) return;
+      final taskId = pending['taskId'] as String?;
+      final path = pending['path'] as String?;
+      if (taskId != null && taskId.isNotEmpty) {
+        await _installByTaskId(taskId);
+      } else if (path != null && path.isNotEmpty) {
+        final f = File(path);
+        if (f.existsSync()) {
+          await _installApk(path);
+        } else {
+          _showSnack('安装包不存在，请重新下载更新');
+        }
+      }
+    } catch (_) {
+      _showSnack('安装失败，请稍后重试');
     }
   }
 

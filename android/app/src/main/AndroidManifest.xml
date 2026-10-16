@@ -100,5 +100,12 @@
             <action android:name="android.intent.action.SENDTO"/>
             <data android:scheme="mailto"/>
         </intent>
+        <!-- App 内更新（v1.46.4）：Android 11+ 包可见性限制下，需显式声明
+             查询可处理 APK 安装 intent 的系统安装器，否则 startActivity 可能
+             抛 ActivityNotFoundException。 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:mimeType="application/vnd.android.package-archive"/>
+        </intent>
     </queries>
 </manifest>

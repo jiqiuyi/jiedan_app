@@ -125,6 +125,8 @@ class _JieDanAppState extends State<JieDanApp> with WidgetsBindingObserver {
       unawaited(LedgerWidgetBridge.refresh());
       // 冷启动：消费桌面小组件「记一笔」意图，直接弹出极速记账面板
       unawaited(_maybeOpenQuickLedger());
+      // 冷启动：消费通知点击「下载完成」置位的安装意图（v1.46.4）
+      unawaited(AppUpdater.instance.checkPendingInstall());
     });
   }
 
@@ -140,6 +142,8 @@ class _JieDanAppState extends State<JieDanApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       // 前台恢复：消费小组件「记一笔」意图（热启动）
       unawaited(_maybeOpenQuickLedger());
+      // 前台恢复：消费通知点击「下载完成」置位的安装意图（v1.46.4）
+      unawaited(AppUpdater.instance.checkPendingInstall());
     }
   }
 
