@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 桌面记账小组件（App Widget）：BIND_APPWIDGET 为系统签名权限，
+         声明后桌面宿主可正常绑定/刷新小组件（v1.46.1）。 -->
+    <uses-permission android:name="android.permission.BIND_APPWIDGET"/>
     <!-- 支付二维码保存到相册：Android 10（API 29）及以下需要写入外部存储权限，
          Android 11+ 通过 MediaStore 写入无需该权限 -->
     <uses-permission
@@ -53,6 +56,19 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- 桌面记账小组件（4x2）：数据由 Flutter 侧写入 SharedPreferences 并主动刷新；
+             「记一笔」PendingIntent 携带 com.jiedan.guanjia.QUICK_LEDGER 拉起极速记账面板。 -->
+        <receiver
+            android:name=".LedgerWidgetProvider"
+            android:exported="true"
+            android:label="接单管家·记账">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ledger_widget_info"/>
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

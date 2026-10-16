@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 接单管家·记账 桌面小组件描述（4x2 中号；updatePeriodMillis=0 由 Flutter 主动刷新） -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:minWidth="250dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/widget_ledger"
+    android:resizeMode="none"
+    android:widgetCategory="home_screen"
+    tools:targetApi="31" />

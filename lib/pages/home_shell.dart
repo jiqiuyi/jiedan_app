@@ -18,10 +18,10 @@ class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
   @override
-  State<HomeShell> createState() => _HomeShellState();
+  State<HomeShell> createState() => HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class HomeShellState extends State<HomeShell> {
   int _index = 0;
 
   @override
@@ -43,13 +43,15 @@ class _HomeShellState extends State<HomeShell> {
     SettingsPage(),
   ];
 
-  /// 全局悬浮球：极速记账。保存成功返回 true，由调用方 toast「已记账」。
-  Future<void> _openQuickLedger() async {
+  /// 极速记账：保存成功返回 true，由调用方 toast「已记账」。
+  /// 由全局悬浮球调用；桌面小组件「记一笔」（QUICK_LEDGER）也会经
+  /// HomeShellState 直接拉起同一面板，不经过首页。
+  Future<void> openQuickLedger() async {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const _QuickLedgerSheet(),
+      builder: (_) => const QuickLedgerSheet(),
     );
     if (saved == true && mounted) {
       ScaffoldMessenger.of(context)
@@ -63,7 +65,7 @@ class _HomeShellState extends State<HomeShell> {
     return Scaffold(
       body: IndexedStack(index: _index, children: _pages),
       floatingActionButton: FloatingActionButton(
-        onPressed: _openQuickLedger,
+        onPressed: openQuickLedger,
         backgroundColor: AppTheme.accent,
         foregroundColor: Colors.white,
         tooltip: '极速记账',
@@ -85,16 +87,16 @@ class _HomeShellState extends State<HomeShell> {
   }
 }
 
-/// 极速记账面板（全局悬浮球弹出）：分类 chip + 大号金额 + 快捷金额 + 备注 + 保存。
+/// 极速记账面板（全局悬浮球/桌面小组件「记一笔」弹出）：分类 chip + 大号金额 + 快捷金额 + 备注 + 保存。
 /// 保存成功 `Navigator.pop(context, true)`，由 HomeShell toast「已记账」。
-class _QuickLedgerSheet extends StatefulWidget {
-  const _QuickLedgerSheet();
+class QuickLedgerSheet extends StatefulWidget {
+  const QuickLedgerSheet({super.key});
 
   @override
-  State<_QuickLedgerSheet> createState() => _QuickLedgerSheetState();
+  State<QuickLedgerSheet> createState() => QuickLedgerSheetState();
 }
 
-class _QuickLedgerSheetState extends State<_QuickLedgerSheet> {
+class QuickLedgerSheetState extends State<QuickLedgerSheet> {
   static const _quickAmounts = [10, 20, 30, 50, 100];
 
   final AppDb _db = AppDb.instance;

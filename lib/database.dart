@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:crypto/crypto.dart';
+import 'dart:async';
 import 'dart:convert';
 
 import 'constants.dart';
@@ -58,6 +59,10 @@ class AppDb {
 
   // 业务数据（同步范围表）发生本地写入/删除时回调，由 SyncService 挂接做异步推送。
   static void Function()? onDataChanged;
+
+  // 记账数据变更回调（v1.46.1 桌面小组件桥）：由 main.dart 启动时挂接
+  // LedgerWidgetBridge.refresh，记账增删改成功后自动刷新小组件数据。
+  static Future<void> Function()? onLedgerChanged;
 
   void _notify() {
     onDataChanged?.call();
@@ -1986,15 +1991,25 @@ class AppDb {
   }
 
   Future<int> insertLedgerEntry(LedgerEntry entry) async {
-    return _insertSync('ledger_entries', entry.toMap()..remove('id'));
+    final id = await _insertSync('ledger_entries', entry.toMap()..remove('id'));
+    _notifyLedgerChanged();
+    return id;
   }
 
   Future<void> updateLedgerEntry(LedgerEntry entry) async {
     await _updateSyncById('ledger_entries', entry.toMap(), entry.id!);
+    _notifyLedgerChanged();
   }
 
   Future<void> deleteLedgerEntry(int id) async {
     await _deleteSyncById('ledger_entries', id);
+    _notifyLedgerChanged();
+  }
+
+  /// 记账数据变更后触发桌面小组件刷新（v1.46.1，静默，失败不影响主流程）。
+  void _notifyLedgerChanged() {
+    final cb = onLedgerChanged;
+    if (cb != null) unawaited(cb());
   }
 
   // ---------- contracts（合同/协议 v10，同步表）----------

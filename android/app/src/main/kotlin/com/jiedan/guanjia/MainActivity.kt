@@ -13,6 +13,23 @@ import java.security.MessageDigest
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.jiedan.guanjia/signature"
     private val PAY_CHANNEL = "com.jiedan.guanjia/paylistener"
+    private val WIDGET_CHANNEL = "com.jiedan.guanjia/widget"
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        // 冷启动：桌面小组件「记一笔」直接拉起极速记账面板（不经过首页）
+        if (intent?.action == LedgerWidgetProvider.ACTION_QUICK_LEDGER) {
+            pendingQuickLedger = true
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // 热启动/前台恢复：小组件「记一笔」置位意图，由 Flutter 侧轮询消费
+        if (intent.action == LedgerWidgetProvider.ACTION_QUICK_LEDGER) {
+            pendingQuickLedger = true
+        }
+    }
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -55,6 +72,25 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // 桌面小组件桥：Flutter 侧轮询消费「记一笔」拉起意图（QUICK_LEDGER）。
+        // 冷启动由 onCreate 置位，热启动由 onNewIntent 置位；消费后复位，避免重复弹窗。
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WIDGET_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "consumeQuickLedger" -> {
+                        val v = pendingQuickLedger
+                        pendingQuickLedger = false
+                        result.success(v)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    companion object {
+        @Volatile
+        private var pendingQuickLedger = false
     }
 
     /// 获取当前 APK 实际签名证书的 SHA-256 指纹（冒号分隔大写，如

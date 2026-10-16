@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 「记一笔」按钮背景：品牌蓝圆角 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#4A5AF0" />
+    <corners android:radius="10dp" />
+</shape>

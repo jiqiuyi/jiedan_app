@@ -13,6 +13,7 @@ import 'services/notify_service.dart';
 import 'services/pay_notice_reporter.dart';
 import 'services/signature_guard.dart';
 import 'services/sync_service.dart';
+import 'services/ledger_widget_bridge.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -99,8 +100,53 @@ class TamperedApp extends StatelessWidget {
   }
 }
 
-class JieDanApp extends StatelessWidget {
+class JieDanApp extends StatefulWidget {
   const JieDanApp({super.key});
+
+  @override
+  State<JieDanApp> createState() => _JieDanAppState();
+}
+
+class _JieDanAppState extends State<JieDanApp> with WidgetsBindingObserver {
+  /// HomeShell 的 State 引用：桌面小组件「记一笔」拉起时直接弹极速记账面板。
+  final GlobalKey<HomeShellState> _homeKey = GlobalKey<HomeShellState>();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // 记账增删改 -> 刷新桌面小组件（v1.46.1）
+    AppDb.onLedgerChanged = LedgerWidgetBridge.refresh;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 启动时同步一次小组件数据（补桌面添加后未触发过的场景）
+      unawaited(LedgerWidgetBridge.refresh());
+      // 冷启动：消费桌面小组件「记一笔」意图，直接弹出极速记账面板
+      unawaited(_maybeOpenQuickLedger());
+    });
+  }
+
+  @override
+  void dispose() {
+    AppDb.onLedgerChanged = null;
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // 前台恢复：消费小组件「记一笔」意图（热启动）
+      unawaited(_maybeOpenQuickLedger());
+    }
+  }
+
+  /// 若原生侧有未消费的 QUICK_LEDGER 意图，则直接拉起极速记账面板（不经过首页）。
+  Future<void> _maybeOpenQuickLedger() async {
+    final should = await LedgerWidgetBridge.consumeQuickLedger();
+    if (!should) return;
+    final shell = _homeKey.currentState;
+    if (shell != null) shell.openQuickLedger();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -118,7 +164,7 @@ class JieDanApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: const HomeShell(),
+      home: HomeShell(key: _homeKey),
     );
   }
 }
