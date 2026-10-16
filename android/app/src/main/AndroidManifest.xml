@@ -8,6 +8,11 @@
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29"/>
+    <!-- App 内更新（v1.46.2）：下载完成后直接拉起系统安装界面，需要安装未知来源权限 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- App 内更新（v1.46.2）：通知栏展示下载进度（Android 13+ 运行时权限，
+         低版本自动忽略；运行时权限已在 NotifyService 初始化时申请） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="接单管家"
         android:name="${applicationName}"
@@ -56,6 +61,17 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- App 内更新（v1.46.2）：下载完成的 APK 通过 FileProvider 生成
+             content:// URI 提供给系统安装器，避免 file:// 限制 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"/>
+        </provider>
         <!-- 桌面记账小组件（4x2）：数据由 Flutter 侧写入 SharedPreferences 并主动刷新；
              「记一笔」PendingIntent 携带 com.jiedan.guanjia.QUICK_LEDGER 拉起极速记账面板。 -->
         <receiver

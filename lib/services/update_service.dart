@@ -4,10 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../constants.dart';
-import 'error_reporter.dart';
+import 'app_updater.dart';
 
 /// 远端版本清单字段
 class UpdateInfo {
@@ -166,7 +165,8 @@ class UpdateService {
               ),
             FilledButton.icon(
               onPressed: () {
-                _openDownload(info.url);
+                // v1.46.2：改为 App 内后台下载并自动拉起安装，不再跳转浏览器
+                AppUpdater.instance.startDownload(info.url, info.version);
                 Navigator.pop(ctx);
               },
               icon: const Icon(Icons.download_outlined, size: 18),
@@ -176,22 +176,6 @@ class UpdateService {
         );
       },
     );
-  }
-
-  Future<void> _openDownload(String url) async {
-    try {
-      final ok = await launchUrl(Uri.parse(url),
-          mode: LaunchMode.externalApplication);
-      if (!ok) {
-        appMessengerKey.currentState?.showSnackBar(
-          const SnackBar(content: Text('无法打开下载地址，请稍后重试')),
-        );
-      }
-    } catch (_) {
-      appMessengerKey.currentState?.showSnackBar(
-        const SnackBar(content: Text('无法打开下载地址')),
-      );
-    }
   }
 
   /// 远端是否比本地新：先比版本名各段，相同再比构建号。

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 更新 APK FileProvider 可共享路径（v1.46.2）：
+     下载目录使用 App 私有外部文件目录 downloads/（path_provider 的
+     getApplicationSupportDirectory() 在 Android 上即 getFilesDir()）。
+     cache-path 兜底，允许从缓存目录共享 APK。 -->
+<paths>
+    <files-path
+        name="apk_files"
+        path="downloads/"/>
+    <cache-path
+        name="apk_cache"
+        path="."/>
+</paths>
