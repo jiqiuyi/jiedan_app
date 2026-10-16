@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants.dart';
 import '../database.dart';
@@ -24,6 +25,21 @@ class HomeShell extends StatefulWidget {
 class HomeShellState extends State<HomeShell> {
   int _index = 0;
 
+  // ---- 悬浮球可拖动（v1.46.3）----
+  static const double _fabSize = 56; // FloatingActionButton 默认尺寸
+  static const double _edgeMargin = 8; // 左右最小边距
+  static const double _dragThreshold = 10; // 超过该位移视为拖动，否则视为点击
+  static const double _navBarHeight = 80; // Material3 NavigationBar 默认高度
+  static const String _prefFabDx = 'fab_dx_ratio';
+  static const String _prefFabDy = 'fab_dy_ratio';
+
+  double _fabDx = 0; // 悬浮球 left（未恢复前为默认右下）
+  double _fabDy = 0; // 悬浮球 top
+  bool _fabLoaded = false; // 是否已从本地恢复位置
+  Offset? _dragStart; // 拖动起点（fab 当前位置）
+  Offset? _pointerStart; // 指针按下位置（fab 本地坐标）
+  bool _fabDragging = false; // 本次手势是否已判定为拖动
+
   @override
   void initState() {
     super.initState();
@@ -33,6 +49,97 @@ class HomeShellState extends State<HomeShell> {
         if (mounted) UpdateService.instance.checkAuto(context);
       });
     });
+    // 异步恢复上次保存的悬浮球位置（await 后已过首帧，MediaQuery 可用）
+    _loadFabPosition();
+  }
+
+  /// 从 SharedPreferences 恢复悬浮球位置（比例值），无历史值时保持默认右下。
+  Future<void> _loadFabPosition() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rx = prefs.getDouble(_prefFabDx);
+    final ry = prefs.getDouble(_prefFabDy);
+    if (!mounted) return;
+    if (rx != null && ry != null) {
+      final bound = _fabBounds();
+      setState(() {
+        _fabDx = _edgeMargin + rx * (bound.maxX - _edgeMargin);
+        _fabDy = bound.minY + ry * (bound.maxY - bound.minY);
+        _fabLoaded = true;
+      });
+    } else {
+      setState(() => _fabLoaded = true);
+    }
+  }
+
+  /// 悬浮球可活动边界：左右留 8px、上方留状态栏高度、下方避开 NavigationBar。
+  ({double minX, double maxX, double minY, double maxY}) _fabBounds() {
+    final size = MediaQuery.of(context).size;
+    final top = MediaQuery.of(context).padding.top;
+    final minX = _edgeMargin;
+    final maxX = size.width - _fabSize - _edgeMargin;
+    final minY = top + _edgeMargin;
+    final maxY = size.height - _navBarHeight - _fabSize - _edgeMargin;
+    return (minX: minX, maxX: maxX, minY: minY, maxY: maxY);
+  }
+
+  /// 拖动结束保存位置（比例值，便于不同分辨率适配）。
+  Future<void> _saveFabPosition() async {
+    final b = _fabBounds();
+    final rx = ((_fabDx - b.minX) / (b.maxX - b.minX)).clamp(0.0, 1.0);
+    final ry = ((_fabDy - b.minY) / (b.maxY - b.minY)).clamp(0.0, 1.0);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_prefFabDx, rx);
+    await prefs.setDouble(_prefFabDy, ry);
+  }
+
+  /// 悬浮球 Widget：可拖动，未拖动时 onPanEnd 触发点击（打开极速记账）。
+  Widget _buildFab(BuildContext context) {
+    final b = _fabBounds();
+    // 未恢复前使用默认右下位置（距右 16、距底部 NavigationBar 上缘 16）
+    var dx = _fabLoaded ? _fabDx : b.maxX - 16 + 8; // 右侧 16px 视觉边距
+    var dy = _fabLoaded ? _fabDy : b.maxY - 16;
+    dx = dx.clamp(b.minX, b.maxX).toDouble();
+    dy = dy.clamp(b.minY, b.maxY).toDouble();
+
+    return Positioned(
+      left: dx,
+      top: dy,
+      child: GestureDetector(
+        onPanDown: (d) {
+          _dragStart = Offset(_fabDx, _fabDy);
+          _pointerStart = d.localPosition;
+          _fabDragging = false;
+        },
+        onPanUpdate: (d) {
+          final start = _dragStart;
+          final ptr = _pointerStart;
+          if (start == null || ptr == null) return;
+          final delta = d.localPosition - ptr;
+          if (delta.distance > _dragThreshold) _fabDragging = true;
+          if (_fabDragging) {
+            setState(() {
+              _fabDx = (start.dx + delta.dx).clamp(b.minX, b.maxX);
+              _fabDy = (start.dy + delta.dy).clamp(b.minY, b.maxY);
+            });
+          }
+        },
+        onPanEnd: (_) {
+          if (_fabDragging) {
+            _saveFabPosition();
+          } else {
+            // 未达到拖动阈值，视为点击：打开极速记账
+            openQuickLedger();
+          }
+        },
+        child: FloatingActionButton(
+          onPressed: openQuickLedger,
+          backgroundColor: AppTheme.accent,
+          foregroundColor: Colors.white,
+          tooltip: '极速记账',
+          child: const Icon(Icons.edit_note, size: 30),
+        ),
+      ),
+    );
   }
 
   static const _pages = [
@@ -63,15 +170,12 @@ class HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
-      floatingActionButton: FloatingActionButton(
-        onPressed: openQuickLedger,
-        backgroundColor: AppTheme.accent,
-        foregroundColor: Colors.white,
-        tooltip: '极速记账',
-        child: const Icon(Icons.edit_note, size: 30),
+      body: Stack(
+        children: [
+          IndexedStack(index: _index, children: _pages),
+          _buildFab(context),
+        ],
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
