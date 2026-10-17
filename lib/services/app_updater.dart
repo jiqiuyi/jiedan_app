@@ -6,7 +6,9 @@ import 'dart:ui' show IsolateNameServer;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'error_reporter.dart';
 
@@ -29,6 +31,10 @@ class AppUpdater {
 
   bool _inited = false;
   ReceivePort? _port;
+  /// 最近一次下载的 URL / 版本（complete 回调时记录，供失败后「重新尝试」
+  /// 重新下载使用；进程存活期间有效）。
+  String? _lastDownloadUrl;
+  String? _lastVersion;
 
   /// 应用启动时初始化：注册下载回调（后台 isolate 事件转发到主 isolate）。
   /// 失败不阻断启动（仅失去自动安装能力，可手动重试）。
@@ -51,6 +57,8 @@ class AppUpdater {
 
   /// 开始后台下载新版 APK；下载完成回调自动触发安装。
   Future<void> startDownload(String url, String version) async {
+    _lastDownloadUrl = url;
+    _lastVersion = version;
     try {
       final dir = await _ensureDownloadDir();
       final fileName = 'jiedan_guanjia_v$version.apk';
@@ -112,6 +120,9 @@ class AppUpdater {
         if (task != null && task.filename != null) {
           path =
               '${task.savedDir}${Platform.pathSeparator}${task.filename}';
+          // 记录最近下载信息，供安装失败后「重新尝试」重新下载使用。
+          _lastDownloadUrl = task.url;
+          _lastVersion = _versionFromApkName(task.filename!);
         }
       }
       // 兜底：回调里 loadTasks 匹配不到 taskId（release 树摇 / 数据库丢失）时，
@@ -147,11 +158,16 @@ class AppUpdater {
 
   /// 消费原生侧记录的通知点击 / APK 打开意图并触发安装。
   /// 冷启动（onCreate 置位）与前台恢复（onNewIntent 置位）后由 main.dart 调用。
+  /// 若无待消费意图，则兜底扫描下载目录中比当前版本新的 APK（覆盖
+  /// 「后台下载完成但回调丢失 / 通知被清」场景），弹窗让用户决定是否安装。
   Future<void> checkPendingInstall() async {
     try {
       final pending = await _installChannel
           .invokeMapMethod<String, dynamic>('consumeNotificationInstall');
-      if (pending == null || pending.isEmpty) return;
+      if (pending == null || pending.isEmpty) {
+        await _offerPendingApkOnStartup();
+        return;
+      }
       final taskId = pending['taskId'] as String?;
       final path = pending['path'] as String?;
       if (taskId != null && taskId.isNotEmpty) {
@@ -169,22 +185,142 @@ class AppUpdater {
     }
   }
 
+  /// 启动兜底：下载目录存在比当前版本新的 APK 时弹窗询问安装。
+  /// 用 SharedPreferences 记录已询问过的文件名，避免每次启动重复打扰。
+  static const String _offeredApkKey = 'update_install_offered_apk';
+
+  Future<void> _offerPendingApkOnStartup() async {
+    try {
+      final dir = await _ensureDownloadDir();
+      final files = dir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.toLowerCase().endsWith('.apk'))
+          .toList()
+        ..sort((a, b) =>
+            b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+      if (files.isEmpty) return;
+      final latest = files.first.path;
+      final apkName = latest.split(Platform.pathSeparator).last;
+      final apkVersion = _versionFromApkName(apkName);
+      if (apkVersion == null) return;
+      final info = await PackageInfo.fromPlatform();
+      if (!_isVersionNewer(apkVersion, info.version)) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getString(_offeredApkKey) == apkName) return;
+      await prefs.setString(_offeredApkKey, apkName);
+
+      final ctx = appNavigatorKey.currentContext;
+      if (ctx == null) return;
+      if (!ctx.mounted) return;
+      await showDialog<void>(
+        context: ctx,
+        builder: (dialogCtx) => AlertDialog(
+          title: Text('检测到新版本 v$apkVersion'),
+          content: const Text('新版本安装包已下载完成，是否现在安装？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text('暂不'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogCtx);
+                unawaited(_installApk(latest));
+              },
+              child: const Text('立即安装'),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      // 兜底失败静默即可：用户仍可走「检查更新」主动下载
+    }
+  }
+
   /// 拉起系统安装界面（原生侧经 FileProvider 提供 content:// URI）。
-  Future<void> _installApk(String path) async {
+  /// 失败时弹可见对话框（原因 + 手动安装 + 重新尝试），绝不静默。
+  Future<void> _installApk(String path, {String? reason}) async {
     try {
       final ok = await _installChannel.invokeMethod<bool>('installApk', path);
       if (ok != true) {
-        _showSnack('安装失败，请稍后重试');
+        _showInstallFailedDialog(
+          reason ?? '系统未启动安装界面，请重试',
+          path: path,
+        );
       }
     } on PlatformException catch (e) {
       if (e.code == 'need_unknown_sources') {
         _showNeedUnknownSourcesDialog();
       } else {
-        _showSnack('安装失败：${e.message ?? '请稍后重试'}');
+        _showInstallFailedDialog(e.message ?? '请稍后重试', path: path);
       }
-    } catch (_) {
-      _showSnack('安装失败，请稍后重试');
+    } catch (e) {
+      _showInstallFailedDialog('$e', path: path);
     }
+  }
+
+  /// 安装失败兜底对话框：展示失败原因，并提供「手动安装」（再次拉起系统
+  /// 安装器）与「重新尝试」（重新下载后自动安装）两条出路。
+  void _showInstallFailedDialog(String reason, {String? path}) {
+    final ctx = appNavigatorKey.currentContext;
+    if (ctx == null) return;
+    final canReDownload = _lastDownloadUrl != null && _lastVersion != null;
+    showDialog<void>(
+      context: ctx,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('新版本安装失败'),
+        content: Text(
+          '下载已完成，但安装未成功：\n$reason\n\n'
+          '可尝试手动安装；若仍失败，可重新下载后再次安装。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('关闭'),
+          ),
+          if (canReDownload)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogCtx);
+                unawaited(startDownload(
+                  _lastDownloadUrl!,
+                  _lastVersion!,
+                ));
+              },
+              child: const Text('重新尝试'),
+            ),
+          if (path != null)
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogCtx);
+                unawaited(_installApk(path));
+              },
+              child: const Text('手动安装'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 从 APK 文件名（jiedan_guanjia_v1.46.8.apk）解析版本号。
+  String? _versionFromApkName(String name) {
+    final m = RegExp(r'v(\d+\.\d+\.\d+)\.apk$').firstMatch(name);
+    return m?.group(1);
+  }
+
+  /// 简单版本号比较：a 是否比 b 新（逐段数字比较）。
+  bool _isVersionNewer(String a, String b) {
+    final pa = a.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final pb = b.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final len = pa.length > pb.length ? pa.length : pb.length;
+    for (var i = 0; i < len; i++) {
+      final x = i < pa.length ? pa[i] : 0;
+      final y = i < pb.length ? pb[i] : 0;
+      if (x != y) return x > y;
+    }
+    return false;
   }
 
   void _showNeedUnknownSourcesDialog() {
@@ -195,7 +331,11 @@ class AppUpdater {
       builder: (dialogCtx) => AlertDialog(
         title: const Text('需要允许安装未知来源应用'),
         content: const Text(
-            '系统未允许安装未知来源应用，请前往系统设置开启「允许安装未知应用」后重新更新。'),
+            '系统未允许安装未知来源应用，将无法弹出安装界面。\n'
+            '请点击「去开启」跳转系统设置：\n'
+            '华为/荣耀设备：设置 → 更多安全设置 → 外部来源应用（或安装外部来源应用）→ 允许本应用。\n'
+            '其他设备：设置 → 安全 → 安装未知应用 → 允许本应用。\n'
+            '开启后返回本页重试即可。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),

@@ -72,6 +72,22 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"/>
         </provider>
+        <!-- App 内更新（v1.46.8）：flutter_downloader 1.12.1 完成通知的 contentIntent
+             使用 authority="${applicationId}.flutter_downloader.provider" 的
+             FileProvider 生成 content:// URI（IntentUtils.buildIntent），但插件自身
+             manifest 未注册该 provider，getUriForFile 会抛 IllegalArgumentException
+             导致任务被标记 FAILED：自动安装不触发、通知点击无响应。
+             此处由宿主工程补注册同一 authority，复用 file_paths.xml（files/downloads
+             与 cache 已覆盖），恢复「点通知直接拉起系统安装器」链路。 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.flutter_downloader.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"/>
+        </provider>
         <!-- 桌面记账小组件（4x2）：数据由 Flutter 侧写入 SharedPreferences 并主动刷新；
              「记一笔」PendingIntent 携带 com.jiedan.guanjia.QUICK_LEDGER 拉起极速记账面板。 -->
         <receiver
