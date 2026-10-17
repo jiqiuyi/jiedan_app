@@ -287,7 +287,7 @@ class AppState extends ChangeNotifier {
     }
     // 数据存储方式（v1.14.0）：含服务器模式时，注册成功后立即拉取合并云端业务数据。
     if (SyncService.instance.canSync) {
-      unawaited(SyncService.instance.syncOnStart());
+      unawaited(_safeSyncOnStart());
     }
     notifyListeners();
     return null;
@@ -319,10 +319,21 @@ class AppState extends ChangeNotifier {
     }
     // 数据存储方式（v1.14.0）：含服务器模式时，登录成功后立即拉取合并云端业务数据。
     if (SyncService.instance.canSync) {
-      unawaited(SyncService.instance.syncOnStart());
+      unawaited(_safeSyncOnStart());
     }
     notifyListeners();
     return null;
+  }
+
+  /// 登录/注册成功后的首轮云同步：异常静默吞掉。
+  /// 同步失败不弹全局「操作未能完成」误导文案（登录本身已成功），
+  /// 错误由 SyncService 内部状态记录、设置页可见，下次周期同步自动重试。
+  Future<void> _safeSyncOnStart() async {
+    try {
+      await SyncService.instance.syncOnStart();
+    } catch (_) {
+      // 静默：同步失败不影响已成功的登录会话。
+    }
   }
 
   Future<void> logout() async {
