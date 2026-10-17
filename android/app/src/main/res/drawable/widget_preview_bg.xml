@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 小组件预览图（华为/旧版 picker 依赖 android:previewImage 展示，
+     该属性必须指向 drawable；previewLayout 仅 Android 12+ 生效）。
+     静态卡片示意：白底圆角 + 品牌蓝标题条 + 浅蓝内容区。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape>
+            <solid android:color="#FFFFFFFF" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+    <item
+        android:top="8dp"
+        android:left="8dp"
+        android:right="8dp">
+        <shape>
+            <solid android:color="#4A5AF0" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+    <item
+        android:top="26dp"
+        android:left="12dp"
+        android:right="12dp"
+        android:bottom="14dp">
+        <shape>
+            <solid android:color="#EEF0FF" />
+            <corners android:radius="4dp" />
+        </shape>
+    </item>
+</layer-list>

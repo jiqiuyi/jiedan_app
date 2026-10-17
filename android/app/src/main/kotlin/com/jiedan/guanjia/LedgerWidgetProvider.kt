@@ -5,16 +5,19 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
-import android.view.View
 import android.widget.RemoteViews
-import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 接单管家·记账 桌面小组件 Provider（4x2 中号）。
+ * 接单管家·记账 桌面小组件 Provider（4x2）。
+ *
+ * v1.46.7 华为兼容极简版：布局仅 LinearLayout + TextView，全部字面值颜色，
+ * 无主题属性 / 自定义字体 / shape drawable，RemoteViews 仅使用
+ * setTextViewText / setTextColor / setOnClickPendingIntent，
+ * 从根源消除 HarmonyOS/EMUI inflate 失败导致「加载窗口小工具时出现问题」的可能。
  *
  * 数据桥接：Flutter 侧每次记账增删改后通过 home_widget 的
- * HomeWidget.saveWidgetData 把「本月支出/收入 + 最近 3 条」写入
+ * HomeWidget.saveWidgetData 把「本月支出/收入」写入
  * SharedPreferences("HomeWidgetPreferences") 的 key [DATA_KEY]（JSON 字符串），
  * 再 HomeWidget.updateWidget 广播刷新本 Provider。
  *
@@ -75,10 +78,8 @@ class LedgerWidgetProvider : AppWidgetProvider() {
         /** 渲染兜底布局：仅标题 + 空态提示，不含任何点击/着色/显隐操作。 */
         fun buildFallbackRemoteViews(context: Context): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_ledger)
-            views.setTextViewText(R.id.widget_month_expense, "¥0.00")
-            views.setTextViewText(R.id.widget_month_income, "¥0.00")
-            views.setViewVisibility(R.id.widget_recent_list, View.GONE)
-            views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
+            views.setTextViewText(R.id.widget_summary, "点击记一笔开始记账")
+            views.setTextColor(R.id.widget_summary, COLOR_BRAND_BLUE)
             return views
         }
 
@@ -102,60 +103,21 @@ class LedgerWidgetProvider : AppWidgetProvider() {
                 buildPendingIntent(context, quickLedgerIntent, requestCode = 0),
             )
 
-            // 数据渲染：本月支出/收入 + 最近 3 条
+            // 数据渲染：本月支出 / 收入摘要（布局极简，仅一个摘要 TextView）
             val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
             val jsonStr = prefs.getString(DATA_KEY, null)
             val data = parseData(jsonStr)
 
             if (data == null) {
-                // 无数据：空态引导 + 统计清零
-                views.setTextViewText(R.id.widget_month_expense, "¥0.00")
-                views.setTextViewText(R.id.widget_month_income, "¥0.00")
-                views.setViewVisibility(R.id.widget_recent_list, View.GONE)
-                views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
+                // 无数据：空态引导
+                views.setTextViewText(R.id.widget_summary, "点击记一笔开始记账")
+                views.setTextColor(R.id.widget_summary, COLOR_BRAND_BLUE)
             } else {
                 views.setTextViewText(
-                    R.id.widget_month_expense,
-                    "¥" + fmtYuan(data.monthExpense),
+                    R.id.widget_summary,
+                    "本月支出 ¥" + fmtYuan(data.monthExpense) + " · 收入 ¥" + fmtYuan(data.monthIncome),
                 )
-                views.setTextViewText(
-                    R.id.widget_month_income,
-                    "¥" + fmtYuan(data.monthIncome),
-                )
-                views.setViewVisibility(R.id.widget_recent_list, View.VISIBLE)
-                views.setViewVisibility(R.id.widget_empty, View.GONE)
-
-                val recent = data.recent
-                for (i in 0 until 3) {
-                    val catId = when (i) {
-                        0 -> R.id.widget_recent_1_cat
-                        1 -> R.id.widget_recent_2_cat
-                        else -> R.id.widget_recent_3_cat
-                    }
-                    val amtId = when (i) {
-                        0 -> R.id.widget_recent_1_amt
-                        1 -> R.id.widget_recent_2_amt
-                        else -> R.id.widget_recent_3_amt
-                    }
-                    val rowId = when (i) {
-                        0 -> R.id.widget_recent_1
-                        1 -> R.id.widget_recent_2
-                        else -> R.id.widget_recent_3
-                    }
-                    if (i < recent.size) {
-                        val item = recent[i]
-                        views.setViewVisibility(rowId, View.VISIBLE)
-                        views.setTextViewText(catId, item.category)
-                        val sign = if (item.kind == 0) "-" else "+"
-                        views.setTextViewText(amtId, sign + "¥" + fmtYuan(item.amount))
-                        views.setTextColor(
-                            amtId,
-                            if (item.kind == 0) COLOR_BRAND_BLUE else COLOR_INCOME_GREEN,
-                        )
-                    } else {
-                        views.setViewVisibility(rowId, View.GONE)
-                    }
-                }
+                views.setTextColor(R.id.widget_summary, COLOR_BRAND_BLUE)
             }
         }
 
@@ -172,35 +134,15 @@ class LedgerWidgetProvider : AppWidgetProvider() {
         private data class WidgetData(
             val monthExpense: Int,
             val monthIncome: Int,
-            val recent: List<RecentItem>,
-        )
-
-        private data class RecentItem(
-            val category: String,
-            val amount: Int,
-            val kind: Int,
         )
 
         private fun parseData(jsonStr: String?): WidgetData? {
             if (jsonStr.isNullOrBlank()) return null
             return try {
                 val root = JSONObject(jsonStr)
-                val recent = JSONArray()
-                val recentArr = root.optJSONArray("recent") ?: JSONArray()
-                for (i in 0 until recentArr.length()) {
-                    val obj = recentArr.optJSONObject(i) ?: continue
-                    val category = obj.optString("category", "")
-                    val amount = obj.optInt("amount", 0)
-                    val kind = obj.optInt("kind", 0)
-                    recent.put(RecentItem(category, amount, kind))
-                }
                 WidgetData(
                     monthExpense = root.optInt("month_expense", 0),
                     monthIncome = root.optInt("month_income", 0),
-                    recent = (0 until recent.length()).map { idx ->
-                        val item = recent.get(idx) as RecentItem
-                        item
-                    },
                 )
             } catch (e: Exception) {
                 null

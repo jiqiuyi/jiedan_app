@@ -8,6 +8,7 @@
     android:targetCellHeight="2"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_ledger"
+    android:previewImage="@drawable/widget_preview_bg"
     android:previewLayout="@layout/widget_ledger"
     android:resizeMode="none"
     android:widgetCategory="home_screen"
