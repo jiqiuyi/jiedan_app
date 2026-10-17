@@ -148,6 +148,9 @@ class SyncService extends ChangeNotifier {
   // keep-alive 服务本身不被 UI 重建，用 _syncing 作为并发锁。
   Timer? _pushTimer;
 
+  // v1.46.5 修复：周期增量同步定时器（保证网页端删除墓碑及时到达 App 端）。
+  Timer? _periodicSyncTimer;
+
   /// 应用启动时调用：读取持久化存储方式并立即执行一次首次合并（仅含服务器模式）。
   /// 必须在 AppDb 可用后调用。
   Future<void> init() async {
@@ -175,6 +178,13 @@ class SyncService extends ChangeNotifier {
     if (_mode.involvesServer) {
       unawaited(_runMutex(() => syncOnStart()));
     }
+    // v1.46.5 修复：周期性增量同步（30s），App 无需重启/手动操作即可收到云端删除墓碑。
+    _periodicSyncTimer?.cancel();
+    _periodicSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (_mode.involvesServer && canSync) {
+        unawaited(_runMutex(() => syncOnStart()));
+      }
+    });
   }
 
   /// 当前是否具备同步条件（模式含服务器 + 已登录拿到 token）。
@@ -225,9 +235,8 @@ class SyncService extends ChangeNotifier {
       }
       final ts = (res['serverTs'] as num?)?.toInt() ?? 0;
       if (ts > lwm) await _setLwm(ts);
-      if (_mode == StorageMode.both) {
-        await _pushNow();
-      }
+      // v1.46.5 修复：server 模式也推送本地墓碑/变更，确保删除墓碑一定上传云端。
+      await _pushNow();
     } else {
       // 首次：全量双向合并
       final tables = await _buildTables();
