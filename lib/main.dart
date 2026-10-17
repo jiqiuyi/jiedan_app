@@ -22,47 +22,82 @@ Future<void> main() async {
   ErrorReporter.instance.install();
   // 兜底未捕获的异步异常（runZonedGuarded），日志入库并防崩溃白屏。
   runZonedGuarded(() async {
-    // 防重打包自签名校验（仅 release）：包被二次签名/重打包则拒绝进入应用
-    try {
-      await SignatureGuard.instance.verifyOnLaunch();
-    } catch (_) {
-      runApp(const TamperedApp());
+    // 防重打包自签名校验（仅 release）：包被二次签名/重打包时提示，
+    // 允许用户确认来源后继续使用（三星/第三方应用商店重签的合法安装不再被直接拒绝）。
+    final sigOk = await _safeInit(
+        'signature', () => SignatureGuard.instance.verifyOnLaunch());
+    if (!sigOk) {
+      runApp(SignatureWarningApp(
+        onContinue: () async {
+          await _initAppServices();
+          runApp(const JieDanApp());
+          _schedulePostLaunch();
+        },
+        onExit: () => SystemNavigator.pop(),
+      ));
       return;
     }
-    await AppState.instance.load();
-    // 模块 A：恢复暂存的邀请码；未登录时静默读取剪贴板中的邀请码
-    // （来源：官网 ?ic= 落地页 / 好友分享），供注册时自动带上
-    await AppState.instance.restorePendingInviteCode();
-    await AppState.instance.captureClipboardInviteCode();
-    // 初始化本地催款提醒通知（完全本地，不涉及网络）
-    await NotifyService.instance.init();
-    // 初始化 App 内更新下载器（v1.46.2）：注册后台下载回调，完成后自动拉起安装
-    await AppUpdater.instance.init();
-    // 初始化数据存储方式（v1.14.0）：读取持久化模式；
-    // 仅本地模式不访问云端；含服务器模式会在后台执行一次启动同步。
-    await SyncService.instance.init();
+    await _initAppServices();
     runApp(const JieDanApp());
-    // 启动后静默核对一次到账记录（失败进重试队列，不阻塞启动）
-    unawaited(PayNoticeReporter.instance.retryPending());
-    unawaited(PayNoticeReporter.instance.uploadPending());
-    // 启动后巡检本地待办提醒（v1.24.0：回款到期 / 报价待确认，基于本地数据，不依赖服务器）
-    unawaited(NotifyService.instance.checkLocalReminders());
-    // App 在线期间每小时再巡检一次，跨过到期时间点也能及时本地提醒（轻量，仅查本地 SQLite）
-    Timer.periodic(const Duration(hours: 1), (_) {
-      unawaited(NotifyService.instance.checkLocalReminders());
-    });
-    // 启动后静默执行一次数据库自检（表结构完整性 / 数据可恢复性），结果留痕，
-    // 可在「数据管理」页查看；失败不阻断启动。
-    unawaited(AppDb.instance.backgroundHealthCheck());
+    _schedulePostLaunch();
   }, (Object error, StackTrace stack) {
     ErrorReporter.instance.logError('zone', error, stack);
     ErrorReporter.instance.notify();
   });
 }
 
-/// 签名被篡改（重打包/二次签名）时的拒绝进入页。
-class TamperedApp extends StatelessWidget {
-  const TamperedApp({super.key});
+/// 启动阶段服务初始化：任一步失败仅记录日志并降级，
+/// 保证主界面必定能渲染（单点异常不再导致 runApp 不执行 -> 白屏打不开）。
+Future<void> _initAppServices() async {
+  await _safeInit('app_state', () => AppState.instance.load());
+  await _safeInit('pending_invite',
+      () => AppState.instance.restorePendingInviteCode());
+  await _safeInit('clipboard',
+      () => AppState.instance.captureClipboardInviteCode());
+  await _safeInit('notify', () => NotifyService.instance.init());
+  await _safeInit('app_updater', () => AppUpdater.instance.init());
+  await _safeInit('sync', () => SyncService.instance.init());
+}
+
+/// 单步初始化安全包装：失败记录日志并返回 false，不向启动链路抛异常。
+Future<bool> _safeInit(String tag, Future<void> Function() fn) async {
+  try {
+    await fn();
+    return true;
+  } catch (e, st) {
+    ErrorReporter.instance.logError('init_$tag', e, st);
+    return false;
+  }
+}
+
+/// runApp 后启动的后台任务（原 main 尾部逻辑，抽出供签名确认页复用）。
+void _schedulePostLaunch() {
+  // 启动后静默核对一次到账记录（失败进重试队列，不阻塞启动）
+  unawaited(PayNoticeReporter.instance.retryPending());
+  unawaited(PayNoticeReporter.instance.uploadPending());
+  // 启动后巡检本地待办提醒（v1.24.0：回款到期 / 报价待确认，基于本地数据，不依赖服务器）
+  unawaited(NotifyService.instance.checkLocalReminders());
+  // App 在线期间每小时再巡检一次，跨过到期时间点也能及时本地提醒（轻量，仅查本地 SQLite）
+  Timer.periodic(const Duration(hours: 1), (_) {
+    unawaited(NotifyService.instance.checkLocalReminders());
+  });
+  // 启动后静默执行一次数据库自检（表结构完整性 / 数据可恢复性），结果留痕，
+  // 可在「数据管理」页查看；失败不阻断启动。
+  unawaited(AppDb.instance.backgroundHealthCheck());
+}
+
+/// 签名被篡改（重打包/二次签名）时的提示页：由用户决定退出或继续使用。
+/// 三星 / 第三方应用商店会对 APK 重签，直接拒绝会把合法用户挡在门外（表现同「打不开」）；
+/// 改为显式告知风险并保留选择权，防破解同时不误伤真实用户。
+class SignatureWarningApp extends StatelessWidget {
+  const SignatureWarningApp({
+    super.key,
+    required this.onContinue,
+    required this.onExit,
+  });
+
+  final Future<void> Function() onContinue;
+  final VoidCallback onExit;
 
   @override
   Widget build(BuildContext context) {
@@ -76,23 +111,28 @@ class TamperedApp extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.gpp_bad_outlined,
-                    size: 64, color: AppTheme.danger),
+                const Icon(Icons.gpp_maybe_outlined,
+                    size: 64, color: AppTheme.warn),
                 const SizedBox(height: 16),
                 const Text(
-                  '应用签名校验失败',
+                  '安装包签名校验未通过',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  '当前安装包可能已被重新打包或篡改，为保障您的数据安全，应用已停止运行。\n请从官方渠道重新下载安装。',
+                  '当前安装包签名与官方版本不一致，可能来自第三方应用商店或安装包被修改，存在账号与数据安全风险。\n请优先从官方渠道下载安装；如确认来源可信，可选择继续使用。',
                   textAlign: TextAlign.center,
                   style: TextStyle(height: 1.6),
                 ),
                 const SizedBox(height: 24),
                 FilledButton(
-                  onPressed: () => SystemNavigator.pop(),
+                  onPressed: onExit,
                   child: const Text('退出应用'),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () => onContinue(),
+                  child: const Text('继续使用'),
                 ),
               ],
             ),

@@ -18,6 +18,7 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
+        android:largeHeap="true"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules">
         <!-- 到账通知解析服务：需用户手动在系统「通知使用权限」中开启，
