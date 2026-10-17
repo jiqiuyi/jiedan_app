@@ -32,7 +32,19 @@ class LedgerWidgetProvider : AppWidgetProvider() {
         appWidgetIds: IntArray,
     ) {
         for (appWidgetId in appWidgetIds) {
-            appWidgetManager.updateAppWidget(appWidgetId, buildRemoteViews(context))
+            // 任何构建/渲染异常都不允许冒泡到系统，否则 Launcher 会显示
+            // 「加载窗口小工具时出现问题」；异常时回退到极简可渲染布局。
+            val views =
+                try {
+                    buildRemoteViews(context)
+                } catch (e: Exception) {
+                    buildFallbackRemoteViews(context)
+                }
+            try {
+                appWidgetManager.updateAppWidget(appWidgetId, views)
+            } catch (e: Exception) {
+                // 单实例更新失败不影响其他实例
+            }
         }
     }
 
@@ -50,7 +62,27 @@ class LedgerWidgetProvider : AppWidgetProvider() {
 
         fun buildRemoteViews(context: Context): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_ledger)
+            try {
+                populateRemoteViews(context, views)
+            } catch (e: Exception) {
+                // 数据渲染异常（如个别 ROM 对 setTextColor/visibility 不兼容）时
+                // 回退极简布局，保证永远可渲染，不出现「加载窗口小工具时出现问题」。
+                return buildFallbackRemoteViews(context)
+            }
+            return views
+        }
 
+        /** 渲染兜底布局：仅标题 + 空态提示，不含任何点击/着色/显隐操作。 */
+        fun buildFallbackRemoteViews(context: Context): RemoteViews {
+            val views = RemoteViews(context.packageName, R.layout.widget_ledger)
+            views.setTextViewText(R.id.widget_month_expense, "¥0.00")
+            views.setTextViewText(R.id.widget_month_income, "¥0.00")
+            views.setViewVisibility(R.id.widget_recent_list, View.GONE)
+            views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
+            return views
+        }
+
+        private fun populateRemoteViews(context: Context, views: RemoteViews) {
             // 小组件整体点击 -> 打开 App 主页
             val openAppIntent =
                 Intent(context, MainActivity::class.java)
@@ -125,7 +157,6 @@ class LedgerWidgetProvider : AppWidgetProvider() {
                     }
                 }
             }
-            return views
         }
 
         private fun buildPendingIntent(
