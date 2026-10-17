@@ -151,16 +151,31 @@ class AppState extends ChangeNotifier {
   static const _vipCacheKeyStorage = FlutterSecureStorage();
   static const _vipCacheKeyName = 'vip_cache_hmac_key_v2';
   static const _vipCacheMaxOffline = Duration(days: 7);
+  /// secure storage 不可用时的内存降级密钥（同一会话内保证验签一致）。
+  static String? _memVipKey;
 
   /// 获取（或首次生成）设备级缓存签名密钥。密钥只在 secure storage，不进 SQLite。
+  /// secure storage 在部分设备（三星 Android 16 Keystore）可能挂起/抛异常，
+  /// 加 3 秒超时并降级为内存密钥：本次会话内读写验签一致；重启后缓存视为
+  /// 无效（离线 VIP 降级），绝不阻断登录/启动。
   Future<String> _vipCacheDeviceKey() async {
-    final existed = await _vipCacheKeyStorage.read(key: _vipCacheKeyName);
-    if (existed != null && existed.isNotEmpty) return existed;
-    final rnd = Random.secure();
-    final bytes = List<int>.generate(32, (_) => rnd.nextInt(256));
-    final key = base64Encode(bytes);
-    await _vipCacheKeyStorage.write(key: _vipCacheKeyName, value: key);
-    return key;
+    try {
+      final existed = await _vipCacheKeyStorage
+          .read(key: _vipCacheKeyName)
+          .timeout(const Duration(seconds: 3));
+      if (existed != null && existed.isNotEmpty) return existed;
+      final rnd = Random.secure();
+      final bytes = List<int>.generate(32, (_) => rnd.nextInt(256));
+      final key = base64Encode(bytes);
+      await _vipCacheKeyStorage
+          .write(key: _vipCacheKeyName, value: key)
+          .timeout(const Duration(seconds: 3));
+      return key;
+    } catch (_) {
+      final rnd = Random.secure();
+      _memVipKey ??= base64Encode(List<int>.generate(32, (_) => rnd.nextInt(256)));
+      return _memVipKey!;
+    }
   }
 
   /// 规范化签名原文：手机号 + 写入时间 + isPro + 到期时间，改任一字段验签必败。

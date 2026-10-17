@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -43,17 +44,52 @@ class ApiClient {
   String? _token;
   String? get token => _token;
 
-  /// 启动时从本地读取持久化的 token
+  /// 启动时从本地读取持久化的 token。
+  /// secure storage 在部分设备（三星 Android 16 Keystore）可能挂起/抛异常，
+  /// 一律 3 秒超时并降级为未登录，绝不阻塞启动流程。
   Future<void> loadToken() async {
-    _token = await _storage.read(key: _tokenKey);
+    _token = await _secureRead(_tokenKey);
+  }
+
+  /// secure storage 单次读：3 秒超时，异常降级返回 null。
+  Future<String?> _secureRead(String key) async {
+    try {
+      return await _storage.read(key: key).timeout(
+            const Duration(seconds: 3),
+          );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// secure storage 单次写：3 秒超时，失败仅降级（token 仍在内存，本次会话可用）。
+  Future<void> _secureWrite(String key, String value) async {
+    try {
+      await _storage.write(key: key, value: value).timeout(
+            const Duration(seconds: 3),
+          );
+    } catch (_) {
+      // 持久化失败不阻断登录：下次启动需重新登录，功能不受影响。
+    }
+  }
+
+  /// secure storage 单次删：3 秒超时，失败忽略。
+  Future<void> _secureDelete(String key) async {
+    try {
+      await _storage.delete(key: key).timeout(
+            const Duration(seconds: 3),
+          );
+    } catch (_) {
+      // 删除失败仅遗留旧 token，不影响本次登出流程。
+    }
   }
 
   Future<void> _saveToken(String? t) async {
     _token = t;
     if (t == null) {
-      await _storage.delete(key: _tokenKey);
+      await _secureDelete(_tokenKey);
     } else {
-      await _storage.write(key: _tokenKey, value: t);
+      await _secureWrite(_tokenKey, t);
     }
   }
 
