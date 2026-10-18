@@ -252,11 +252,11 @@ class QuotePdfService {
               '$idx',
               item,
               _num(l.hours),
-              '¥${_money(l.hourRate)}',
-              '¥${_money(l.materialFee)}',
-              '¥${_money(l.hours * l.hourRate + l.materialFee)}',
+              '￥${_money(l.hourRate)}',
+              '￥${_money(l.materialFee)}',
+              '￥${_money(l.hours * l.hourRate + l.materialFee)}',
             ]
-          : ['$idx', item, '-', '-', '¥${_money(l.materialFee)}', '¥${_money(l.materialFee)}'];
+          : ['$idx', item, '-', '-', '￥${_money(l.materialFee)}', '￥${_money(l.materialFee)}'];
       rows.add(pw.TableRow(
         children: [
           for (var i = 0; i < cells.length; i++)
@@ -314,9 +314,9 @@ class QuotePdfService {
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.stretch,
             children: [
-              _moneyRow('费用小计', '¥${_money(data.subtotal)}'),
+              _moneyRow('费用小计', '￥${_money(data.subtotal)}'),
               _moneyRow('税费（${(data.taxRate * 100).toStringAsFixed(1)}%）',
-                  '¥${_money(data.tax)}'),
+                  '￥${_money(data.tax)}'),
               pw.Divider(color: PdfColors.grey400, height: 8),
               pw.Row(
                 children: [

@@ -11,6 +11,7 @@ import 'api_client.dart';
 import 'constants.dart';
 import 'database.dart';
 import 'models.dart';
+import 'services/error_reporter.dart';
 import 'services/sync_service.dart';
 
 /// 全局应用状态（登录账号 + 订阅状态 + 数据变更通知）
@@ -277,7 +278,13 @@ class AppState extends ChangeNotifier {
     }
     final user = json['user'];
     if (user is Map<String, dynamic>) {
-      await _syncLocalUserFromCloud(user);
+      // 本地会话缓存失败不阻断注册成功（三星等设备存储/数据库异常时
+      // 避免触发全局兜底文案「操作未能完成，请稍后重试」）。
+      try {
+        await _syncLocalUserFromCloud(user);
+      } catch (e, st) {
+        ErrorReporter.instance.logError('register_sync_user', e, st);
+      }
     }
     // 拉取完整 me（邀请码 / 邀请人列表 / 返现）并标记云端就绪
     try {
@@ -309,7 +316,13 @@ class AppState extends ChangeNotifier {
     }
     final user = json['user'];
     if (user is Map<String, dynamic>) {
-      await _syncLocalUserFromCloud(user);
+      // 本地会话缓存失败不阻断登录成功（三星等设备存储/数据库异常时
+      // 避免触发全局兜底文案「操作未能完成，请稍后重试」）。
+      try {
+        await _syncLocalUserFromCloud(user);
+      } catch (e, st) {
+        ErrorReporter.instance.logError('login_sync_user', e, st);
+      }
     }
     // 拉取完整 me（邀请码 / 邀请人列表 / 返现）并标记云端就绪
     try {
