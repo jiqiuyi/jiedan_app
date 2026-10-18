@@ -39,6 +39,14 @@ class AppUpdater {
   /// 最近一次下载的期望大小（服务器 Content-Length），下载完成后用于
   /// 完整性校验（防下载到截断文件 / HTML 错误页导致的「解析失败」）。
   int? _lastExpectedBytes;
+  /// 本次下载失败后是否已自动重试一次（防止 failed 回调死循环重试）。
+  bool _retriedOnce = false;
+  /// 持久化最近一次下载信息：进程被杀 / complete 回调丢失后，冷启动兜底
+  /// （checkPendingInstall / _offerPendingApkOnStartup）仍能拿到 URL、版本
+  /// 与服务器期望大小做完整校验。
+  static const String _lastUrlKey = 'update_last_url';
+  static const String _lastVersionKey = 'update_last_version';
+  static const String _lastExpectBytesKey = 'update_last_expect_bytes';
 
   /// 应用启动时初始化：注册下载回调（后台 isolate 事件转发到主 isolate）。
   /// 失败不阻断启动（仅失去自动安装能力，可手动重试）。
@@ -60,22 +68,42 @@ class AppUpdater {
   }
 
   /// 开始后台下载新版 APK；下载完成回调自动触发安装。
-  Future<void> startDownload(String url, String version) async {
+  ///
+  /// 下载 URL 统一追加防缓存参数（?t=毫秒时间戳），避免 nginx/CDN 缓存旧
+  /// 文件导致用户拉到半截 / 旧包后「安装包解析失败」。
+  Future<void> startDownload(String url, String version,
+      {bool resetRetry = true}) async {
     _lastDownloadUrl = url;
     _lastVersion = version;
-    // 预取服务器 Content-Length，供下载完成后做完整性校验。
+    if (resetRetry) _retriedOnce = false;
     _lastExpectedBytes = null;
+    // 预取服务器 Content-Length，供下载完成后做完整性校验；同时持久化，
+    // 覆盖「进程被杀 → complete 回调丢失 / 冷启动兜底」场景仍能拿到期望大小。
     try {
       final head = await http
-          .head(Uri.parse(url))
-          .timeout(const Duration(seconds: 6));
+          .head(Uri.parse(_withCacheBust(url)))
+          .timeout(const Duration(seconds: 10));
       final cl = head.headers['content-length'] ??
           head.headers['Content-Length'];
       if (head.statusCode == 200 && cl != null) {
         _lastExpectedBytes = int.tryParse(cl);
       }
+    } catch (e) {
+      // HEAD 失败不影响下载，仅失去大小校验依据；记录日志便于远程诊断。
+      unawaited(ErrorReporter.instance.logError(
+        'updater_head_failed',
+        e,
+        StackTrace.current,
+        context: {'url': url},
+      ));
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_lastUrlKey, url);
+      await prefs.setString(_lastVersionKey, version);
+      await prefs.setInt(_lastExpectBytesKey, _lastExpectedBytes ?? -1);
     } catch (_) {
-      // HEAD 失败不影响下载，仅失去大小校验依据
+      // 持久化失败不阻塞下载
     }
     try {
       final dir = await _ensureDownloadDir();
@@ -90,7 +118,7 @@ class AppUpdater {
         }
       }
       final taskId = await FlutterDownloader.enqueue(
-        url: url,
+        url: _withCacheBust(url),
         savedDir: dir.path,
         fileName: fileName,
         showNotification: true, // 通知栏展示下载进度
@@ -101,11 +129,68 @@ class AppUpdater {
       );
       if (taskId == null || taskId.isEmpty) {
         _showSnack('开始下载失败，请稍后重试');
+        unawaited(ErrorReporter.instance.logError(
+          'updater_enqueue_empty',
+          StateError('enqueue returned empty taskId'),
+          StackTrace.current,
+          context: {'url': url},
+        ));
         return;
       }
       _showSnack('已开始后台下载，完成后自动安装');
-    } catch (_) {
+    } catch (e) {
       _showSnack('开始下载失败，请稍后重试');
+      unawaited(ErrorReporter.instance.logError(
+        'updater_enqueue_failed',
+        e,
+        StackTrace.current,
+        context: {'url': url},
+      ));
+    }
+  }
+
+  /// 为下载 URL 追加防缓存参数（保持原 query 兼容）。
+  String _withCacheBust(String url) {
+    final sep = url.contains('?') ? '&' : '?';
+    return '$url$sep${DateTime.now().millisecondsSinceEpoch}';
+  }
+
+  /// 下载失败处理：清理残留半截包并自动重试一次（新防缓存参数）；重试仍
+  /// 失败给出明确文案并记录日志（不静默失败）。
+  Future<void> _handleDownloadFailed(String taskId) async {
+    try {
+      // 清理 DownloadManager 失败可能残留的半截 APK。
+      if (_lastVersion != null) {
+        final dir = await _ensureDownloadDir();
+        final f = File(
+            '${dir.path}${Platform.pathSeparator}jiedan_guanjia_v$_lastVersion.apk');
+        if (f.existsSync()) {
+          try {
+            f.deleteSync();
+          } catch (_) {
+            // 删除失败不阻塞重试
+          }
+        }
+      }
+      if (!_retriedOnce && _lastDownloadUrl != null && _lastVersion != null) {
+        _retriedOnce = true;
+        _showSnack('下载失败，正在自动重试…');
+        await startDownload(_lastDownloadUrl!, _lastVersion!,
+            resetRetry: false);
+        return;
+      }
+      _showSnack('新版本下载失败，请检查网络后重试');
+      unawaited(ErrorReporter.instance.logError(
+        'updater_download_failed',
+        StateError('download task failed: $taskId'),
+        StackTrace.current,
+        context: {
+          'url': _lastDownloadUrl ?? '',
+          'version': _lastVersion ?? '',
+        },
+      ));
+    } catch (e) {
+      _showSnack('新版本下载失败，请检查网络后重试');
     }
   }
 
@@ -125,7 +210,7 @@ class AppUpdater {
       // 大小校验，坏文件直接删除并提示，不进入安装流程。
       unawaited(_installByTaskId(id, expectBytes: _lastExpectedBytes));
     } else if (status == DownloadTaskStatus.failed) {
-      _showSnack('新版本下载失败，请稍后重试');
+      unawaited(_handleDownloadFailed(id));
     } else if (status == DownloadTaskStatus.canceled) {
       _showSnack('已取消更新下载');
     }
@@ -159,9 +244,10 @@ class AppUpdater {
         _showSnack('新版本已下载，但未找到安装包，请稍后重试');
         return;
       }
-      // 兜底 2：安装前完整性校验（大小 / magic bytes / Content-Length），
+      // 兜底 2：安装前完整性校验（大小 / magic bytes / EOCD / Content-Length）。
+      // 内存期望大小丢失时（进程被杀 / 回调丢失）从持久化记录补齐；
       // 坏文件（截断 / HTML 错误页）直接删除，避免进入系统安装器报「解析失败」。
-      final verr = _validateApk(path, expectBytes: expectBytes);
+      final verr = await _validateApkWithPersisted(path, expectBytes);
       if (verr != null) {
         try {
           File(path).deleteSync();
@@ -215,6 +301,25 @@ class AppUpdater {
         if (head.length < 4 || head[0] != 0x50 || head[1] != 0x4B) {
           return '安装包文件损坏（非有效 APK）';
         }
+        // 尾部校验 ZIP 结束记录（EOCD 标记 PK\x05\x06）：下载中断 / CDN 缓存
+        // 半截文件时头部 magic 仍完整、但尾部缺失，系统安装器会报「解析失败」。
+        // 扫描文件末尾 ≤64KB（ZIP 注释区上限）内的 EOCD 标记。
+        final len = f.lengthSync();
+        if (len < 22) return '安装包文件不完整（下载中断）';
+        final tailLen = len > 22 + 65536 ? 22 + 65536 : len;
+        raf.setPositionSync(len - tailLen);
+        final tail = raf.readSync(tailLen);
+        var eocd = false;
+        for (var i = tail.length - 22; i >= 0; i--) {
+          if (tail[i] == 0x50 &&
+              tail[i + 1] == 0x4B &&
+              tail[i + 2] == 0x05 &&
+              tail[i + 3] == 0x06) {
+            eocd = true;
+            break;
+          }
+        }
+        if (!eocd) return '安装包文件损坏（下载不完整）';
       } finally {
         raf.closeSync();
       }
@@ -222,6 +327,30 @@ class AppUpdater {
     } catch (_) {
       return '安装包文件校验失败';
     }
+  }
+
+  /// 校验安装包，期望大小缺失时从持久化记录补齐：仅当 APK 文件名版本与
+  /// 最近一次下载版本一致时，采用持久化的服务器 Content-Length 做严格大小
+  /// 比对（覆盖 complete 回调丢失 / 冷启动兜底场景）。
+  Future<String?> _validateApkWithPersisted(String path,
+      int? expectBytes) async {
+    var expect = expectBytes;
+    if (expect == null || expect <= 0) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final lastVer = prefs.getString(_lastVersionKey);
+        final apkName =
+            path.split(Platform.pathSeparator).last.toLowerCase();
+        if (lastVer != null &&
+            lastVer == _versionFromApkName(apkName)) {
+          final v = prefs.getInt(_lastExpectBytesKey) ?? -1;
+          if (v > 0) expect = v;
+        }
+      } catch (_) {
+        // 持久化读取失败不影响校验
+      }
+    }
+    return _validateApk(path, expectBytes: expect);
   }
 
   /// 消费原生侧记录的通知点击 / APK 打开意图并触发安装。
@@ -247,7 +376,7 @@ class AppUpdater {
         } else {
           // 通知点击 / 文件打开路径：同样先做完整性校验，坏文件删除后提示，
           // 避免系统安装器报「安装包解析失败」。
-          final verr = _validateApk(path);
+          final verr = await _validateApkWithPersisted(path, null);
           if (verr != null) {
             try {
               f.deleteSync();
@@ -282,7 +411,7 @@ class AppUpdater {
       if (files.isEmpty) return;
       final latest = files.first.path;
       // 启动兜底同样校验完整性：残留的半截 / 错误页 APK 直接删除，不再弹窗打扰。
-      final verr = _validateApk(latest);
+      final verr = await _validateApkWithPersisted(latest, null);
       if (verr != null) {
         try {
           File(latest).deleteSync();
