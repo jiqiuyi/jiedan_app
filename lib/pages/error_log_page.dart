@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../theme.dart';
+import '../services/error_reporter.dart';
 
 /// 「设置-关于-错误日志」：展示本地错误日志（error_YYYYMMDD.log），
 /// 便于远程诊断 DB 打开 / 恢复 / 查询失败等异常时，让用户一键复制日志内容
@@ -35,8 +36,13 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
   String _selectedPath = '';
   String _content = '';
   String _info = '';
+
+  /// 当前模块 Tab 过滤（[LogModule.all] 表示全部）。
+  String _moduleFilter = LogModule.all;
+
   /// 当前文件的日志条目（_openFile 时解析，折叠交互数据源）。
   List<_LogEntry> _entries = const [];
+
   /// 已展开完整堆栈的条目索引集合。
   final Set<int> _expanded = {};
 
@@ -46,8 +52,10 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
   /// 平台通道超时：三星等设备偶发 platform channel 无响应，必须限时，
   /// 避免页面永远停在 loading。
   static const Duration _channelTimeout = Duration(seconds: 3);
+
   /// 本地文件操作超时（dart:io 一般不会挂起，兜底保护）。
   static const Duration _fileTimeout = Duration(seconds: 10);
+
   /// 上传接口超时。
   static const Duration _uploadTimeout = Duration(seconds: 8);
 
@@ -73,10 +81,12 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
       }
       final list = await logDir.list().toList().timeout(_fileTimeout);
       final entries = list
-          .where((e) =>
-              e is File &&
-              e.path.endsWith('.log') &&
-              p.basename(e.path).startsWith('error_'))
+          .where(
+            (e) =>
+                e is File &&
+                e.path.endsWith('.log') &&
+                p.basename(e.path).startsWith('error_'),
+          )
           .toList();
       entries.sort((a, b) => b.path.compareTo(a.path));
       final files = <_LogFile>[];
@@ -114,11 +124,13 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
   Future<Directory> _resolveLogDir() async {
     final attempts = <Future<Directory> Function()>[
       () async => Directory(
-          p.join((await getApplicationDocumentsDirectory()).path, 'logs')),
+        p.join((await getApplicationDocumentsDirectory()).path, 'logs'),
+      ),
       () async => Directory(
-          p.join((await getApplicationSupportDirectory()).path, 'logs')),
-      () async => Directory(
-          p.join((await getTemporaryDirectory()).path, 'logs')),
+        p.join((await getApplicationSupportDirectory()).path, 'logs'),
+      ),
+      () async =>
+          Directory(p.join((await getTemporaryDirectory()).path, 'logs')),
     ];
     Object? lastErr;
     for (final fn in attempts) {
@@ -153,7 +165,8 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
       _content = text;
       _entries = parsed;
       _expanded.clear();
-      _info = '${p.basename(path)} · ${bytes.length} 字节 · 共 ${_files.length} 个日志文件';
+      _info =
+          '${p.basename(path)} · ${bytes.length} 字节 · 共 ${_files.length} 个日志文件';
     });
   }
 
@@ -174,15 +187,14 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
       final text = await _buildAllLogText();
       await Clipboard.setData(ClipboardData(text: text));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('日志已复制到剪贴板，可直接粘贴发给开发者')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('日志已复制到剪贴板，可直接粘贴发给开发者')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('复制失败：$e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('复制失败：$e')));
       }
     }
   }
@@ -225,15 +237,16 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('日志已复制（精简版：每条目异常+时间+前 $_previewLineCount 行堆栈），可直接粘贴发给开发者'),
+            content: Text(
+              '日志已复制（精简版：每条目异常+时间+前 $_previewLineCount 行堆栈），可直接粘贴发给开发者',
+            ),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('复制失败：$e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('复制失败：$e')));
       }
     }
   }
@@ -248,15 +261,13 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
       text = await _buildAllLogText();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('日志读取失败：$e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('日志读取失败：$e')));
       }
       if (mounted) setState(() => _uploading = false);
       return;
     }
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 5);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
     try {
       final uri = Uri.parse('https://yurouyun.cn/api/logs/upload');
       final req = await client.postUrl(uri).timeout(const Duration(seconds: 5));
@@ -274,16 +285,18 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
       await resp.transform(utf8.decoder).join().timeout(_uploadTimeout);
       if (mounted) {
         if (resp.statusCode >= 200 && resp.statusCode < 300) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('上传成功（${resp.statusCode}）')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('上传成功（${resp.statusCode}）')));
         } else {
           // 后端无该端点（404 等）或返回错误：降级为复制提示粘贴发送。
           await Clipboard.setData(ClipboardData(text: text));
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('上传失败（HTTP ${resp.statusCode}），日志已复制到剪贴板，请粘贴发送给开发者'),
+                content: Text(
+                  '上传失败（HTTP ${resp.statusCode}），日志已复制到剪贴板，请粘贴发送给开发者',
+                ),
               ),
             );
           }
@@ -295,9 +308,9 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
         await Clipboard.setData(ClipboardData(text: text));
       } catch (_) {}
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('上传失败（$e），日志已复制到剪贴板，请粘贴发送给开发者')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('上传失败（$e），日志已复制到剪贴板，请粘贴发送给开发者')));
       }
     } finally {
       client.close(force: true);
@@ -326,10 +339,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
                   value: _CopyMode.compact,
                   child: Text('复制精简版（异常+时间+前5行堆栈）'),
                 ),
-                PopupMenuItem(
-                  value: _CopyMode.full,
-                  child: Text('复制完整版'),
-                ),
+                PopupMenuItem(value: _CopyMode.full, child: Text('复制完整版')),
               ],
             ),
           ],
@@ -381,16 +391,32 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
           child: Row(
             children: [
-              const Icon(Icons.info_outline,
-                  size: 16, color: AppTheme.textSub),
+              const Icon(Icons.info_outline, size: 16, color: AppTheme.textSub),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   _info,
-                  style:
-                      const TextStyle(fontSize: 12, color: AppTheme.textSub),
+                  style: const TextStyle(fontSize: 12, color: AppTheme.textSub),
                 ),
               ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 40,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: [
+              for (final mod in LogModule.order)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(LogModule.label(mod)),
+                    selected: _moduleFilter == mod,
+                    onSelected: (_) => _setModuleFilter(mod),
+                  ),
+                ),
             ],
           ),
         ),
@@ -405,8 +431,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
-                      label: Text(
-                          '${p.basename(f.path)} (${f.size}B)'),
+                      label: Text('${p.basename(f.path)} (${f.size}B)'),
                       selected: f.path == _selectedPath,
                       onSelected: (_) => _openFile(f.path),
                     ),
@@ -418,15 +443,30 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
         Expanded(
           child: _content.isEmpty
               ? const Center(child: Text('日志为空'))
+              : _filteredEntries.isEmpty
+              ? const Center(child: Text('当前模块暂无日志'))
               : ListView.builder(
                   padding: const EdgeInsets.all(12),
-                  itemCount: _entries.length,
-                  itemBuilder: (context, index) =>
-                      _buildEntryTile(index),
+                  itemCount: _filteredEntries.length,
+                  itemBuilder: (context, index) => _buildEntryTile(index),
                 ),
         ),
       ],
     );
+  }
+
+  /// 当前模块过滤后的可见条目（「全部」不过滤）。
+  List<_LogEntry> get _filteredEntries => _moduleFilter == LogModule.all
+      ? _entries
+      : _entries.where((e) => e.module == _moduleFilter).toList();
+
+  /// 切换模块 Tab：清空展开状态，避免索引错位。
+  void _setModuleFilter(String mod) {
+    if (_moduleFilter == mod) return;
+    setState(() {
+      _moduleFilter = mod;
+      _expanded.clear();
+    });
   }
 
   /// 单条日志折叠卡片：默认展示 header（异常类型+时间）与堆栈前
@@ -446,10 +486,18 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _moduleBadge(e.module),
+            ),
+          ),
           InkWell(
             onTap: () => _toggleEntry(index),
             borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(AppRadius.md)),
+              top: Radius.circular(AppRadius.md),
+            ),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               child: Row(
@@ -491,18 +539,39 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
                         minimumSize: const Size(0, 32),
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         textStyle: const TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w600),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       onPressed: () => _toggleEntry(index),
-                      child: Text(expanded
-                          ? '收起堆栈'
-                          : '展开完整堆栈（剩余 $hiddenCount 行）'),
+                      child: Text(
+                        expanded ? '收起堆栈' : '展开完整堆栈（剩余 $hiddenCount 行）',
+                      ),
                     ),
                   ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 模块小标签：圆角徽标展示条目所属模块。
+  Widget _moduleBadge(String mod) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppTheme.divider,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        LogModule.label(mod),
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.textMain,
+        ),
       ),
     );
   }
@@ -538,15 +607,29 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
     final entries = <_LogEntry>[];
     _LogEntry? cur;
     StringBuffer orphan = StringBuffer();
+    // 新格式：[time] [tag] [module] error；旧格式：[time] [tag] error。
+    // 无 module 段的存量条目按 tag 智能归类（LogModule.moduleOfTag）。
+    final headerRe = RegExp(
+      r'^\[([^\]]*)\] \[([^\]]*)\](?: \[([^\]]*)\])? (.*)$',
+    );
     for (final line in const LineSplitter().convert(content)) {
       if (line.startsWith('[')) {
         if (orphan.isNotEmpty) {
-          entries.add(_LogEntry(
+          entries.add(
+            _LogEntry(
               header: '（日志截断残片）',
-              bodyLines: [orphan.toString().trimRight()]));
+              bodyLines: [orphan.toString().trimRight()],
+              module: LogModule.other,
+            ),
+          );
           orphan = StringBuffer();
         }
-        cur = _LogEntry(header: line, bodyLines: []);
+        final m = headerRe.firstMatch(line);
+        final tag = (m != null && m.group(2) != null) ? m.group(2)! : '';
+        final mod = (m != null && m.group(3) != null && m.group(3)!.isNotEmpty)
+            ? m.group(3)!
+            : LogModule.moduleOfTag(tag);
+        cur = _LogEntry(header: line, bodyLines: [], module: mod);
         entries.add(cur);
       } else if (line.isEmpty) {
         continue;
@@ -557,9 +640,13 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
       }
     }
     if (orphan.isNotEmpty) {
-      entries.add(_LogEntry(
+      entries.add(
+        _LogEntry(
           header: '（日志截断残片）',
-          bodyLines: [orphan.toString().trimRight()]));
+          bodyLines: [orphan.toString().trimRight()],
+          module: LogModule.other,
+        ),
+      );
     }
     return entries;
   }
@@ -568,7 +655,14 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
 class _LogEntry {
   final String header;
   final List<String> bodyLines;
-  _LogEntry({required this.header, required this.bodyLines});
+
+  /// 日志模块标识（Tab 分类依据）；存量无 module 条目由 tag 推断。
+  final String module;
+  _LogEntry({
+    required this.header,
+    required this.bodyLines,
+    required this.module,
+  });
 }
 
 /// 复制模式：精简版（异常+时间+前5行关键帧）与完整版。

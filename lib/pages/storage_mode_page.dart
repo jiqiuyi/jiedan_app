@@ -9,6 +9,7 @@ import '../app_state.dart';
 import '../api_client.dart';
 import '../constants.dart';
 import '../services/sync_service.dart';
+import '../services/error_reporter.dart';
 import '../theme.dart';
 import '../utils/backup_util.dart';
 import '../widgets/conflict_resolver_sheet.dart';
@@ -81,9 +82,8 @@ class _StorageModePageState extends State<StorageModePage> {
       _authExpiredHandling = false;
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message ?? '登录已失效，请重新登录'),
-    ));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message ?? '登录已失效，请重新登录')));
     // 独立分支：直接引导重新登录，而非停留在普通网络错误提示。
     await Navigator.push(
       context,
@@ -106,110 +106,119 @@ class _StorageModePageState extends State<StorageModePage> {
     final choice = await showDialog<LocalSwitchChoice>(
       context: context,
       builder: (ctx) {
-        return StatefulBuilder(builder: (ctx, setDlgState) {
-          return AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.cloud_off_outlined,
-                    color: AppTheme.warn, size: 22),
-                SizedBox(width: 8),
-                Expanded(child: Text('切换到「仅本地」？')),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
+        return StatefulBuilder(
+          builder: (ctx, setDlgState) {
+            return AlertDialog(
+              title: const Row(
                 children: [
-                  const Text(
-                    '切换后手机端将不再访问云端业务接口，本地数据保持不变。'
-                    '服务器上此前已同步的数据该如何处理？',
-                    style: TextStyle(height: 1.5),
+                  Icon(
+                    Icons.cloud_off_outlined,
+                    color: AppTheme.warn,
+                    size: 22,
                   ),
-                  const SizedBox(height: 16),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppTheme.bgCard,
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                      border: Border.all(color: AppTheme.divider),
+                  SizedBox(width: 8),
+                  Expanded(child: Text('切换到「仅本地」？')),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      '切换后手机端将不再访问云端业务接口，本地数据保持不变。'
+                      '服务器上此前已同步的数据该如何处理？',
+                      style: TextStyle(height: 1.5),
                     ),
-                    child: RadioGroup<LocalSwitchChoice>(
-                      groupValue: keepServer
-                          ? LocalSwitchChoice.keepServer
-                          : LocalSwitchChoice.deleteServer,
-                      onChanged: (v) {
-                        if (v == null) return;
-                        setDlgState(
-                            () => keepServer = v == LocalSwitchChoice.keepServer);
-                      },
-                      child: Column(
-                        children: [
-                          // 选项一：保留服务器数据（默认选中，安全）。
-                          RadioListTile<LocalSwitchChoice>(
-                            value: LocalSwitchChoice.keepServer,
-                            title: const Text('仅切回本地，保留服务器数据'),
-                            subtitle: const Text(
-                              '之后切回云端模式时可再同步回来，数据更安全。',
-                              style: TextStyle(fontSize: 12),
+                    const SizedBox(height: 16),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.bgCard,
+                        borderRadius: BorderRadius.circular(AppRadius.sm),
+                        border: Border.all(color: AppTheme.divider),
+                      ),
+                      child: RadioGroup<LocalSwitchChoice>(
+                        groupValue: keepServer
+                            ? LocalSwitchChoice.keepServer
+                            : LocalSwitchChoice.deleteServer,
+                        onChanged: (v) {
+                          if (v == null) return;
+                          setDlgState(
+                            () =>
+                                keepServer = v == LocalSwitchChoice.keepServer,
+                          );
+                        },
+                        child: Column(
+                          children: [
+                            // 选项一：保留服务器数据（默认选中，安全）。
+                            RadioListTile<LocalSwitchChoice>(
+                              value: LocalSwitchChoice.keepServer,
+                              title: const Text('仅切回本地，保留服务器数据'),
+                              subtitle: const Text(
+                                '之后切回云端模式时可再同步回来，数据更安全。',
+                                style: TextStyle(fontSize: 12),
+                              ),
+                              secondary: const Icon(Icons.archive_outlined),
                             ),
-                            secondary: const Icon(Icons.archive_outlined),
-                          ),
-                          const AppCardDivider(),
-                          // 选项二：删除服务器数据（危险项，警示色，未登录置灰）。
-                          RadioListTile<LocalSwitchChoice>(
-                            value: LocalSwitchChoice.deleteServer,
-                            enabled: isLoggedIn,
-                            title: Text(
-                              '删除服务器数据',
-                              style: TextStyle(
+                            const AppCardDivider(),
+                            // 选项二：删除服务器数据（危险项，警示色，未登录置灰）。
+                            RadioListTile<LocalSwitchChoice>(
+                              value: LocalSwitchChoice.deleteServer,
+                              enabled: isLoggedIn,
+                              title: Text(
+                                '删除服务器数据',
+                                style: TextStyle(
+                                  color: isLoggedIn
+                                      ? AppTheme.danger
+                                      : AppTheme.textSub,
+                                ),
+                              ),
+                              subtitle: Text(
+                                isLoggedIn
+                                    ? '切回本地，并清除本账号在服务器上的全部同步数据（仅影响本账号），删除前建议先到「数据管理」导出一份备份。'
+                                    : '当前未登录，无法删除服务器数据',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  height: 1.5,
+                                ),
+                              ),
+                              secondary: Icon(
+                                Icons.delete_forever_outlined,
                                 color: isLoggedIn
                                     ? AppTheme.danger
                                     : AppTheme.textSub,
                               ),
                             ),
-                            subtitle: Text(
-                              isLoggedIn
-                                  ? '切回本地，并清除本账号在服务器上的全部同步数据（仅影响本账号），删除前建议先到「数据管理」导出一份备份。'
-                                  : '当前未登录，无法删除服务器数据',
-                              style: const TextStyle(
-                                  fontSize: 12, height: 1.5),
-                            ),
-                            secondary: Icon(
-                              Icons.delete_forever_outlined,
-                              color: isLoggedIn
-                                  ? AppTheme.danger
-                                  : AppTheme.textSub,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, LocalSwitchChoice.cancel),
-                child: const Text('取消'),
-              ),
-              AppButton(
-                label: keepServer ? '确认切换' : '确认删除并切换',
-                kind: keepServer
-                    ? AppButtonKind.primary
-                    : AppButtonKind.danger,
-                size: AppButtonSize.medium,
-                expand: false,
-                onPressed: () => Navigator.pop(
-                  ctx,
-                  keepServer
-                      ? LocalSwitchChoice.keepServer
-                      : LocalSwitchChoice.deleteServer,
+                  ],
                 ),
               ),
-            ],
-          );
-        });
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, LocalSwitchChoice.cancel),
+                  child: const Text('取消'),
+                ),
+                AppButton(
+                  label: keepServer ? '确认切换' : '确认删除并切换',
+                  kind: keepServer
+                      ? AppButtonKind.primary
+                      : AppButtonKind.danger,
+                  size: AppButtonSize.medium,
+                  expand: false,
+                  onPressed: () => Navigator.pop(
+                    ctx,
+                    keepServer
+                        ? LocalSwitchChoice.keepServer
+                        : LocalSwitchChoice.deleteServer,
+                  ),
+                ),
+              ],
+            );
+          },
+        );
       },
     );
     if (choice == null || choice == LocalSwitchChoice.cancel) return;
@@ -220,23 +229,28 @@ class _StorageModePageState extends State<StorageModePage> {
       try {
         final rows = await SyncService.instance.deleteServerData();
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-            rows > 0
-                ? '已切换仅本地，并删除服务器上的 $rows 条同步数据。'
-                : '已切换仅本地，并清除服务器同步数据。',
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              rows > 0 ? '已切换仅本地，并删除服务器上的 $rows 条同步数据。' : '已切换仅本地，并清除服务器同步数据。',
+            ),
           ),
-        ));
+        );
       } on TokenInvalidException {
         // token 失效独立分支：删除服务器数据失败，引导重新登录。
         await _handleAuthExpired('切换已完成，但删除服务器数据需重新登录：请重新登录后再操作');
         setState(() => _selected = SyncService.instance.mode);
         return;
-      } catch (e) {
+      } catch (e, st) {
+        ErrorReporter.instance.logError(
+          'sync_delete_server_failed',
+          e,
+          st,
+          module: LogModule.sync,
+        );
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('已切换仅本地，但删除服务器数据失败：$e'),
-        ));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('已切换仅本地，但删除服务器数据失败：$e')));
       }
       setState(() => _selected = SyncService.instance.mode);
       return;
@@ -245,9 +259,9 @@ class _StorageModePageState extends State<StorageModePage> {
     // keepServer
     setState(() => _selected = SyncService.instance.mode);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('$msg 服务器数据已保留，之后切回云端模式可再同步回来。'),
-      ));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$msg 服务器数据已保留，之后切回云端模式可再同步回来。')));
     }
   }
 
@@ -262,9 +276,8 @@ class _StorageModePageState extends State<StorageModePage> {
     }
     final isLoggedIn = AppState.instance.loggedIn;
     if (m.involvesServer && !isLoggedIn) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('云端存储需要先登录账号')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('云端存储需要先登录账号')));
       await Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -309,19 +322,29 @@ class _StorageModePageState extends State<StorageModePage> {
                     children: [
                       const Row(
                         children: [
-                          Icon(Icons.article_outlined,
-                              size: 16, color: AppTheme.textSub),
+                          Icon(
+                            Icons.article_outlined,
+                            size: 16,
+                            color: AppTheme.textSub,
+                          ),
                           SizedBox(width: 6),
-                          Text('数据说明',
-                              style: TextStyle(
-                                  fontSize: 12, color: AppTheme.textSub)),
+                          Text(
+                            '数据说明',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textSub,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 6),
                       Text(
                         m.detail,
                         style: const TextStyle(
-                            color: AppTheme.textSub, height: 1.6, fontSize: 13),
+                          color: AppTheme.textSub,
+                          height: 1.6,
+                          fontSize: 13,
+                        ),
                       ),
                     ],
                   ),
@@ -334,14 +357,18 @@ class _StorageModePageState extends State<StorageModePage> {
                     decoration: BoxDecoration(
                       color: AppTheme.warn.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(AppRadius.sm),
-                      border:
-                          Border.all(color: AppTheme.warn.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: AppTheme.warn.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: const Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.warning_amber_outlined,
-                            size: 16, color: AppTheme.warn),
+                        Icon(
+                          Icons.warning_amber_outlined,
+                          size: 16,
+                          color: AppTheme.warn,
+                        ),
                         SizedBox(width: 6),
                         Expanded(
                           child: Text(
@@ -349,9 +376,10 @@ class _StorageModePageState extends State<StorageModePage> {
                             '冲突以服务器最新为准。建议先到「数据管理」导出一份备份，'
                             '保管好自己的账号密码。',
                             style: TextStyle(
-                                color: AppTheme.textMain,
-                                height: 1.6,
-                                fontSize: 13),
+                              color: AppTheme.textMain,
+                              height: 1.6,
+                              fontSize: 13,
+                            ),
                           ),
                         ),
                       ],
@@ -363,8 +391,9 @@ class _StorageModePageState extends State<StorageModePage> {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('确认切换'),
@@ -385,8 +414,7 @@ class _StorageModePageState extends State<StorageModePage> {
     }
     setState(() => _selected = SyncService.instance.mode);
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(msg)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
   }
 
@@ -406,19 +434,25 @@ class _StorageModePageState extends State<StorageModePage> {
     try {
       final path = await BackupUtil.instance.exportAll();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('备份文件已生成：$path'),
-        duration: const Duration(seconds: 3),
-      ));
-      await Share.shareXFiles(
-        [XFile(path, mimeType: 'application/json')],
-        text: '接单管家 数据备份文件，请妥善保存，重装后可导入恢复。',
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('备份文件已生成：$path'),
+          duration: const Duration(seconds: 3),
+        ),
       );
-    } catch (e) {
+      await Share.shareXFiles([
+        XFile(path, mimeType: 'application/json'),
+      ], text: '接单管家 数据备份文件，请妥善保存，重装后可导入恢复。');
+    } catch (e, st) {
+      ErrorReporter.instance.logError(
+        'backup_export_failed',
+        e,
+        st,
+        module: LogModule.db,
+      );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导出备份失败：$e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('导出备份失败：$e')));
       }
     } finally {
       if (mounted) {
@@ -439,7 +473,11 @@ class _StorageModePageState extends State<StorageModePage> {
       builder: (ctx) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.warning_amber_outlined, color: AppTheme.danger, size: 22),
+            Icon(
+              Icons.warning_amber_outlined,
+              color: AppTheme.danger,
+              size: 22,
+            ),
             SizedBox(width: 8),
             Expanded(child: Text('从备份恢复数据？')),
           ],
@@ -477,9 +515,8 @@ class _StorageModePageState extends State<StorageModePage> {
     final path = result.files.single.path;
     if (path == null || !File(path).existsSync()) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('无法读取所选备份文件')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('无法读取所选备份文件')));
       }
       return;
     }
@@ -490,8 +527,10 @@ class _StorageModePageState extends State<StorageModePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认覆盖恢复？'),
-        content: const Text('将清空本地现有的报价单、客户、项目、收款记录、'
-            '待收款、里程碑、合同等全部数据，并替换为所选备份文件内容。确认继续？'),
+        content: const Text(
+          '将清空本地现有的报价单、客户、项目、收款记录、'
+          '待收款、里程碑、合同等全部数据，并替换为所选备份文件内容。确认继续？',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -542,7 +581,13 @@ class _StorageModePageState extends State<StorageModePage> {
       );
     } on FormatException catch (e) {
       _toast('恢复失败：${e.message}');
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporter.instance.logError(
+        'backup_import_failed',
+        e,
+        st,
+        module: LogModule.db,
+      );
       _toast('恢复失败：$e');
     } finally {
       if (mounted) {
@@ -588,7 +633,8 @@ class _StorageModePageState extends State<StorageModePage> {
     return '尚未开始同步';
   }
 
-  bool get _serverMode => (_selected ?? SyncService.instance.mode).involvesServer;
+  bool get _serverMode =>
+      (_selected ?? SyncService.instance.mode).involvesServer;
 
   /// 打开待处理同步冲突的解决弹层。
   void _showConflicts() => showConflictResolverSheet(context);
@@ -623,9 +669,10 @@ class _StorageModePageState extends State<StorageModePage> {
                   color: cur == p ? AppTheme.primary : AppTheme.textSub,
                 ),
                 title: Text(p.label),
-                subtitle: Text(p.desc,
-                    style: const TextStyle(
-                        fontSize: 12, color: AppTheme.textSub)),
+                subtitle: Text(
+                  p.desc,
+                  style: const TextStyle(fontSize: 12, color: AppTheme.textSub),
+                ),
                 onTap: () => Navigator.pop(ctx, p),
               ),
           ],
@@ -676,7 +723,10 @@ class _StorageModePageState extends State<StorageModePage> {
                 '选择业务数据的存放位置：仅本地 / 仅服务器 / 本地+服务器，'
                 '三种模式均不收费，可随时切换。',
                 style: TextStyle(
-                    color: AppTheme.textSub, height: 1.5, fontSize: 13),
+                  color: AppTheme.textSub,
+                  height: 1.5,
+                  fontSize: 13,
+                ),
               ),
               const SizedBox(height: 12),
               for (final m in StorageMode.values)
@@ -713,15 +763,18 @@ class _StorageModePageState extends State<StorageModePage> {
                                   child: Text(
                                     m.label,
                                     style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700),
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
                                 if (m == StorageMode.local)
                                   const Text(
                                     '隐私优先',
                                     style: TextStyle(
-                                        color: AppTheme.success, fontSize: 12),
+                                      color: AppTheme.success,
+                                      fontSize: 12,
+                                    ),
                                   ),
                                 Icon(
                                   _selected == m
@@ -736,15 +789,18 @@ class _StorageModePageState extends State<StorageModePage> {
                             Text(
                               m.summary,
                               style: const TextStyle(
-                                  fontSize: 13, color: AppTheme.textSub),
+                                fontSize: 13,
+                                color: AppTheme.textSub,
+                              ),
                             ),
                             const SizedBox(height: 6),
                             Text(
                               m.detail,
                               style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppTheme.textSub,
-                                  height: 1.5),
+                                fontSize: 12,
+                                color: AppTheme.textSub,
+                                height: 1.5,
+                              ),
                             ),
                           ],
                         ),
@@ -786,7 +842,9 @@ class _StorageModePageState extends State<StorageModePage> {
                             child: Text(
                               _syncStatusText(),
                               style: const TextStyle(
-                                  fontSize: 13, color: AppTheme.textMain),
+                                fontSize: 13,
+                                color: AppTheme.textMain,
+                              ),
                             ),
                           ),
                         ],
@@ -813,20 +871,27 @@ class _StorageModePageState extends State<StorageModePage> {
                               padding: const EdgeInsets.all(10),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.warning_amber_rounded,
-                                      color: AppTheme.danger, size: 20),
+                                  const Icon(
+                                    Icons.warning_amber_rounded,
+                                    color: AppTheme.danger,
+                                    size: 20,
+                                  ),
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
                                       '${SyncService.instance.pendingConflicts.length} 条数据存在同步冲突，需要您决定采用哪一版',
                                       style: const TextStyle(
-                                          fontSize: 13,
-                                          color: AppTheme.danger,
-                                          height: 1.4),
+                                        fontSize: 13,
+                                        color: AppTheme.danger,
+                                        height: 1.4,
+                                      ),
                                     ),
                                   ),
-                                  const Icon(Icons.chevron_right,
-                                      color: AppTheme.danger, size: 20),
+                                  const Icon(
+                                    Icons.chevron_right,
+                                    color: AppTheme.danger,
+                                    size: 20,
+                                  ),
                                 ],
                               ),
                             ),
@@ -840,30 +905,41 @@ class _StorageModePageState extends State<StorageModePage> {
                         onTap: _showConflictPolicyDialog,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 6),
+                            horizontal: 4,
+                            vertical: 6,
+                          ),
                           child: Row(
                             children: [
-                              const Icon(Icons.tune, size: 16,
-                                  color: AppTheme.textSub),
+                              const Icon(
+                                Icons.tune,
+                                size: 16,
+                                color: AppTheme.textSub,
+                              ),
                               const SizedBox(width: 8),
-                              const Text('同步冲突处理：',
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      color: AppTheme.textSub)),
+                              const Text(
+                                '同步冲突处理：',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: AppTheme.textSub,
+                                ),
+                              ),
                               const SizedBox(width: 4),
                               Expanded(
                                 child: Text(
-                                  SyncService
-                                      .instance.conflictPolicy.label,
+                                  SyncService.instance.conflictPolicy.label,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppTheme.primary),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.primary,
+                                  ),
                                 ),
                               ),
-                              const Icon(Icons.chevron_right,
-                                  size: 18, color: AppTheme.textSub),
+                              const Icon(
+                                Icons.chevron_right,
+                                size: 18,
+                                color: AppTheme.textSub,
+                              ),
                             ],
                           ),
                         ),
@@ -877,9 +953,10 @@ class _StorageModePageState extends State<StorageModePage> {
               const Text(
                 '数据备份',
                 style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textSub),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textSub,
+                ),
               ),
               const SizedBox(height: 8),
               Card(
@@ -887,12 +964,16 @@ class _StorageModePageState extends State<StorageModePage> {
                   borderRadius: BorderRadius.circular(AppRadius.lg),
                 ),
                 child: ListTile(
-                  leading: const Icon(Icons.upload_file_outlined,
-                      color: AppTheme.primary),
+                  leading: const Icon(
+                    Icons.upload_file_outlined,
+                    color: AppTheme.primary,
+                  ),
                   title: const Text('导出全部备份JSON'),
                   subtitle: const Text('将报价、客户、项目、收款等全部数据导出为备份文件保存'),
-                  trailing: const Icon(Icons.chevron_right,
-                      color: AppTheme.textSub),
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: AppTheme.textSub,
+                  ),
                   onTap: _onExportBackup,
                 ),
               ),
@@ -901,18 +982,23 @@ class _StorageModePageState extends State<StorageModePage> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppRadius.lg),
                   side: BorderSide(
-                      color: AppTheme.danger.withValues(alpha: 0.4)),
+                    color: AppTheme.danger.withValues(alpha: 0.4),
+                  ),
                 ),
                 child: ListTile(
-                  leading: const Icon(Icons.settings_backup_restore,
-                      color: AppTheme.danger),
+                  leading: const Icon(
+                    Icons.settings_backup_restore,
+                    color: AppTheme.danger,
+                  ),
                   title: Text(
                     '从JSON备份恢复数据',
                     style: TextStyle(color: AppTheme.danger),
                   ),
                   subtitle: const Text('用备份文件覆盖恢复（会覆盖现有数据，请谨慎操作）'),
-                  trailing: const Icon(Icons.chevron_right,
-                      color: AppTheme.danger),
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: AppTheme.danger,
+                  ),
                   onTap: _onRestoreBackup,
                 ),
               ),
