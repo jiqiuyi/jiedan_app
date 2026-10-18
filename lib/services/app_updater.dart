@@ -6,6 +6,7 @@ import 'dart:ui' show IsolateNameServer;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
+import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,6 +36,9 @@ class AppUpdater {
   /// 重新下载使用；进程存活期间有效）。
   String? _lastDownloadUrl;
   String? _lastVersion;
+  /// 最近一次下载的期望大小（服务器 Content-Length），下载完成后用于
+  /// 完整性校验（防下载到截断文件 / HTML 错误页导致的「解析失败」）。
+  int? _lastExpectedBytes;
 
   /// 应用启动时初始化：注册下载回调（后台 isolate 事件转发到主 isolate）。
   /// 失败不阻断启动（仅失去自动安装能力，可手动重试）。
@@ -59,6 +63,20 @@ class AppUpdater {
   Future<void> startDownload(String url, String version) async {
     _lastDownloadUrl = url;
     _lastVersion = version;
+    // 预取服务器 Content-Length，供下载完成后做完整性校验。
+    _lastExpectedBytes = null;
+    try {
+      final head = await http
+          .head(Uri.parse(url))
+          .timeout(const Duration(seconds: 6));
+      final cl = head.headers['content-length'] ??
+          head.headers['Content-Length'];
+      if (head.statusCode == 200 && cl != null) {
+        _lastExpectedBytes = int.tryParse(cl);
+      }
+    } catch (_) {
+      // HEAD 失败不影响下载，仅失去大小校验依据
+    }
     try {
       final dir = await _ensureDownloadDir();
       final fileName = 'jiedan_guanjia_v$version.apk';
@@ -103,7 +121,9 @@ class AppUpdater {
     final id = data[0] as String;
     final status = DownloadTaskStatus.fromInt(data[1] as int? ?? -1);
     if (status == DownloadTaskStatus.complete) {
-      _installByTaskId(id);
+      // 下载完成即拉起安装（前台 complete 回调路径）。带 Content-Length
+      // 大小校验，坏文件直接删除并提示，不进入安装流程。
+      unawaited(_installByTaskId(id, expectBytes: _lastExpectedBytes));
     } else if (status == DownloadTaskStatus.failed) {
       _showSnack('新版本下载失败，请稍后重试');
     } else if (status == DownloadTaskStatus.canceled) {
@@ -111,25 +131,44 @@ class AppUpdater {
     }
   }
 
-  Future<void> _installByTaskId(String taskId) async {
+  Future<void> _installByTaskId(String taskId, {int? expectBytes}) async {
     try {
       String? path;
       final tasks = await FlutterDownloader.loadTasks();
       if (tasks != null) {
         final task = tasks.where((t) => t.taskId == taskId).firstOrNull;
         if (task != null && task.filename != null) {
-          path =
-              '${task.savedDir}${Platform.pathSeparator}${task.filename}';
+          final dir = task.savedDir;
+          // savedDir 运行时可能为 null（下载器任务表未持久化目录，模型声明
+          // 非空导致分析器误报），直接拼接会得到 "null/xxx.apk" 导致
+          // file_not_found，此处判空后走扫描兜底。
+          path = (dir.isEmpty)
+              ? null
+              : '$dir${Platform.pathSeparator}${task.filename}';
           // 记录最近下载信息，供安装失败后「重新尝试」重新下载使用。
           _lastDownloadUrl = task.url;
           _lastVersion = _versionFromApkName(task.filename!);
         }
       }
-      // 兜底：回调里 loadTasks 匹配不到 taskId（release 树摇 / 数据库丢失）时，
-      // 扫描下载目录中最新的 .apk 直接安装，避免静默失败。
-      path ??= await _findLatestApk();
+      // 兜底 1：回调里 loadTasks 匹配不到 taskId（release 树摇 / 数据库丢失）
+      // 或 savedDir 缺失导致拼接无效时，扫描下载目录中最新的 .apk。
+      if (path == null || !File(path).existsSync()) {
+        path = await _findLatestApk();
+      }
       if (path == null) {
         _showSnack('新版本已下载，但未找到安装包，请稍后重试');
+        return;
+      }
+      // 兜底 2：安装前完整性校验（大小 / magic bytes / Content-Length），
+      // 坏文件（截断 / HTML 错误页）直接删除，避免进入系统安装器报「解析失败」。
+      final verr = _validateApk(path, expectBytes: expectBytes);
+      if (verr != null) {
+        try {
+          File(path).deleteSync();
+        } catch (_) {
+          // 删除失败不阻塞提示
+        }
+        _showSnack('$verr，已删除损坏安装包，请重新下载更新');
         return;
       }
       await _installApk(path);
@@ -156,6 +195,35 @@ class AppUpdater {
     }
   }
 
+  /// 安装包完整性初检：
+  /// - 存在且体积 ≥ 1MB（真实 APK 远大于此，可拦截下载到 HTML 错误页 / 空文件）；
+  /// - 文件头为 zip magic（PK\x03\x04，APK 本质是 zip）；
+  /// - 可选：与服务器 Content-Length 完全一致（下载完成校验截断文件）。
+  /// 返回 null 表示通过；否则返回失败原因文案。
+  String? _validateApk(String path, {int? expectBytes}) {
+    try {
+      final f = File(path);
+      if (!f.existsSync()) return '安装包文件不存在';
+      final len = f.lengthSync();
+      if (len < 1024 * 1024) return '安装包文件不完整（大小异常）';
+      if (expectBytes != null && expectBytes > 0 && len != expectBytes) {
+        return '安装包文件不完整（大小与服务器不一致）';
+      }
+      final raf = f.openSync();
+      try {
+        final head = raf.readSync(4);
+        if (head.length < 4 || head[0] != 0x50 || head[1] != 0x4B) {
+          return '安装包文件损坏（非有效 APK）';
+        }
+      } finally {
+        raf.closeSync();
+      }
+      return null;
+    } catch (_) {
+      return '安装包文件校验失败';
+    }
+  }
+
   /// 消费原生侧记录的通知点击 / APK 打开意图并触发安装。
   /// 冷启动（onCreate 置位）与前台恢复（onNewIntent 置位）后由 main.dart 调用。
   /// 若无待消费意图，则兜底扫描下载目录中比当前版本新的 APK（覆盖
@@ -174,10 +242,22 @@ class AppUpdater {
         await _installByTaskId(taskId);
       } else if (path != null && path.isNotEmpty) {
         final f = File(path);
-        if (f.existsSync()) {
-          await _installApk(path);
-        } else {
+        if (!f.existsSync()) {
           _showSnack('安装包不存在，请重新下载更新');
+        } else {
+          // 通知点击 / 文件打开路径：同样先做完整性校验，坏文件删除后提示，
+          // 避免系统安装器报「安装包解析失败」。
+          final verr = _validateApk(path);
+          if (verr != null) {
+            try {
+              f.deleteSync();
+            } catch (_) {
+              // 删除失败不阻塞提示
+            }
+            _showSnack('$verr，已删除损坏安装包，请重新下载更新');
+          } else {
+            await _installApk(path);
+          }
         }
       }
     } catch (_) {
@@ -201,6 +281,16 @@ class AppUpdater {
             b.lastModifiedSync().compareTo(a.lastModifiedSync()));
       if (files.isEmpty) return;
       final latest = files.first.path;
+      // 启动兜底同样校验完整性：残留的半截 / 错误页 APK 直接删除，不再弹窗打扰。
+      final verr = _validateApk(latest);
+      if (verr != null) {
+        try {
+          File(latest).deleteSync();
+        } catch (_) {
+          // 删除失败静默即可
+        }
+        return;
+      }
       final apkName = latest.split(Platform.pathSeparator).last;
       final apkVersion = _versionFromApkName(apkName);
       if (apkVersion == null) return;

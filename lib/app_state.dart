@@ -97,38 +97,59 @@ class AppState extends ChangeNotifier {
       expireAt = null;
     }
 
-    UserAccount? local = await AppDb.instance.getUserByPhone(phone);
-    if (local == null) {
-      final now = DateTime.now().millisecondsSinceEpoch;
+    UserAccount? local;
+    try {
+      // 本地会话缓存整体降级：三星等设备 SQLite / secure storage 异常时，
+      // 仅记录日志，用云端数据构造内存会话继续登录，绝不因缓存失败阻断成功。
+      local = await AppDb.instance.getUserByPhone(phone);
+      if (local == null) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        local = UserAccount(
+          phone: phone,
+          passHash: '',
+          nickname: nickname,
+          createdAt: now,
+          isPro: isPro,
+          proExpireAt: expireAt,
+        );
+        final newId = await AppDb.instance.insertUser(local);
+        local = UserAccount(
+          id: newId,
+          phone: phone,
+          passHash: '',
+          nickname: nickname,
+          createdAt: now,
+          isPro: isPro,
+          proExpireAt: expireAt,
+        );
+      } else {
+        // 防破解加固（P0）：云端 isPro 无论 true/false 一律覆盖本地缓存，
+        // 本地 users 表仅作会话展示缓存，VIP 判定只认云端。
+        local = local.copyWith(nickname: nickname, isPro: isPro, proExpireAt: expireAt);
+      }
+      await AppDb.instance.updateUser(local);
+      await AppDb.instance.setCurrentUser(local.id);
+    } catch (e, st) {
+      ErrorReporter.instance.logError('login_sync_user_db', e, st);
+      // DB 异常降级：用云端用户数据构造内存会话（id 为空不影响会话展示）。
       local = UserAccount(
         phone: phone,
         passHash: '',
         nickname: nickname,
-        createdAt: now,
+        createdAt: DateTime.now().millisecondsSinceEpoch,
         isPro: isPro,
         proExpireAt: expireAt,
       );
-      final newId = await AppDb.instance.insertUser(local);
-      local = UserAccount(
-        id: newId,
-        phone: phone,
-        passHash: '',
-        nickname: nickname,
-        createdAt: now,
-        isPro: isPro,
-        proExpireAt: expireAt,
-      );
-    } else {
-      // 防破解加固（P0）：云端 isPro 无论 true/false 一律覆盖本地缓存，
-      // 本地 users 表仅作会话展示缓存，VIP 判定只认云端。
-      local = local.copyWith(nickname: nickname, isPro: isPro, proExpireAt: expireAt);
     }
-    await AppDb.instance.updateUser(local);
-    await AppDb.instance.setCurrentUser(local.id);
+    // 会话内存态兜底赋值：无论 DB 成功 / 降级，登录成功都进入已登录态。
     _currentUser = local;
     // 第15批（过渡期）：云端 me 成功即写入本地 VIP 缓存（按手机号隔离），
     // 供云端不可用时离线续订；实时判定仍以云端 isPro 为权威。
-    await _writeLocalVipCache(phone, isPro, expireAt);
+    try {
+      await _writeLocalVipCache(phone, isPro, expireAt);
+    } catch (e, st) {
+      ErrorReporter.instance.logError('login_vip_cache', e, st);
+    }
     // 防破解加固：VIP 判定纯云端权威，本地不叠加任何解锁标记。
     _isPro = _vipActive(isPro, expireAt);
   }

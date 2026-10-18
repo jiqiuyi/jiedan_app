@@ -70,11 +70,20 @@ class ErrorReporter {
     if (e is MissingPluginException) return true;
     final s = e.toString();
     return s.contains('flutter_secure_storage') ||
+        s.contains('com.it_nomads.fluttersecurestorage') ||
         s.contains('keystore') ||
         s.contains('KeyStore') ||
+        s.contains('KeyStoreCryptoOperation') ||
         s.contains('secure storage') ||
         s.contains('BadPadding') ||
         s.contains('Cipher') ||
+        s.contains('AEADBadTag') ||
+        s.contains('InvalidKey') ||
+        s.contains('UserNotAuthenticated') ||
+        s.contains('EncryptedFile') ||
+        s.contains('android.security.keystore') ||
+        s.contains('javax.crypto') ||
+        s.contains('java.security') ||
         s.contains('SharedPreferences') ||
         s.contains('MissingPluginException');
   }
