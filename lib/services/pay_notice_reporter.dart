@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../api_client.dart';
 import '../database.dart';
+import 'error_reporter.dart';
 
 /// 收款到账自动核对桥：连接 Android 原生解析到的到账记录（金额 + 时间），
 /// 带上登录态上报后端匹配订单。
@@ -84,61 +85,77 @@ class PayNoticeReporter {
   }
 
   /// 重试此前失败的上报记录。
+  /// 本地 DB 偶发异常（三星等机型 SQLite）一律降级留日志，不冒泡到全局兜底。
   Future<void> retryPending() async {
-    final t = ApiClient.instance.token;
-    if (t == null) return;
-    final raw = await AppDb.instance
-        .getSetting(_retryKey);
-    if (raw == null || raw.isEmpty) return;
-    final List<dynamic> list;
     try {
-      list = jsonDecode(raw) as List<dynamic>;
-    } catch (_) {
-      await AppDb.instance.setSetting(_retryKey, '');
-      return;
-    }
-    final rest = <Map<String, dynamic>>[];
-    for (final r in list) {
-      if (r is! Map) continue;
-      try {
-        await ApiClient.instance.reportListener(
-          amount: (r['amount'] as num).toDouble(),
-          ts: (r['ts'] as num).toInt(),
-          source: (r['source'] ?? 'manual').toString(),
-          deviceId: await _deviceId(),
-        );
-      } catch (_) {
-        rest.add(Map<String, dynamic>.from(r));
-      }
-    }
-    await AppDb.instance
-        .setSetting(_retryKey, jsonEncode(rest));
-  }
-
-  Future<void> _pushRetry(Map<String, dynamic> item) async {
-    final raw = await AppDb.instance.getSetting(_retryKey);
-    List<dynamic> list = [];
-    if (raw != null && raw.isNotEmpty) {
+      final t = ApiClient.instance.token;
+      if (t == null) return;
+      final raw = await AppDb.instance
+          .getSetting(_retryKey);
+      if (raw == null || raw.isEmpty) return;
+      final List<dynamic> list;
       try {
         list = jsonDecode(raw) as List<dynamic>;
       } catch (_) {
-        list = [];
+        await AppDb.instance.setSetting(_retryKey, '');
+        return;
       }
+      final rest = <Map<String, dynamic>>[];
+      for (final r in list) {
+        if (r is! Map) continue;
+        try {
+          await ApiClient.instance.reportListener(
+            amount: (r['amount'] as num).toDouble(),
+            ts: (r['ts'] as num).toInt(),
+            source: (r['source'] ?? 'manual').toString(),
+            deviceId: await _deviceId(),
+          );
+        } catch (_) {
+          rest.add(Map<String, dynamic>.from(r));
+        }
+      }
+      await AppDb.instance
+          .setSetting(_retryKey, jsonEncode(rest));
+    } catch (e, st) {
+      ErrorReporter.instance.logError('pay_retry_pending', e, st);
     }
-    list.add(item);
-    if (list.length > 200) list.removeAt(0);
-    await AppDb.instance.setSetting(_retryKey, jsonEncode(list));
+  }
+
+  Future<void> _pushRetry(Map<String, dynamic> item) async {
+    try {
+      final raw = await AppDb.instance.getSetting(_retryKey);
+      List<dynamic> list = [];
+      if (raw != null && raw.isNotEmpty) {
+        try {
+          list = jsonDecode(raw) as List<dynamic>;
+        } catch (_) {
+          list = [];
+        }
+      }
+      list.add(item);
+      if (list.length > 200) list.removeAt(0);
+      await AppDb.instance.setSetting(_retryKey, jsonEncode(list));
+    } catch (e, st) {
+      // 重试队列本地写入失败仅留日志（本次记录放弃，不冒泡）。
+      ErrorReporter.instance.logError('pay_push_retry', e, st);
+    }
   }
 
   /// 本机设备标识（风控用，匿名稳定 ID）。首次生成后持久化，不采集任何隐私字段。
+  /// 本地 DB 偶发异常时返回临时 ID，保证上报不中断、不冒泡。
   Future<String> _deviceId() async {
-    var id = await AppDb.instance.getSetting('device_id');
-    if (id == null || id.isEmpty) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      id = 'jd_${now}_${_rand()}';
-      await AppDb.instance.setSetting('device_id', id);
+    try {
+      var id = await AppDb.instance.getSetting('device_id');
+      if (id == null || id.isEmpty) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        id = 'jd_${now}_${_rand()}';
+        await AppDb.instance.setSetting('device_id', id);
+      }
+      return id;
+    } catch (e, st) {
+      ErrorReporter.instance.logError('pay_device_id', e, st);
+      return 'jd_${DateTime.now().millisecondsSinceEpoch}';
     }
-    return id;
   }
 
   String _rand() {

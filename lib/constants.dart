@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.46.16+80';
+  static const String version = '1.46.17+81';
   // 工信部 ICP 备案号（Android 合规要求：App 内显著位置可查，展示于「我的」页底部）
   static const String icpCode = '苏ICP备2026065744号-3A';
 

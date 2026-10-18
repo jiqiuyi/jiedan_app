@@ -41,12 +41,11 @@ Future<void> main() async {
     runApp(const JieDanApp());
     _schedulePostLaunch();
   }, (Object error, StackTrace stack) {
+    // 全局兜底：一律只留日志，不再弹「操作未能完成，请稍后重试」。
+    // 启动/登录全程的无害异常已在各业务链路上降级并记录日志（见
+    // _safePostLaunch / dashboard 等源头 catch / isBenignError 类型过滤）；
+    // 关键路径的可见提示由业务层显式 notify / 局部 UI 承担。
     ErrorReporter.instance.logError('zone', error, stack);
-    // 已降级处理的良性异常（三星 Keystore / secure storage 等）不弹全局兜底，
-    // 其余未捕获异常保留原全局友好提示，避免白屏/静默。
-    if (!ErrorReporter.isBenignError(error)) {
-      ErrorReporter.instance.notify();
-    }
   });
 }
 
@@ -75,19 +74,35 @@ Future<bool> _safeInit(String tag, Future<void> Function() fn) async {
 }
 
 /// runApp 后启动的后台任务（原 main 尾部逻辑，抽出供签名确认页复用）。
+/// 所有 fire-and-forget 后台任务一律走 _safePostLaunch：三星 Keystore /
+/// 网络抖动 / SQLite 偶发异常只留日志，绝不冒泡到全局兜底弹窗。
 void _schedulePostLaunch() {
   // 启动后静默核对一次到账记录（失败进重试队列，不阻塞启动）
-  unawaited(PayNoticeReporter.instance.retryPending());
-  unawaited(PayNoticeReporter.instance.uploadPending());
+  unawaited(_safePostLaunch(
+      'pay_retry', () => PayNoticeReporter.instance.retryPending()));
+  unawaited(_safePostLaunch(
+      'pay_upload', () => PayNoticeReporter.instance.uploadPending()));
   // 启动后巡检本地待办提醒（v1.24.0：回款到期 / 报价待确认，基于本地数据，不依赖服务器）
-  unawaited(NotifyService.instance.checkLocalReminders());
+  unawaited(_safePostLaunch(
+      'remind', () => NotifyService.instance.checkLocalReminders()));
   // App 在线期间每小时再巡检一次，跨过到期时间点也能及时本地提醒（轻量，仅查本地 SQLite）
   Timer.periodic(const Duration(hours: 1), (_) {
-    unawaited(NotifyService.instance.checkLocalReminders());
+    unawaited(_safePostLaunch(
+        'remind', () => NotifyService.instance.checkLocalReminders()));
   });
   // 启动后静默执行一次数据库自检（表结构完整性 / 数据可恢复性），结果留痕，
   // 可在「数据管理」页查看；失败不阻断启动。
-  unawaited(AppDb.instance.backgroundHealthCheck());
+  unawaited(
+      _safePostLaunch('db_health', () => AppDb.instance.backgroundHealthCheck()));
+}
+
+/// 后台任务安全包装：失败仅记录日志，绝不冒泡到 runZonedGuarded / onError。
+Future<void> _safePostLaunch(String tag, Future<void> Function() fn) async {
+  try {
+    await fn();
+  } catch (e, st) {
+    ErrorReporter.instance.logError('postlaunch_$tag', e, st);
+  }
 }
 
 /// 签名被篡改（重打包/二次签名）时的提示页：由用户决定退出或继续使用。

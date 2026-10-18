@@ -7,6 +7,7 @@ import '../models.dart';
 import '../constants.dart';
 import '../api_client.dart';
 import '../theme.dart';
+import '../services/error_reporter.dart';
 import '../state/ticker.dart';
 import '../widgets/show_payment_code.dart';
 import 'income_history_page.dart';
@@ -54,32 +55,39 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _refesh() async {
-    final now = DateTime.now();
-    final db = AppDb.instance;
-    final month = await db.monthPaidTotal(now.year, now.month);
-    final projects = await db.getProjects();
-    final customers = await db.getCustomers();
-    final pendings = await db.getPendingCollections(onlyPending: true);
-    // N+1 修复：一次批量查询所有项目已收总额，避免逐项目查询
-    final paidTotals = await db.projectPaidTotals();
-    int awaiting = 0;
-    for (final pr in projects) {
-      if (pr.status == ProjectStatus.awaiting) {
-        final paid = paidTotals[pr.id] ?? 0;
-        final remain = pr.amountTotal - paid;
-        if (remain > 0) awaiting += remain;
+    // 看板为启动 / 登录成功后的首页：三星等设备 SQLite 偶发异常若冒泡会触发
+    // 全局兜底弹窗「操作未能完成，请稍后重试」。这里一律降级为留日志静默，
+    // 保留当前已展示数据不刷新（下个 Ticker 周期仍会重试）。
+    try {
+      final now = DateTime.now();
+      final db = AppDb.instance;
+      final month = await db.monthPaidTotal(now.year, now.month);
+      final projects = await db.getProjects();
+      final customers = await db.getCustomers();
+      final pendings = await db.getPendingCollections(onlyPending: true);
+      // N+1 修复：一次批量查询所有项目已收总额，避免逐项目查询
+      final paidTotals = await db.projectPaidTotals();
+      int awaiting = 0;
+      for (final pr in projects) {
+        if (pr.status == ProjectStatus.awaiting) {
+          final paid = paidTotals[pr.id] ?? 0;
+          final remain = pr.amountTotal - paid;
+          if (remain > 0) awaiting += remain;
+        }
       }
+      if (!mounted) return;
+      setState(() {
+        _monthIncome = month;
+        _projectCount = projects.length;
+        _customerCount = customers.length;
+        _awaitingAmount = awaiting;
+        _doneCount = projects.where((e) => e.status == ProjectStatus.done).length;
+        _recent = projects.take(5).toList();
+        _pendings = pendings;
+      });
+    } catch (e, st) {
+      ErrorReporter.instance.logError('dashboard_refesh', e, st);
     }
-    if (!mounted) return;
-    setState(() {
-      _monthIncome = month;
-      _projectCount = projects.length;
-      _customerCount = customers.length;
-      _awaitingAmount = awaiting;
-      _doneCount = projects.where((e) => e.status == ProjectStatus.done).length;
-      _recent = projects.take(5).toList();
-      _pendings = pendings;
-    });
   }
 
   /// 看板收款入口：选择项目 → 选择渠道 → 展示收款码 → 手动确认到账

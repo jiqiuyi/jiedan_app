@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
@@ -52,11 +53,10 @@ class ErrorReporter {
 
     PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
       logError('platform', error, stack);
+      // 平台线程异步异常：一律只留日志，不弹全局「操作未能完成，请稍后重试」。
       // 三星等机型 Keystore/secure storage 平台线程偶发未处理异常（Dart 侧
-      // timeout+catch 接不住），属于已降级场景，不弹全局「操作未能完成」误导。
-      if (!isBenignError(error)) {
-        notify();
-      }
+      // timeout+catch 接不住）属于已降级场景，弹全局文案只会误导用户；
+      // 关键路径的可见提示由业务层显式 notify / 局部 UI 承担。
       return true; // 捕获平台层未处理异常，防止应用直接崩溃退出。
     };
   }
@@ -65,10 +65,27 @@ class ErrorReporter {
   /// - 三星/部分 ROM 上 flutter_secure_storage（Keystore）平台线程残余异常，
   ///   调用侧均已做 3s 超时 + catch 降级，弹全局兜底会误导用户以为操作失败；
   /// - SharedPreferences 偶发读取失败（登录页/首页已有局部降级）；
+  /// - TimeoutException / SocketException / FormatException（网络抖动、解析
+  ///   失败的降级路径，业务层已记录日志）；
+  /// - DatabaseException / DbException（SQLite 存储异常，多为三星设备偶发，
+  ///   已在调用链上 logError 留痕，全局弹窗无帮助）；
+  /// - PlatformException（MethodChannel 包装的平台残余异常，仅当 code/message
+  ///   命中良性关键字时放行）；
   /// - MissingPluginException（插件回调未注册时的平台残余错误）。
   static bool isBenignError(Object e) {
     if (e is MissingPluginException) return true;
-    final s = e.toString();
+    if (e is TimeoutException) return true;
+    if (e is SocketException) return true;
+    if (e is FormatException) return true;
+    if (e is PlatformException) {
+      // 仅凭 code + message 命中良性关键字才放行，避免把业务性平台错误全吞。
+      return _isBenignString('${e.code} ${e.message}');
+    }
+    return _isBenignString(e.toString());
+  }
+
+  /// 良性关键字集合（大小写敏感按实际情况匹配）。
+  static bool _isBenignString(String s) {
     return s.contains('flutter_secure_storage') ||
         s.contains('com.it_nomads.fluttersecurestorage') ||
         s.contains('keystore') ||
@@ -85,6 +102,9 @@ class ErrorReporter {
         s.contains('javax.crypto') ||
         s.contains('java.security') ||
         s.contains('SharedPreferences') ||
+        s.contains('DatabaseException') ||
+        s.contains('DbException') ||
+        s.contains('数据库操作失败') ||
         s.contains('MissingPluginException');
   }
 

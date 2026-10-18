@@ -6,6 +6,7 @@ import '../constants.dart';
 import '../database.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../services/error_reporter.dart';
 import '../services/update_service.dart';
 
 import 'dashboard_page.dart';
@@ -46,7 +47,14 @@ class HomeShellState extends State<HomeShell> {
     // 启动后稍等片刻自动检查更新（非强制，网络失败静默）
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 1500), () {
-        if (mounted) UpdateService.instance.checkAuto(context);
+        if (!mounted) return;
+        // 三星等机型存储/平台偶发异常若冒泡会触发全局兜底弹窗，
+        // 这里一律降级为留日志静默（用户可在「设置-检查更新」手动触发）。
+        try {
+          UpdateService.instance.checkAuto(context);
+        } catch (e, st) {
+          ErrorReporter.instance.logError('update_check_auto', e, st);
+        }
       });
     });
     // 异步恢复上次保存的悬浮球位置（await 后已过首帧，MediaQuery 可用）
@@ -92,13 +100,18 @@ class HomeShellState extends State<HomeShell> {
   }
 
   /// 拖动结束保存位置（比例值，便于不同分辨率适配）。
+  /// 保存失败（三星等机型存储偶发异常）只留日志，不影响本次拖动。
   Future<void> _saveFabPosition() async {
-    final b = _fabBounds();
-    final rx = ((_fabDx - b.minX) / (b.maxX - b.minX)).clamp(0.0, 1.0);
-    final ry = ((_fabDy - b.minY) / (b.maxY - b.minY)).clamp(0.0, 1.0);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_prefFabDx, rx);
-    await prefs.setDouble(_prefFabDy, ry);
+    try {
+      final b = _fabBounds();
+      final rx = ((_fabDx - b.minX) / (b.maxX - b.minX)).clamp(0.0, 1.0);
+      final ry = ((_fabDy - b.minY) / (b.maxY - b.minY)).clamp(0.0, 1.0);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_prefFabDx, rx);
+      await prefs.setDouble(_prefFabDy, ry);
+    } catch (e, st) {
+      ErrorReporter.instance.logError('fab_save_pos', e, st);
+    }
   }
 
   /// 悬浮球 Widget：可拖动，未拖动时 onPanEnd 触发点击（打开极速记账）。
