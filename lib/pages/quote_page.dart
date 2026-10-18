@@ -700,7 +700,11 @@ class _QuotePageState extends State<QuotePage>
         expand: false,
         initialChildSize: 0.7,
         maxChildSize: 0.92,
-        builder: (ctx, scrollCtrl) => Column(
+        builder: (ctx, scrollCtrl) => ClipRRect(
+          // v1.46.12：裁剪弹层顶部圆角，杜绝 Slidable 操作区绘制超出白色弹层
+          borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(AppRadius.sheet)),
+          child: Column(
           children: [
             const Padding(
               padding: EdgeInsets.all(14),
@@ -720,7 +724,8 @@ class _QuotePageState extends State<QuotePage>
                       key: ValueKey('quote_${q.id}'),
                     endActionPane: ActionPane(
                       motion: const ScrollMotion(),
-                      extentRatio: 0.9,
+                      // v1.46.12：操作区收窄，确保全部按钮完整落在白色弹层内
+                      extentRatio: 0.7,
                       children: [
                         CustomSlidableAction(
                           onPressed: (_) => _shareWeb(ctx, q),
@@ -895,7 +900,9 @@ class _QuotePageState extends State<QuotePage>
                               _convertToFull(q);
                               Navigator.pop(ctx);
                             } else if (action == 'save_template') {
-                              _saveAsTemplate(q);
+                              // v1.46.12：先等模板保存弹窗交互完成再关历史弹层，
+                              // 避免弹窗 push 与历史弹层 pop 动画并发导致保存确认丢失
+                              await _saveAsTemplate(q);
                               if (!ctx.mounted) return;
                               Navigator.pop(ctx);
                             }
@@ -1019,6 +1026,7 @@ class _QuotePageState extends State<QuotePage>
               ),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -1358,6 +1366,13 @@ class _QuotePageState extends State<QuotePage>
         ..writeln('【报价】')
         ..writeln('客户：${q.title}');
       b.writeln('报价金额：¥${_fmt.format(q.total / 100)}');
+      // v1.46.12：简单报价带出税率（含税一口价的价内税费）
+      if (q.taxRate > 0) {
+        final rate = q.taxRate / 100;
+        final taxFen = (q.total * rate / (1 + rate)).round();
+        b.writeln(
+            '税率：${q.taxRate.toStringAsFixed(0)}%（其中税费 ¥${_fmt.format(taxFen / 100)}）');
+      }
       if (q.note.trim().isNotEmpty) {
         b.writeln('备注：${q.note.trim()}');
       }
