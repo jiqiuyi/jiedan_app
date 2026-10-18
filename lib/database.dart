@@ -847,7 +847,6 @@ class AppDb {
     await _createLedgerEntries(db);
     await _createContracts(db);
     await _createSubscriptionOrders(db);
-    await _createTags(db);
     // 3) 补齐历史库缺失的 updated_at 列（同步写入路径会引用该列）。
     const needUpdatedAt = <String>[
       'customers',
@@ -857,6 +856,7 @@ class AppDb {
       'milestones',
       'contracts',
       'tag_items',
+      'tags',
     ];
     for (final t in needUpdatedAt) {
       final cols = await db.rawQuery('PRAGMA table_info($t)');
@@ -865,6 +865,9 @@ class AppDb {
         await db.execute('ALTER TABLE $t ADD COLUMN updated_at INTEGER');
       }
     }
+    // 注意：tags 种子数据（_seedTags）会写入 updated_at，坏库必须先补列再执行
+    // _createTags 建表 + 种子，否则又抛「table tags has no column named updated_at」。
+    await _createTags(db);
     // 4) customer_tags 同步化自愈：缺 id 列的老库（v20 及以前结构）按 v21 重建，
     //    幂等：已有 id 列则跳过；表缺失时交由 _createTags 按最新结构创建。
     final ctCols = await db.rawQuery('PRAGMA table_info(customer_tags)');
@@ -1027,7 +1030,8 @@ class AppDb {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
         color INTEGER NOT NULL DEFAULT 0xFF4C9AFF,
-        created_at INTEGER
+        created_at INTEGER,
+        updated_at INTEGER
       )
     ''');
     await db.execute('''
