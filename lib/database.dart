@@ -91,49 +91,129 @@ class AppDb {
     }
   }
 
-  // DB 打开统一入口：一次成功返回；失败时先备份现场再重建空库兜底。
+  // DB 打开统一入口：一次成功返回；失败时先短暂等待（让原生 SQLite 释放文件锁 /
+  // 平台通道残留调用收敛）重试一次，仍失败再备份现场重建空库兜底。
   // 覆盖三星 Android 16 上：1) 平台通道挂起（openDatabase 永不返回）——
   //    用 timeout 打断；2) 数据库文件损坏 / CANTOPEN——rename 备份后重建；
   //    3) 迁移失败——原文件备份保留，重建新库后应用可继续使用。
+  // 注意：Dart 侧 timeout 只是打断 Future，原生 open 可能仍在执行并持有文件锁，
+  // 立刻 rename 会失败。因此先 sleep 再重试一次，仍失败才进入 _recoverDb。
   Future<Database> _openWithRecovery() async {
     try {
       return await _open();
     } catch (e, st) {
-      ErrorReporter.instance.logError('db_open_failed', e, st);
-      final recovered = await _recoverDb(e);
-      if (recovered != null) return recovered;
-      rethrow;
+      ErrorReporter.instance.logError('db_open_failed', e, st,
+          context: await _dbDiagContext('首次打开失败'));
+      try {
+        // 给原生 SQLite 释放锁 / 平台通道收敛留时间，三星上偶发一次可恢复。
+        await Future.delayed(const Duration(milliseconds: 800));
+        return await _open();
+      } catch (e2, st2) {
+        ErrorReporter.instance.logError('db_open_failed_retry', e2, st2,
+            context: await _dbDiagContext('重试打开仍失败'));
+        final recovered = await _recoverDb(e2);
+        if (recovered != null) return recovered;
+        rethrow;
+      }
     }
   }
 
-  // 重建兜底：把当前 DB 文件（含 -wal/-shm）改名保留现场（.corrupt_<ts>），
+  // 收集 DB 诊断上下文：getDatabasesPath 值、主文件与 -wal/-shm/-journal 的
+  // 存在性与大小、当前 dbVersion、DB 目录是否存在。供 db_open_failed /
+  // db_recover_failed / db_query_failed 日志远程定位使用。
+  // 任何一步失败都不抛异常，仅返回已收集到的字段。
+  Future<Map<String, Object?>> _dbDiagContext(String note) async {
+    final ctx = <String, Object?>{'note': note, 'dbVersion': AppConfig.dbVersion};
+    try {
+      final dir = await getDatabasesPath().timeout(const Duration(seconds: 8));
+      ctx['databasesPath'] = dir;
+      final dbPath = p.join(dir, AppConfig.dbName);
+      ctx['dbPath'] = dbPath;
+      final f = File(dbPath);
+      ctx['dbExists'] = await f.exists();
+      if (ctx['dbExists'] == true) {
+        ctx['dbSizeBytes'] = (await f.length()).toString();
+      }
+      for (final suffix in ['-wal', '-shm', '-journal']) {
+        final side = File('$dbPath$suffix');
+        final exists = await side.exists();
+        ctx['side$suffix'] = exists;
+        if (exists) ctx['side${suffix}SizeBytes'] = (await side.length()).toString();
+      }
+    } catch (e, st) {
+      ctx['diagCollectError'] = '$e';
+      ctx['diagCollectStack'] =
+          st.toString().split('\n').take(3).join('\n');
+    }
+    return ctx;
+  }
+
+  // 重建兜底：把当前 DB 文件（含 -wal/-shm/-journal）改名保留现场（.corrupt_<ts>），
   // 再重新 _open() 让 onCreate 全量建表，得到可用的全新空库。
   // 原数据仍留在同目录 .corrupt_ 文件内，可通过「数据管理 → 导入备份」恢复。
+  // rename 失败（原生句柄未释放 / 只读）时按文件逐个重试，并如实记录失败项，
+  // 让远程日志能区分「备份未生成」与「重建失败」两个阶段。
   Future<Database?> _recoverDb(Object cause) async {
+    var backupPath = '';
+    final renameResults = <String, String>{};
     try {
-      final dir = await getDatabasesPath();
+      final dir = await getDatabasesPath().timeout(const Duration(seconds: 8));
       final dbPath = p.join(dir, AppConfig.dbName);
       final ts = DateTime.now().millisecondsSinceEpoch;
+      backupPath = '$dbPath.corrupt_$ts';
       final f = File(dbPath);
       if (await f.exists()) {
         // 备份（rename 即备份：SQLite 打开新库前旧文件被移走，现场完整保留）
-        final backupPath = '$dbPath.corrupt_$ts';
-        await f.rename(backupPath);
-        for (final suffix in ['-wal', '-shm']) {
+        // 失败则等待重试：三星上原生 open 可能刚被 timeout 打断但句柄未释放。
+        renameResults['main'] = await _renameWithRetry(f, backupPath);
+        for (final suffix in ['-wal', '-shm', '-journal']) {
           final side = File('$dbPath$suffix');
           if (await side.exists()) {
-            try {
-              await side.rename('$backupPath$suffix');
-            } catch (_) {}
+            renameResults[suffix] =
+                await _renameWithRetry(side, '$backupPath$suffix');
           }
         }
       }
-      // 重建空库（onCreate 全量建表，保证后续查询可用）
-      return await _open();
+      // 重建空库（onCreate 全量建表，保证后续查询可用）；重建后立即验证可查询。
+      final sw = Stopwatch()..start();
+      final rebuilt = await _open();
+      sw.stop();
+      try {
+        await rebuilt.rawQuery('SELECT 1');
+      } catch (ve, vst) {
+        ErrorReporter.instance.logError('db_recover_verify_failed', ve, vst,
+            context: await _dbDiagContext('重建后 SELECT 1 验证失败'));
+        rethrow;
+      }
+      ErrorReporter.instance.logError('db_recover_ok', 'recovered', null,
+          context: {
+        'cause': '$cause',
+        'backupPath': backupPath,
+        'renameResults': renameResults.toString(),
+        'rebuiltMs': sw.elapsedMilliseconds,
+        'dbVersion': AppConfig.dbVersion,
+      });
+      return rebuilt;
     } catch (e2, st2) {
-      ErrorReporter.instance.logError('db_recover_failed', e2, st2);
+      ErrorReporter.instance.logError('db_recover_failed', e2, st2,
+          context: await _dbDiagContext('重建兜底失败'));
       return null;
     }
+  }
+
+  // rename 带重试：文件可能被原生 SQLite 句柄短暂占用（三星 openDatabase 被
+  // timeout 打断后原生调用尚未释放），失败等待 500ms 重试，最多 3 次。
+  Future<String> _renameWithRetry(File f, String target) async {
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await f.rename(target);
+        return 'ok(attempt=$attempt)';
+      } catch (e) {
+        if (attempt == 3) return 'fail: $e';
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+    }
+    return 'fail';
   }
 
   // ============================================================
@@ -167,10 +247,40 @@ class AppDb {
   }
 
   // 统一执行入口：捕获 DatabaseException 并分类抛出中文业务异常。
-  Future<T> _guard<T>(Future<T> Function() action) async {
+  // 诊断增强：任何查询失败都留痕 db_query_failed（含表名 / 结果码 / 堆栈 /
+  // dbVersion）；对非约束类错误（三星偶发 readonly / disk I/O / 瞬时锁等）
+  // 自动间隔 200ms 重试一次，尽量在业务层消化瞬时抖动，减少页面报错。
+  Future<T> _guard<T>(Future<T> Function() action, {String? table}) async {
     try {
       return await action();
     } on DatabaseException catch (e) {
+      final code = e.getResultCode();
+      // 约束冲突（用户输入问题）与损坏（重试无意义）不重试，直接分类抛出。
+      final transient = code != 11 && code != 26 && code != 19;
+      if (transient) {
+        try {
+          await Future.delayed(const Duration(milliseconds: 200));
+          return await action();
+        } on DatabaseException catch (e2) {
+          ErrorReporter.instance.logError('db_query_failed', e2, null,
+              context: {
+            'table': table ?? '-',
+            'resultCode': '${e2.getResultCode()}',
+            'dbVersion': AppConfig.dbVersion,
+            'retried': true,
+          });
+          throw _classify(e2);
+        } catch (other) {
+          rethrow;
+        }
+      }
+      ErrorReporter.instance.logError('db_query_failed', e, null,
+          context: {
+            'table': table ?? '-',
+            'resultCode': '$code',
+            'dbVersion': AppConfig.dbVersion,
+            'retried': false,
+          });
       throw _classify(e);
     }
   }
@@ -196,6 +306,7 @@ class AppDb {
     return _guard(
       () => d.query(table,
           where: where, whereArgs: whereArgs, orderBy: orderBy, limit: limit),
+      table: table,
     );
   }
 
@@ -211,7 +322,7 @@ class AppDb {
   // 普通插入（无 updated_at / 无同步通知），返回自增 id。
   Future<int> _insert(String table, Map<String, Object?> data) async {
     final d = await db;
-    return _guard(() => d.insert(table, data));
+    return _guard(() => d.insert(table, data), table: table);
   }
 
   // 同步表插入：自动补 updated_at 并触发同步通知。
@@ -229,8 +340,9 @@ class AppDb {
     bool strict = true,
   }) async {
     final d = await db;
-    final n = await _guard(() => d.update(table, data,
-        where: 'id=?', whereArgs: [id]));
+    final n = await _guard(
+        () => d.update(table, data, where: 'id=?', whereArgs: [id]),
+        table: table);
     if (n == 0 && strict) throw DbNotFoundException();
   }
 
@@ -242,8 +354,8 @@ class AppDb {
     required List<Object?> whereArgs,
   }) async {
     final d = await db;
-    await _guard(
-        () => d.update(table, data, where: where, whereArgs: whereArgs));
+    await _guard(() => d.update(table, data, where: where, whereArgs: whereArgs),
+        table: table);
   }
 
   // 同步表更新：补 updated_at 并触发同步通知。
@@ -261,7 +373,7 @@ class AppDb {
   }) async {
     final d = await db;
     final n = await _guard(() => d.delete(table,
-        where: 'id=?', whereArgs: [id]));
+        where: 'id=?', whereArgs: [id]), table: table);
     if (n == 0 && strict) throw DbNotFoundException();
   }
 
@@ -272,7 +384,8 @@ class AppDb {
     required List<Object?> whereArgs,
   }) async {
     final d = await db;
-    await _guard(() => d.delete(table, where: where, whereArgs: whereArgs));
+    await _guard(() => d.delete(table, where: where, whereArgs: whereArgs),
+        table: table);
   }
 
   // 同步表删除：删除 + 记墓碑 + 触发同步通知。
@@ -286,9 +399,13 @@ class AppDb {
   // 打开 / 建库 / 版本迁移
   // ============================================================
   Future<Database> _open() async {
-    final dir = await getDatabasesPath();
+    final sw = Stopwatch()..start();
+    // getDatabasesPath 也是平台通道调用，三星上同样可能挂起，必须与 openDatabase
+    // 一样有超时保护；否则页面会停留在无限加载（三态兜底无法触发）。
+    final dir = await getDatabasesPath().timeout(const Duration(seconds: 8));
     final path = p.join(dir, AppConfig.dbName);
-    return openDatabase(
+    try {
+      final d = await openDatabase(
       path,
       version: AppConfig.dbVersion,
       onCreate: (db, version) async {
@@ -332,7 +449,25 @@ class AppDb {
           '为防止数据被破坏已停止打开数据库。请安装不低于原版本的应用（或先还原旧版数据备份）。',
         );
       },
-    ).timeout(const Duration(seconds: 12));
+      ).timeout(const Duration(seconds: 12));
+      sw.stop();
+      ErrorReporter.instance.logError('db_open_ok', 'opened', null,
+          context: {
+            'openMs': sw.elapsedMilliseconds,
+            'dbPath': path,
+            'dbVersion': AppConfig.dbVersion,
+          });
+      return d;
+    } catch (e, st) {
+      sw.stop();
+      ErrorReporter.instance.logError('db_open_failed_inner', e, st,
+          context: {
+            'openMs': sw.elapsedMilliseconds,
+            'dbVersion': AppConfig.dbVersion,
+            'dbPath': path,
+          });
+      rethrow;
+    }
   }
 
   // 迁移成功/失败日志的 settings 键（保留最近若干条，便于排查版本升级问题）。

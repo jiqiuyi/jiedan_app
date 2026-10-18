@@ -12,6 +12,7 @@ import '../services/avatar_service.dart';
 import '../services/device_info_reporter.dart';
 import '../services/update_service.dart';
 import '../state/ticker.dart';
+import 'error_log_page.dart';
 import '../theme.dart';
 import 'admin_page.dart';
 import 'data_management_page.dart';
@@ -249,6 +250,16 @@ class _SettingsPageState extends State<SettingsPage> {
                   onLogout: _confirmLogout,
                 ),
                 const SizedBox(height: 8),
+                Card(
+                  margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                  child: ListTile(
+                    leading: const Icon(Icons.bug_report_outlined),
+                    title: const Text('错误日志'),
+                    subtitle: const Text('查看最近运行异常，复制后反馈给开发者'),
+                    trailing: const Icon(Icons.chevron_right, size: 20),
+                    onTap: () => _push(const ErrorLogPage()),
+                  ),
+                ),
                 Center(
                   child: Column(
                     children: [

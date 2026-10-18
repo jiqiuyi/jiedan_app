@@ -110,7 +110,15 @@ class ErrorReporter {
 
   /// 写入错误日志（按天滚动，保留最近 [_retainCount] 天，超限截断尾部）。
   /// 异步执行并吞掉自身异常，日志能力绝不反向影响主流程。
-  Future<void> logError(String tag, Object error, StackTrace? stack) async {
+  ///
+  /// [context] 为可选附加诊断字段（如 DB 文件路径 / 大小 / 耗时 / dbVersion 等），
+  /// 序列化为 `key=value` 逐行追加，便于远程定位 DB 打开 / 恢复 / 查询失败真因。
+  Future<void> logError(
+    String tag,
+    Object error,
+    StackTrace? stack, {
+    Map<String, Object?>? context,
+  }) async {
     try {
       final dir = await _logDir();
       final now = DateTime.now();
@@ -118,6 +126,12 @@ class ErrorReporter {
       final buf = StringBuffer()
         ..writeln('[$now] [$tag] $error')
         ..writeln('  ${stack ?? '(无堆栈)'}');
+      if (context != null && context.isNotEmpty) {
+        context.forEach((k, v) {
+          buf.writeln('  [ctx] $k=$v');
+        });
+        buf.writeln('  [ctx] ----');
+      }
       await f.writeAsString(buf.toString(), mode: FileMode.append);
       if (f.lengthSync() > _maxBytes) {
         final bytes = await f.readAsBytes();

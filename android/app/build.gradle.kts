@@ -69,6 +69,12 @@ kotlin {
     }
 }
 
+// 跳过 native-debug-metadata 合并（输出 zip 被本机系统进程占用导致 Windows 构建失败；
+// 该 zip 仅用于崩溃符号化，不进入 APK，不影响发布产物）
+tasks.matching { it.name == "mergeReleaseNativeDebugMetadata" }.configureEach {
+    enabled = false
+}
+
 dependencies {
     // core library desugaring（flutter_local_notifications 依赖，v1.10.0）
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")

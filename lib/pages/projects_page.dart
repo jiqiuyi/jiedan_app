@@ -345,7 +345,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
                 : _loadFailed
                     ? AppError(
                         title: '加载失败',
-                        hint: '本地数据读取异常，请检查存储空间后重试',
+                        hint: '本地数据读取异常，请检查存储空间后重试；反复出现可到「设置-关于-错误日志」查看详情',
                         onRetry: () {
                           setState(() {
                             _loading = true;
