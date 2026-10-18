@@ -424,8 +424,9 @@ class _QuotePageState extends State<QuotePage>
       _titleCtrl.text = q.title;
       _projectId = q.projectId;
       _clientCtrl.text = q.title; // 客户名称沿用报价对象名
-      _taxRate = AppConfig.defaultTaxRate;
-      _taxCtrl.clear();
+      // v1.46.13：简单报价税率带入详细报价（q.taxRate 存百分数），不再重置为默认值
+      _taxRate = q.taxRate / 100;
+      _taxCtrl.text = q.taxRate > 0 ? q.taxRate.toStringAsFixed(0) : '';
       _detailNoteCtrl.text = q.note;
       // 金额自动生成一行明细：项目名=报价对象名、工时=1、单价=报价金额
       _lines
