@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
 import 'constants.dart';
+import 'services/error_reporter.dart';
 
 /// 云端后端异常（HTTP 非 2xx 或业务层错误）
 class ApiException implements Exception {
@@ -54,10 +55,14 @@ class ApiClient {
   /// secure storage 单次读：3 秒超时，异常降级返回 null。
   Future<String?> _secureRead(String key) async {
     try {
-      return await _storage.read(key: key).timeout(
-            const Duration(seconds: 3),
-          );
-    } catch (_) {
+      return await _storage.read(key: key).timeout(const Duration(seconds: 3));
+    } catch (e, st) {
+      ErrorReporter.instance.logError(
+        'api_storage_read_failed',
+        e,
+        st,
+        module: LogModule.db,
+      );
       return null;
     }
   }
@@ -65,10 +70,16 @@ class ApiClient {
   /// secure storage 单次写：3 秒超时，失败仅降级（token 仍在内存，本次会话可用）。
   Future<void> _secureWrite(String key, String value) async {
     try {
-      await _storage.write(key: key, value: value).timeout(
-            const Duration(seconds: 3),
-          );
-    } catch (_) {
+      await _storage
+          .write(key: key, value: value)
+          .timeout(const Duration(seconds: 3));
+    } catch (e, st) {
+      ErrorReporter.instance.logError(
+        'api_storage_write_failed',
+        e,
+        st,
+        module: LogModule.db,
+      );
       // 持久化失败不阻断登录：下次启动需重新登录，功能不受影响。
     }
   }
@@ -76,10 +87,14 @@ class ApiClient {
   /// secure storage 单次删：3 秒超时，失败忽略。
   Future<void> _secureDelete(String key) async {
     try {
-      await _storage.delete(key: key).timeout(
-            const Duration(seconds: 3),
-          );
-    } catch (_) {
+      await _storage.delete(key: key).timeout(const Duration(seconds: 3));
+    } catch (e, st) {
+      ErrorReporter.instance.logError(
+        'api_storage_delete_failed',
+        e,
+        st,
+        module: LogModule.db,
+      );
       // 删除失败仅遗留旧 token，不影响本次登出流程。
     }
   }
@@ -127,10 +142,9 @@ class ApiClient {
     // 无需携带 token 的接口保持 false，避免把「密码错误」误判为失效。
     bool authRequired = false,
   }) async {
-    final uri = Uri.parse('${AppConfig.apiBaseUrl}$path').replace(
-      queryParameters:
-          (query == null || query.isEmpty) ? null : query,
-    );
+    final uri = Uri.parse(
+      '${AppConfig.apiBaseUrl}$path',
+    ).replace(queryParameters: (query == null || query.isEmpty) ? null : query);
     final headers = <String, String>{
       'Content-Type': 'application/json',
       // 鉴权统一走 Authorization 头；真实支付接入后此处不变，仅替换 pay 接口
@@ -140,13 +154,13 @@ class ApiClient {
     late http.Response resp;
     try {
       if (method == 'GET') {
-        resp = await _client.get(uri, headers: headers).timeout(
-              const Duration(seconds: 12),
-            );
+        resp = await _client
+            .get(uri, headers: headers)
+            .timeout(const Duration(seconds: 12));
       } else if (method == 'DELETE') {
-        resp = await _client.delete(uri, headers: headers).timeout(
-              const Duration(seconds: 12),
-            );
+        resp = await _client
+            .delete(uri, headers: headers)
+            .timeout(const Duration(seconds: 12));
       } else {
         resp = await _client
             .post(uri, headers: headers, body: jsonEncode(body ?? {}))
@@ -195,7 +209,13 @@ class ApiClient {
   Future<Map<String, dynamic>> fetchAnnouncement() async {
     try {
       return await _call('GET', '/api/announcement/app', null);
-    } catch (_) {
+    } catch (e, st) {
+      ErrorReporter.instance.logError(
+        'api_fetch_announcement_failed',
+        e,
+        st,
+        module: LogModule.other,
+      );
       return {'title': '', 'content': '', 'active': false};
     }
   }
@@ -265,8 +285,9 @@ class ApiClient {
   Future<Map<String, dynamic>> confirmOrder(int orderId) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('POST', '/api/order/confirm', {'orderId': orderId},
-        authRequired: true);
+    return _call('POST', '/api/order/confirm', {
+      'orderId': orderId,
+    }, authRequired: true);
   }
 
   /// ZPAY支付：创建支付订单（第16批骨架）。
@@ -277,8 +298,7 @@ class ApiClient {
   Future<Map<String, dynamic>> payCreate(String plan) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('POST', '/api/pay/create', {'plan': plan},
-        authRequired: true);
+    return _call('POST', '/api/pay/create', {'plan': plan}, authRequired: true);
   }
 
   /// 简付 JianPay（第17批）：创建收银台扫码支付订单。
@@ -287,7 +307,9 @@ class ApiClient {
   /// 返回 { orderId, orderNo, plan, amount, payMethod, payUrl, payQrcodeUrl }；
   /// 后端未配置支付渠道时抛「未配置支付渠道」。
   Future<Map<String, dynamic>> jianpayCreate(
-      String plan, String payMethod) async {
+    String plan,
+    String payMethod,
+  ) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
     return _call('POST', '/api/jianpay/create', {
@@ -303,8 +325,9 @@ class ApiClient {
   Future<Map<String, dynamic>> jianpaySyncOrder(String orderNo) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('POST', '/api/jianpay/sync-order', {'orderNo': orderNo},
-        authRequired: true);
+    return _call('POST', '/api/jianpay/sync-order', {
+      'orderNo': orderNo,
+    }, authRequired: true);
   }
 
   /// 简付：退款资格查询（开通 6h 内、每账号 1 次）。
@@ -312,8 +335,12 @@ class ApiClient {
   Future<Map<String, dynamic>> jianpayRefundStatus() async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('POST', '/api/jianpay/refund/status', null,
-        authRequired: true);
+    return _call(
+      'POST',
+      '/api/jianpay/refund/status',
+      null,
+      authRequired: true,
+    );
   }
 
   /// 简付：申请退款（原路退回，成功后立即收回权益）。
@@ -322,8 +349,9 @@ class ApiClient {
   Future<Map<String, dynamic>> jianpayRefund(String orderNo) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('POST', '/api/jianpay/refund', {'orderNo': orderNo},
-        authRequired: true);
+    return _call('POST', '/api/jianpay/refund', {
+      'orderNo': orderNo,
+    }, authRequired: true);
   }
 
   /// 兑换码核销（防破解修复）：码的有效性 / 幂等 / 次数限制全部由服务端校验，
@@ -360,8 +388,13 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> adminOrders(String status) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    final json = await _call('GET', '/api/admin/orders', null,
-        query: {'status': status}, authRequired: true);
+    final json = await _call(
+      'GET',
+      '/api/admin/orders',
+      null,
+      query: {'status': status},
+      authRequired: true,
+    );
     return (json['orders'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
   }
@@ -370,20 +403,27 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> adminSpotchecks() async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    final json = await _call('GET', '/api/admin/spotchecks', null,
-        authRequired: true);
+    final json = await _call(
+      'GET',
+      '/api/admin/spotchecks',
+      null,
+      authRequired: true,
+    );
     return (json['spotchecks'] as List<dynamic>? ?? [])
         .cast<Map<String, dynamic>>();
   }
 
   /// 抽查复核：{ spotcheckId, action: approve | reject }
   Future<Map<String, dynamic>> adminSpotcheckReview(
-      int spotcheckId, String action) async {
+    int spotcheckId,
+    String action,
+  ) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('POST', '/api/admin/spotcheck/review',
-        {'spotcheckId': spotcheckId, 'action': action},
-        authRequired: true);
+    return _call('POST', '/api/admin/spotcheck/review', {
+      'spotcheckId': spotcheckId,
+      'action': action,
+    }, authRequired: true);
   }
 
   /// 返现明细：{ details, totals }。
@@ -401,13 +441,16 @@ class ApiClient {
   }
 
   /// 收款码配置：GET 查询 / POST 保存 { wechat, alipay }。
-  Future<Map<String, dynamic>> adminQrcode(
-      {String? wechat, String? alipay}) async {
+  Future<Map<String, dynamic>> adminQrcode({
+    String? wechat,
+    String? alipay,
+  }) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call(
-        'POST', '/api/admin/qrcode', {'wechat': wechat, 'alipay': alipay},
-        authRequired: true);
+    return _call('POST', '/api/admin/qrcode', {
+      'wechat': wechat,
+      'alipay': alipay,
+    }, authRequired: true);
   }
 
   /// 读取当前收款码配置（管理后台回显用）。
@@ -428,27 +471,32 @@ class ApiClient {
   Future<Map<String, dynamic>> adminRevoke(int userId) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('POST', '/api/admin/revoke', {'userId': userId},
-        authRequired: true);
+    return _call('POST', '/api/admin/revoke', {
+      'userId': userId,
+    }, authRequired: true);
   }
 
   /// 设备拉黑。
-  Future<Map<String, dynamic>> adminBlock(
-      String deviceId, String note) async {
+  Future<Map<String, dynamic>> adminBlock(String deviceId, String note) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('POST', '/api/admin/block',
-        {'deviceId': deviceId, 'note': note}, authRequired: true);
+    return _call('POST', '/api/admin/block', {
+      'deviceId': deviceId,
+      'note': note,
+    }, authRequired: true);
   }
 
   /// 管理操作日志。
   Future<List<Map<String, dynamic>>> adminLogs() async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    final json = await _call('GET', '/api/admin/logs', null,
-        authRequired: true);
-    return (json['logs'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
+    final json = await _call(
+      'GET',
+      '/api/admin/logs',
+      null,
+      authRequired: true,
+    );
+    return (json['logs'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
   }
 
   /// 当前账号是否为管理员（role == admin）。
@@ -469,8 +517,9 @@ class ApiClient {
   Future<Map<String, dynamic>> pushSync(Map<String, dynamic> tables) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('POST', '/api/sync/push', {'tables': tables},
-        authRequired: true);
+    return _call('POST', '/api/sync/push', {
+      'tables': tables,
+    }, authRequired: true);
   }
 
   /// 增量拉取云端数据。返回 { ok, serverTs, tables }。
@@ -478,8 +527,13 @@ class ApiClient {
   Future<Map<String, dynamic>> pullSync(int since) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('GET', '/api/sync/pull', null,
-        query: {'since': '$since'}, authRequired: true);
+    return _call(
+      'GET',
+      '/api/sync/pull',
+      null,
+      query: {'since': '$since'},
+      authRequired: true,
+    );
   }
 
   /// 双向合并：推送本地全部数据，并返回服务器权威快照（含服务器数据与本次
@@ -487,8 +541,9 @@ class ApiClient {
   Future<Map<String, dynamic>> mergeSync(Map<String, dynamic> tables) async {
     final t = _token;
     if (t == null) throw const ApiException('未登录');
-    return _call('POST', '/api/sync/merge', {'tables': tables},
-        authRequired: true);
+    return _call('POST', '/api/sync/merge', {
+      'tables': tables,
+    }, authRequired: true);
   }
 
   /// 删除本账号在服务器上的全部同步数据（存储方式切回「仅本地」时可选项）。

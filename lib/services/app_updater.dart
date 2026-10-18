@@ -27,20 +27,25 @@ class AppUpdater {
   static const String _installChannelName = 'com.jiedan.guanjia/apk_install';
   static const String _portName = 'app_updater_download_port';
 
-  final MethodChannel _installChannel =
-      const MethodChannel(_installChannelName);
+  final MethodChannel _installChannel = const MethodChannel(
+    _installChannelName,
+  );
 
   bool _inited = false;
   ReceivePort? _port;
+
   /// 最近一次下载的 URL / 版本（complete 回调时记录，供失败后「重新尝试」
   /// 重新下载使用；进程存活期间有效）。
   String? _lastDownloadUrl;
   String? _lastVersion;
+
   /// 最近一次下载的期望大小（服务器 Content-Length），下载完成后用于
   /// 完整性校验（防下载到截断文件 / HTML 错误页导致的「解析失败」）。
   int? _lastExpectedBytes;
+
   /// 本次下载失败后是否已自动重试一次（防止 failed 回调死循环重试）。
   bool _retriedOnce = false;
+
   /// 持久化最近一次下载信息：进程被杀 / complete 回调丢失后，冷启动兜底
   /// （checkPendingInstall / _offerPendingApkOnStartup）仍能拿到 URL、版本
   /// 与服务器期望大小做完整校验。
@@ -71,8 +76,11 @@ class AppUpdater {
   ///
   /// 下载 URL 统一追加防缓存参数（?t=毫秒时间戳），避免 nginx/CDN 缓存旧
   /// 文件导致用户拉到半截 / 旧包后「安装包解析失败」。
-  Future<void> startDownload(String url, String version,
-      {bool resetRetry = true}) async {
+  Future<void> startDownload(
+    String url,
+    String version, {
+    bool resetRetry = true,
+  }) async {
     _lastDownloadUrl = url;
     _lastVersion = version;
     if (resetRetry) _retriedOnce = false;
@@ -83,19 +91,21 @@ class AppUpdater {
       final head = await http
           .head(Uri.parse(_withCacheBust(url)))
           .timeout(const Duration(seconds: 10));
-      final cl = head.headers['content-length'] ??
-          head.headers['Content-Length'];
+      final cl =
+          head.headers['content-length'] ?? head.headers['Content-Length'];
       if (head.statusCode == 200 && cl != null) {
         _lastExpectedBytes = int.tryParse(cl);
       }
     } catch (e) {
       // HEAD 失败不影响下载，仅失去大小校验依据；记录日志便于远程诊断。
-      unawaited(ErrorReporter.instance.logError(
-        'updater_head_failed',
-        e,
-        StackTrace.current,
-        context: {'url': url},
-      ));
+      unawaited(
+        ErrorReporter.instance.logError(
+          'updater_head_failed',
+          e,
+          StackTrace.current,
+          context: {'url': url},
+        ),
+      );
     }
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -108,8 +118,7 @@ class AppUpdater {
     try {
       final dir = await _ensureDownloadDir();
       final fileName = 'jiedan_guanjia_v$version.apk';
-      final target =
-          File('${dir.path}${Platform.pathSeparator}$fileName');
+      final target = File('${dir.path}${Platform.pathSeparator}$fileName');
       if (target.existsSync()) {
         try {
           target.deleteSync();
@@ -129,23 +138,27 @@ class AppUpdater {
       );
       if (taskId == null || taskId.isEmpty) {
         _showSnack('开始下载失败，请稍后重试');
-        unawaited(ErrorReporter.instance.logError(
-          'updater_enqueue_empty',
-          StateError('enqueue returned empty taskId'),
-          StackTrace.current,
-          context: {'url': url},
-        ));
+        unawaited(
+          ErrorReporter.instance.logError(
+            'updater_enqueue_empty',
+            StateError('enqueue returned empty taskId'),
+            StackTrace.current,
+            context: {'url': url},
+          ),
+        );
         return;
       }
       _showSnack('已开始后台下载，完成后自动安装');
     } catch (e) {
       _showSnack('开始下载失败，请稍后重试');
-      unawaited(ErrorReporter.instance.logError(
-        'updater_enqueue_failed',
-        e,
-        StackTrace.current,
-        context: {'url': url},
-      ));
+      unawaited(
+        ErrorReporter.instance.logError(
+          'updater_enqueue_failed',
+          e,
+          StackTrace.current,
+          context: {'url': url},
+        ),
+      );
     }
   }
 
@@ -163,7 +176,8 @@ class AppUpdater {
       if (_lastVersion != null) {
         final dir = await _ensureDownloadDir();
         final f = File(
-            '${dir.path}${Platform.pathSeparator}jiedan_guanjia_v$_lastVersion.apk');
+          '${dir.path}${Platform.pathSeparator}jiedan_guanjia_v$_lastVersion.apk',
+        );
         if (f.existsSync()) {
           try {
             f.deleteSync();
@@ -175,21 +189,32 @@ class AppUpdater {
       if (!_retriedOnce && _lastDownloadUrl != null && _lastVersion != null) {
         _retriedOnce = true;
         _showSnack('下载失败，正在自动重试…');
-        await startDownload(_lastDownloadUrl!, _lastVersion!,
-            resetRetry: false);
+        await startDownload(
+          _lastDownloadUrl!,
+          _lastVersion!,
+          resetRetry: false,
+        );
         return;
       }
       _showSnack('新版本下载失败，请检查网络后重试');
-      unawaited(ErrorReporter.instance.logError(
+      unawaited(
+        ErrorReporter.instance.logError(
+          'updater_download_failed',
+          StateError('download task failed: $taskId'),
+          StackTrace.current,
+          context: {
+            'url': _lastDownloadUrl ?? '',
+            'version': _lastVersion ?? '',
+          },
+        ),
+      );
+    } catch (e, st) {
+      ErrorReporter.instance.logError(
         'updater_download_failed',
-        StateError('download task failed: $taskId'),
-        StackTrace.current,
-        context: {
-          'url': _lastDownloadUrl ?? '',
-          'version': _lastVersion ?? '',
-        },
-      ));
-    } catch (e) {
+        e,
+        st,
+        module: LogModule.updater,
+      );
       _showSnack('新版本下载失败，请检查网络后重试');
     }
   }
@@ -267,13 +292,15 @@ class AppUpdater {
   Future<String?> _findLatestApk() async {
     try {
       final dir = await _ensureDownloadDir();
-      final files = dir
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.toLowerCase().endsWith('.apk'))
-          .toList()
-        ..sort((a, b) =>
-            b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+      final files =
+          dir
+              .listSync()
+              .whereType<File>()
+              .where((f) => f.path.toLowerCase().endsWith('.apk'))
+              .toList()
+            ..sort(
+              (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
+            );
       if (files.isEmpty) return null;
       return files.first.path;
     } catch (_) {
@@ -332,17 +359,17 @@ class AppUpdater {
   /// 校验安装包，期望大小缺失时从持久化记录补齐：仅当 APK 文件名版本与
   /// 最近一次下载版本一致时，采用持久化的服务器 Content-Length 做严格大小
   /// 比对（覆盖 complete 回调丢失 / 冷启动兜底场景）。
-  Future<String?> _validateApkWithPersisted(String path,
-      int? expectBytes) async {
+  Future<String?> _validateApkWithPersisted(
+    String path,
+    int? expectBytes,
+  ) async {
     var expect = expectBytes;
     if (expect == null || expect <= 0) {
       try {
         final prefs = await SharedPreferences.getInstance();
         final lastVer = prefs.getString(_lastVersionKey);
-        final apkName =
-            path.split(Platform.pathSeparator).last.toLowerCase();
-        if (lastVer != null &&
-            lastVer == _versionFromApkName(apkName)) {
+        final apkName = path.split(Platform.pathSeparator).last.toLowerCase();
+        if (lastVer != null && lastVer == _versionFromApkName(apkName)) {
           final v = prefs.getInt(_lastExpectBytesKey) ?? -1;
           if (v > 0) expect = v;
         }
@@ -359,8 +386,9 @@ class AppUpdater {
   /// 「后台下载完成但回调丢失 / 通知被清」场景），弹窗让用户决定是否安装。
   Future<void> checkPendingInstall() async {
     try {
-      final pending = await _installChannel
-          .invokeMapMethod<String, dynamic>('consumeNotificationInstall');
+      final pending = await _installChannel.invokeMapMethod<String, dynamic>(
+        'consumeNotificationInstall',
+      );
       if (pending == null || pending.isEmpty) {
         await _offerPendingApkOnStartup();
         return;
@@ -401,13 +429,15 @@ class AppUpdater {
   Future<void> _offerPendingApkOnStartup() async {
     try {
       final dir = await _ensureDownloadDir();
-      final files = dir
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.toLowerCase().endsWith('.apk'))
-          .toList()
-        ..sort((a, b) =>
-            b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+      final files =
+          dir
+              .listSync()
+              .whereType<File>()
+              .where((f) => f.path.toLowerCase().endsWith('.apk'))
+              .toList()
+            ..sort(
+              (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
+            );
       if (files.isEmpty) return;
       final latest = files.first.path;
       // 启动兜底同样校验完整性：残留的半截 / 错误页 APK 直接删除，不再弹窗打扰。
@@ -464,10 +494,7 @@ class AppUpdater {
     try {
       final ok = await _installChannel.invokeMethod<bool>('installApk', path);
       if (ok != true) {
-        _showInstallFailedDialog(
-          reason ?? '系统未启动安装界面，请重试',
-          path: path,
-        );
+        _showInstallFailedDialog(reason ?? '系统未启动安装界面，请重试', path: path);
       }
     } on PlatformException catch (e) {
       if (e.code == 'need_unknown_sources') {
@@ -475,7 +502,13 @@ class AppUpdater {
       } else {
         _showInstallFailedDialog(e.message ?? '请稍后重试', path: path);
       }
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporter.instance.logError(
+        'updater_install_failed',
+        e,
+        st,
+        module: LogModule.updater,
+      );
       _showInstallFailedDialog('$e', path: path);
     }
   }
@@ -503,10 +536,7 @@ class AppUpdater {
             TextButton(
               onPressed: () {
                 Navigator.pop(dialogCtx);
-                unawaited(startDownload(
-                  _lastDownloadUrl!,
-                  _lastVersion!,
-                ));
+                unawaited(startDownload(_lastDownloadUrl!, _lastVersion!));
               },
               child: const Text('重新尝试'),
             ),
@@ -550,11 +580,12 @@ class AppUpdater {
       builder: (dialogCtx) => AlertDialog(
         title: const Text('需要允许安装未知来源应用'),
         content: const Text(
-            '系统未允许安装未知来源应用，将无法弹出安装界面。\n'
-            '请点击「去开启」跳转系统设置：\n'
-            '华为/荣耀设备：设置 → 更多安全设置 → 外部来源应用（或安装外部来源应用）→ 允许本应用。\n'
-            '其他设备：设置 → 安全 → 安装未知应用 → 允许本应用。\n'
-            '开启后返回本页重试即可。'),
+          '系统未允许安装未知来源应用，将无法弹出安装界面。\n'
+          '请点击「去开启」跳转系统设置：\n'
+          '华为/荣耀设备：设置 → 更多安全设置 → 外部来源应用（或安装外部来源应用）→ 允许本应用。\n'
+          '其他设备：设置 → 安全 → 安装未知应用 → 允许本应用。\n'
+          '开启后返回本页重试即可。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
@@ -564,7 +595,8 @@ class AppUpdater {
             onPressed: () {
               Navigator.pop(dialogCtx);
               unawaited(
-                  _installChannel.invokeMethod('openUnknownSourcesSettings'));
+                _installChannel.invokeMethod('openUnknownSourcesSettings'),
+              );
             },
             child: const Text('去开启'),
           ),
@@ -575,8 +607,7 @@ class AppUpdater {
 
   Future<Directory> _ensureDownloadDir() async {
     final base = await getApplicationSupportDirectory();
-    final dir =
-        Directory('${base.path}${Platform.pathSeparator}downloads');
+    final dir = Directory('${base.path}${Platform.pathSeparator}downloads');
     if (!dir.existsSync()) dir.createSync(recursive: true);
     return dir;
   }

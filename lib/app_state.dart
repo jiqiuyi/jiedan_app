@@ -125,7 +125,11 @@ class AppState extends ChangeNotifier {
       } else {
         // 防破解加固（P0）：云端 isPro 无论 true/false 一律覆盖本地缓存，
         // 本地 users 表仅作会话展示缓存，VIP 判定只认云端。
-        local = local.copyWith(nickname: nickname, isPro: isPro, proExpireAt: expireAt);
+        local = local.copyWith(
+          nickname: nickname,
+          isPro: isPro,
+          proExpireAt: expireAt,
+        );
       }
       await AppDb.instance.updateUser(local);
       await AppDb.instance.setCurrentUser(local.id);
@@ -173,6 +177,7 @@ class AppState extends ChangeNotifier {
   static const _vipCacheKeyStorage = FlutterSecureStorage();
   static const _vipCacheKeyName = 'vip_cache_hmac_key_v2';
   static const _vipCacheMaxOffline = Duration(days: 7);
+
   /// secure storage 不可用时的内存降级密钥（同一会话内保证验签一致）。
   static String? _memVipKey;
 
@@ -195,20 +200,29 @@ class AppState extends ChangeNotifier {
       return key;
     } catch (_) {
       final rnd = Random.secure();
-      _memVipKey ??= base64Encode(List<int>.generate(32, (_) => rnd.nextInt(256)));
+      _memVipKey ??= base64Encode(
+        List<int>.generate(32, (_) => rnd.nextInt(256)),
+      );
       return _memVipKey!;
     }
   }
 
   /// 规范化签名原文：手机号 + 写入时间 + isPro + 到期时间，改任一字段验签必败。
   static String _vipCacheSigInput(
-      String phone, int ts, bool isPro, int? expireAt) {
+    String phone,
+    int ts,
+    bool isPro,
+    int? expireAt,
+  ) {
     return '$phone\n$ts\n$isPro\n${expireAt ?? 0}';
   }
 
   /// 云端 me 成功后把 isPro / proExpireAt 落入本地缓存（按手机号隔离，v2 签名格式）。
   Future<void> _writeLocalVipCache(
-      String phone, bool isPro, int? expireAt) async {
+    String phone,
+    bool isPro,
+    int? expireAt,
+  ) async {
     if (phone.isEmpty) return;
     final ts = DateTime.now().millisecondsSinceEpoch;
     final key = await _vipCacheDeviceKey();
@@ -261,8 +275,9 @@ class AppState extends ChangeNotifier {
         : (int.tryParse('$expireRaw') ?? 0);
     final key = await _vipCacheDeviceKey();
     final expect = Hmac(sha256, utf8.encode(key))
-        .convert(utf8.encode(
-            _vipCacheSigInput(phone, tsMs, isPro == true, expire)))
+        .convert(
+          utf8.encode(_vipCacheSigInput(phone, tsMs, isPro == true, expire)),
+        )
         .toString();
     if (expect != sig.toLowerCase()) return false;
     if (isPro != true) return false;
@@ -282,8 +297,11 @@ class AppState extends ChangeNotifier {
   /// 云端注册：手机号 + 密码 + 昵称 + 邀请码（选填）
   /// 返回 null 表示成功，否则为错误提示文案
   Future<String?> register(
-      String phone, String password, String nickname,
-      {String inviteCode = ''}) async {
+    String phone,
+    String password,
+    String nickname, {
+    String inviteCode = '',
+  }) async {
     final Map<String, dynamic> json;
     try {
       json = await ApiClient.instance.register(
@@ -294,7 +312,13 @@ class AppState extends ChangeNotifier {
       );
     } on ApiException catch (e) {
       return e.message;
-    } catch (_) {
+    } catch (e, st) {
+      ErrorReporter.instance.logError(
+        'register_failed',
+        e,
+        st,
+        module: LogModule.login,
+      );
       return '注册失败，请稍后重试';
     }
     final user = json['user'];
@@ -332,7 +356,13 @@ class AppState extends ChangeNotifier {
       );
     } on ApiException catch (e) {
       return e.message;
-    } catch (_) {
+    } catch (e, st) {
+      ErrorReporter.instance.logError(
+        'login_failed',
+        e,
+        st,
+        module: LogModule.login,
+      );
       return '登录失败，请稍后重试';
     }
     final user = json['user'];
@@ -476,8 +506,9 @@ class AppState extends ChangeNotifier {
         // 模块 B：服务端现算的「已打款 / 待打款」与最早未处理申请时间
         paidRebate: (_num(me['rebatePaid']) * 100).round(),
         pendingRebate: (_num(me['rebatePending']) * 100).round(),
-        applyAt:
-            me['payoutApplyAt'] == null ? null : _intOrNow(me['payoutApplyAt']),
+        applyAt: me['payoutApplyAt'] == null
+            ? null
+            : _intOrNow(me['payoutApplyAt']),
       );
     }
     // 云端未就绪时回落本地 MVP 统计
@@ -487,8 +518,9 @@ class AppState extends ChangeNotifier {
     }
     final list = await AppDb.instance.getInvitees(uid);
     final paidCount = list.where((e) => e.paid).length;
-    final totalRebate =
-        list.where((e) => e.paid).fold<int>(0, (s, e) => s + e.rebate);
+    final totalRebate = list
+        .where((e) => e.paid)
+        .fold<int>(0, (s, e) => s + e.rebate);
     final bonusGranted = await AppDb.instance.inviteBonusGranted(uid);
     return InviteStats(
       friendCount: list.length,
@@ -535,12 +567,14 @@ class AppState extends ChangeNotifier {
     if (_cloudReady) return; // 云端模式下禁止手动登记
     final uid = _currentUser?.id;
     if (uid == null) return;
-    await AppDb.instance.insertInvitee(Invitee(
-      inviterUserId: uid,
-      name: name,
-      phone: phone.trim(),
-      invitedAt: DateTime.now().millisecondsSinceEpoch,
-    ));
+    await AppDb.instance.insertInvitee(
+      Invitee(
+        inviterUserId: uid,
+        name: name,
+        phone: phone.trim(),
+        invitedAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
   }
 
   Future<void> markInviteePaid(int inviteeId, int payAmountFen) async {
@@ -551,12 +585,14 @@ class AppState extends ChangeNotifier {
     final target = list.where((e) => e.id == inviteeId).firstOrNull;
     if (target == null) return;
     final rebate = (payAmountFen * AppConfig.rebateRate).round();
-    await AppDb.instance.updateInvitee(target.copyWith(
-      paid: true,
-      payAmount: payAmountFen,
-      rebate: rebate,
-      paidAt: DateTime.now().millisecondsSinceEpoch,
-    ));
+    await AppDb.instance.updateInvitee(
+      target.copyWith(
+        paid: true,
+        payAmount: payAmountFen,
+        rebate: rebate,
+        paidAt: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
   }
 
   Future<void> removeInvitee(int inviteeId) async {
@@ -599,7 +635,13 @@ class AppState extends ChangeNotifier {
       return null;
     } on ApiException catch (e) {
       return e.message;
-    } catch (_) {
+    } catch (e, st) {
+      ErrorReporter.instance.logError(
+        'payout_save_failed',
+        e,
+        st,
+        module: LogModule.other,
+      );
       return '保存失败，请稍后重试';
     }
   }
@@ -623,7 +665,13 @@ class AppState extends ChangeNotifier {
       );
     } on ApiException catch (e) {
       return (count: 0, amount: 0.0, error: e.message);
-    } catch (_) {
+    } catch (e, st) {
+      ErrorReporter.instance.logError(
+        'payout_apply_failed',
+        e,
+        st,
+        module: LogModule.other,
+      );
       return (count: 0, amount: 0.0, error: '申请失败，请检查网络后重试');
     }
   }
@@ -632,6 +680,7 @@ class AppState extends ChangeNotifier {
 
   static const String _pendingInviteCodeKey = 'pending_invite_code';
   String _pendingInviteCode = '';
+
   /// 剪贴板/落地页暂存的待绑定邀请码（注册页自动预填用）
   String get pendingInviteCode => _pendingInviteCode;
 
@@ -724,8 +773,9 @@ class AppState extends ChangeNotifier {
       v == true || (v is num && v != 0) || v == '1' || v == 'true';
   static double _num(dynamic v) =>
       v is num ? v.toDouble() : (double.tryParse('$v') ?? 0);
-  static List<dynamic> _list(dynamic v) =>
-      v is List ? v : (v is String && v.isNotEmpty ? (jsonDecode(v) as List?) ?? [] : []);
+  static List<dynamic> _list(dynamic v) => v is List
+      ? v
+      : (v is String && v.isNotEmpty ? (jsonDecode(v) as List?) ?? [] : []);
   static int _intOrNow(dynamic v) {
     if (v is num) return v.toInt();
     final parsed = int.tryParse('$v');

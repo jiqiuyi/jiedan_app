@@ -11,14 +11,8 @@ import 'error_reporter.dart';
 
 /// 同步冲突处理策略（v1.20.0）。
 enum SyncConflictPolicy {
-  autoNewest(
-    '自动保留较新的数据',
-    '同步时自动以「更新时间较新」的一方为准，无需手动处理',
-  ),
-  askMe(
-    '有冲突时先问我',
-    '云端与本地对同一条数据都有修改时，先停下来由您选择采用哪一方',
-  );
+  autoNewest('自动保留较新的数据', '同步时自动以「更新时间较新」的一方为准，无需手动处理'),
+  askMe('有冲突时先问我', '云端与本地对同一条数据都有修改时，先停下来由您选择采用哪一方');
 
   const SyncConflictPolicy(this.label, this.desc);
   final String label;
@@ -111,19 +105,20 @@ class SyncService extends ChangeNotifier {
   set conflictPolicy(SyncConflictPolicy v) {
     if (_policy == v) return;
     _policy = v;
-    AppDb.instance
-        .setSetting(
-          AppConfig.syncConflictPolicyKey,
-          v == SyncConflictPolicy.askMe ? 'ask_me' : 'auto_newest',
-        );
+    AppDb.instance.setSetting(
+      AppConfig.syncConflictPolicyKey,
+      v == SyncConflictPolicy.askMe ? 'ask_me' : 'auto_newest',
+    );
     notifyListeners();
     // 切回「自动保留较新」后，把仍在等待的冲突按较新策略自动收尾。
     if (v == SyncConflictPolicy.autoNewest && _pending.isNotEmpty) {
-      unawaited(_runMutex(() async {
-        for (final c in List.of(_pending)) {
-          await _resolveAuto(c);
-        }
-      }));
+      unawaited(
+        _runMutex(() async {
+          for (final c in List.of(_pending)) {
+            await _resolveAuto(c);
+          }
+        }, stage: 'resolve_pending'),
+      );
     }
   }
 
@@ -168,21 +163,22 @@ class SyncService extends ChangeNotifier {
         _mode = StorageMode.local;
     }
     // 读取冲突处理策略（默认自动保留较新）。
-    final policy =
-        await AppDb.instance.getSetting(AppConfig.syncConflictPolicyKey);
+    final policy = await AppDb.instance.getSetting(
+      AppConfig.syncConflictPolicyKey,
+    );
     _policy = policy == 'ask_me'
         ? SyncConflictPolicy.askMe
         : SyncConflictPolicy.autoNewest;
     notifyListeners();
     // 仅本地模式：绝不访问云端业务接口。
     if (_mode.involvesServer) {
-      unawaited(_runMutex(() => syncOnStart()));
+      unawaited(_runMutex(() => syncOnStart(), stage: 'init'));
     }
     // v1.46.5 修复：周期性增量同步（30s），App 无需重启/手动操作即可收到云端删除墓碑。
     _periodicSyncTimer?.cancel();
     _periodicSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (_mode.involvesServer && canSync) {
-        unawaited(_runMutex(() => syncOnStart()));
+        unawaited(_runMutex(() => syncOnStart(), stage: 'periodic'));
       }
     });
   }
@@ -201,7 +197,7 @@ class SyncService extends ChangeNotifier {
     notifyListeners();
     if (m.involvesServer && !silent && !wasInvolvesServer) {
       // 存量数据首次切到含服务器模式：一次性全量上传 + 合并（要求 #5）。
-      unawaited(_runMutex(() => syncOnStart()));
+      unawaited(_runMutex(() => syncOnStart(), stage: 'set_mode'));
       return switch (from) {
         StorageMode.local =>
           '已切换到「${m.label}」。本地存量数据将一次性全量上传到云端并完成合并；'
@@ -228,27 +224,63 @@ class SyncService extends ChangeNotifier {
     final lwm = await _lwm();
     if (lwm > 0) {
       // 增量拉取：_ts > lwm 的行（含墓碑）
-      final res = await ApiClient.instance.pullSync(lwm);
-      final serverTables = res['tables'];
-      if (serverTables is Map) {
-        await _applyServerTables(serverTables);
+      try {
+        final res = await ApiClient.instance.pullSync(lwm);
+        final serverTables = res['tables'];
+        if (serverTables is Map) {
+          await _applyServerTables(serverTables);
+        }
+        final ts = (res['serverTs'] as num?)?.toInt() ?? 0;
+        if (ts > lwm) await _setLwm(ts);
+      } catch (e, st) {
+        // 拉取阶段失败：记录 stage 后继续上抛（由 _runMutex 兜底）。
+        await ErrorReporter.instance.logError(
+          'sync_failed',
+          e,
+          st,
+          module: LogModule.sync,
+          context: {'stage': 'pull', 'lwm': lwm},
+        );
+        rethrow;
       }
-      final ts = (res['serverTs'] as num?)?.toInt() ?? 0;
-      if (ts > lwm) await _setLwm(ts);
       // v1.46.5 修复：server 模式也推送本地墓碑/变更，确保删除墓碑一定上传云端。
-      await _pushNow();
+      try {
+        await _pushNow();
+      } catch (e, st) {
+        // 拉取后推送阶段失败：记录 stage 后继续上抛。
+        await ErrorReporter.instance.logError(
+          'sync_failed',
+          e,
+          st,
+          module: LogModule.sync,
+          context: {'stage': 'push_after_pull'},
+        );
+        rethrow;
+      }
     } else {
       // 首次：全量双向合并
-      final tables = await _buildTables();
-      final res = await ApiClient.instance.mergeSync(tables);
-      final serverTables = res['tables'];
-      if (serverTables is Map) {
-        // 首次合并不收集冲突（刚上传的本地快照与服务器快照时间戳一致，
-        // 视为同一版本），直接以服务器权威快照落地。
-        await _applyServerTables(serverTables, collectConflicts: false);
+      try {
+        final tables = await _buildTables();
+        final res = await ApiClient.instance.mergeSync(tables);
+        final serverTables = res['tables'];
+        if (serverTables is Map) {
+          // 首次合并不收集冲突（刚上传的本地快照与服务器快照时间戳一致，
+          // 视为同一版本），直接以服务器权威快照落地。
+          await _applyServerTables(serverTables, collectConflicts: false);
+        }
+        await AppDb.instance.clearTombstones();
+        await _setLwm((res['serverTs'] as num?)?.toInt() ?? now());
+      } catch (e, st) {
+        // 合并阶段失败：记录 stage 后继续上抛（由 _runMutex 兜底）。
+        await ErrorReporter.instance.logError(
+          'sync_failed',
+          e,
+          st,
+          module: LogModule.sync,
+          context: {'stage': 'merge', 'lwm': lwm},
+        );
+        rethrow;
       }
-      await AppDb.instance.clearTombstones();
-      await _setLwm((res['serverTs'] as num?)?.toInt() ?? now());
     }
     _lastSyncAt = now();
     _lastError = null;
@@ -262,12 +294,12 @@ class SyncService extends ChangeNotifier {
     if (!canSync) return;
     _pushTimer?.cancel();
     _pushTimer = Timer(const Duration(seconds: 2), () {
-      unawaited(_runMutex(() => _pushNow()));
+      unawaited(_runMutex(() => _pushNow(), stage: 'local_change'));
     });
   }
 
   /// 立即后台推送本地全部数据（含墓碑）到云端。供页面「立即同步」调用。
-  Future<void> pushNow() => _runMutex(() => _pushNow());
+  Future<void> pushNow() => _runMutex(() => _pushNow(), stage: 'manual_push');
 
   /// 删除服务器上本账号的全部同步数据（存储方式切回「仅本地」时的可选项）。
   /// 仅清除云端命名空间，本地数据保持不变；同时清空本地同步水位，
@@ -286,12 +318,24 @@ class SyncService extends ChangeNotifier {
 
   Future<void> _pushNow() async {
     if (!canSync) return;
-    final tables = await _buildTables();
-    final res = await ApiClient.instance.pushSync(tables);
-    await AppDb.instance.clearTombstones();
-    final ts = (res['serverTs'] as num?)?.toInt() ?? 0;
-    if (ts > (await _lwm())) {
-      await _setLwm(ts);
+    try {
+      final tables = await _buildTables();
+      final res = await ApiClient.instance.pushSync(tables);
+      await AppDb.instance.clearTombstones();
+      final ts = (res['serverTs'] as num?)?.toInt() ?? 0;
+      if (ts > (await _lwm())) {
+        await _setLwm(ts);
+      }
+    } catch (e, st) {
+      // 推送阶段失败：记录 stage 后继续上抛（由 _runMutex 兜底）。
+      await ErrorReporter.instance.logError(
+        'sync_failed',
+        e,
+        st,
+        module: LogModule.sync,
+        context: {'stage': 'push'},
+      );
+      rethrow;
     }
     _lastSyncAt = now();
     _lastError = null;
@@ -313,14 +357,30 @@ class SyncService extends ChangeNotifier {
     }
     final out = <String, dynamic>{};
     for (final t in tables) {
-      final rows = <Map<String, dynamic>>[];
-      for (final r in await AppDb.instance.syncRows(t)) {
-        final m = Map<String, dynamic>.from(r);
-        m['_ts'] = _rowTs(t, m);
-        rows.add(m);
+      try {
+        final rows = <Map<String, dynamic>>[];
+        for (final r in await AppDb.instance.syncRows(t)) {
+          final m = Map<String, dynamic>.from(r);
+          m['_ts'] = _rowTs(t, m);
+          rows.add(m);
+        }
+        rows.addAll(tombs[t] ?? const []);
+        out[t] = rows;
+      } catch (e, st) {
+        // 单表读取失败：记录表维度日志后以空表继续，避免整轮同步中断。
+        await ErrorReporter.instance.logError(
+          'sync_build_table_failed',
+          e,
+          st,
+          module: LogModule.sync,
+          context: {
+            'table': t,
+            'label': _tableLabel(t),
+            'stage': 'build_tables',
+          },
+        );
+        out[t] = <Map<String, dynamic>>[];
       }
-      rows.addAll(tombs[t] ?? const []);
-      out[t] = rows;
     }
     return out;
   }
@@ -340,37 +400,53 @@ class SyncService extends ChangeNotifier {
       if (!tables.contains(t)) continue;
       final rows = entry.value;
       if (rows is! List) continue;
-      for (final raw in rows) {
-        if (raw is! Map) continue;
-        final id = raw['id'];
-        if (id is! int) continue;
-        final serverTs = _int(raw['_ts']);
-        final local = await AppDb.instance.syncRowById(t, id);
-        if (raw['_deleted'] == true) {
-          // 服务器删除墓碑：仅当本地行不更新于墓碑时才删除。
-          if (local != null && _rowTs(t, local) <= serverTs) {
-            await AppDb.instance.deleteRowSilently(t, id);
+      try {
+        for (final raw in rows) {
+          if (raw is! Map) continue;
+          final id = raw['id'];
+          if (id is! int) continue;
+          final serverTs = _int(raw['_ts']);
+          final local = await AppDb.instance.syncRowById(t, id);
+          if (raw['_deleted'] == true) {
+            // 服务器删除墓碑：仅当本地行不更新于墓碑时才删除。
+            if (local != null && _rowTs(t, local) <= serverTs) {
+              await AppDb.instance.deleteRowSilently(t, id);
+            }
+            continue;
           }
-          continue;
+          if (local != null && _rowTs(t, local) > serverTs) {
+            continue; // 本地更新，保留并在下一轮推送
+          }
+          if (_policy == SyncConflictPolicy.askMe &&
+              collectConflicts &&
+              local != null &&
+              !await _wasDismissed(t, id, serverTs)) {
+            // 云端版本更新、本地也有版本：收集为待决策冲突，本轮先不覆盖本地。
+            await _queueConflict(
+              t,
+              id,
+              local,
+              serverTs,
+              Map<String, Object?>.from(raw),
+            );
+            continue;
+          }
+          await AppDb.instance.upsertSyncRow(t, Map<String, Object?>.from(raw));
         }
-        if (local != null && _rowTs(t, local) > serverTs) {
-          continue; // 本地更新，保留并在下一轮推送
-        }
-        if (_policy == SyncConflictPolicy.askMe &&
-            collectConflicts &&
-            local != null &&
-            !await _wasDismissed(t, id, serverTs)) {
-          // 云端版本更新、本地也有版本：收集为待决策冲突，本轮先不覆盖本地。
-          await _queueConflict(
-            t,
-            id,
-            local,
-            serverTs,
-            Map<String, Object?>.from(raw),
-          );
-          continue;
-        }
-        await AppDb.instance.upsertSyncRow(t, Map<String, Object?>.from(raw));
+      } catch (e, st) {
+        // 单表落地失败不阻断其它表：记录表维度日志后继续下一张。
+        await ErrorReporter.instance.logError(
+          'sync_table_failed',
+          e,
+          st,
+          module: LogModule.sync,
+          context: {
+            'table': t,
+            'label': _tableLabel(t),
+            'rows': rows.length,
+            'stage': 'apply_server',
+          },
+        );
       }
     }
   }
@@ -402,25 +478,27 @@ class SyncService extends ChangeNotifier {
   }
 
   /// 采用云端版本（覆盖本地）：批量解决给定冲突。
-  Future<void> applyServerVersions(List<SyncConflict> items) => _runMutex(() async {
-    if (items.isEmpty) return;
-    for (final c in items) {
-      await AppDb.instance.upsertSyncRow(c.table, c.serverRow);
-    }
-    _pending.removeWhere((x) => items.any((i) => i.key == x.key));
-    notifyListeners();
-  });
+  Future<void> applyServerVersions(List<SyncConflict> items) =>
+      _runMutex(() async {
+        if (items.isEmpty) return;
+        for (final c in items) {
+          await AppDb.instance.upsertSyncRow(c.table, c.serverRow);
+        }
+        _pending.removeWhere((x) => items.any((i) => i.key == x.key));
+        notifyListeners();
+      }, stage: 'apply_server');
 
   /// 保留本地版本：批量解决给定冲突，并把该行加入忽略集（同版本不再重复提示）。
-  Future<void> keepLocalVersions(List<SyncConflict> items) => _runMutex(() async {
-    if (items.isEmpty) return;
-    for (final c in items) {
-      _keepLocalCache[c.key] = c.serverTs;
-    }
-    await _persistKeepLocalCache();
-    _pending.removeWhere((x) => items.any((i) => i.key == x.key));
-    notifyListeners();
-  });
+  Future<void> keepLocalVersions(List<SyncConflict> items) =>
+      _runMutex(() async {
+        if (items.isEmpty) return;
+        for (final c in items) {
+          _keepLocalCache[c.key] = c.serverTs;
+        }
+        await _persistKeepLocalCache();
+        _pending.removeWhere((x) => items.any((i) => i.key == x.key));
+        notifyListeners();
+      }, stage: 'keep_local');
 
   /// 清空待处理冲突（不做数据变更，仅丢弃提示）。
   void clearPendingConflicts() {
@@ -504,10 +582,13 @@ class SyncService extends ChangeNotifier {
     return ts;
   }
 
-  static int _int(Object? v) => v is num ? v.toInt() : (int.tryParse('$v') ?? 0);
+  static int _int(Object? v) =>
+      v is num ? v.toInt() : (int.tryParse('$v') ?? 0);
 
   Future<int> _lwm() async =>
-      int.tryParse(await AppDb.instance.getSetting(AppConfig.syncLwmKey) ?? '') ??
+      int.tryParse(
+        await AppDb.instance.getSetting(AppConfig.syncLwmKey) ?? '',
+      ) ??
       0;
 
   Future<void> _setLwm(int v) =>
@@ -516,13 +597,28 @@ class SyncService extends ChangeNotifier {
   static int now() => DateTime.now().millisecondsSinceEpoch;
 
   /// 简易互斥：同一时刻只允许一个同步任务执行。
-  Future<void> _runMutex(Future<void> Function() fn) async {
+  /// [stage] 标识任务入口阶段（init / periodic / set_mode / push / apply_server
+  /// / keep_local / resolve_pending 等），失败日志通过 context 携带，便于定位。
+  Future<void> _runMutex(Future<void> Function() fn, {String? stage}) async {
     if (_syncing) return;
     _syncing = true;
     notifyListeners();
     try {
       await fn();
-    } catch (e) {
+    } catch (e, st) {
+      // 同步失败落盘（异常类型 + 具体信息 + 来源模块 + 关键 context），
+      // 替换原「仅内存态 + SnackBar」的静默路径，开发者可复制完整堆栈。
+      await ErrorReporter.instance.logError(
+        'sync_failed',
+        e,
+        st,
+        module: LogModule.sync,
+        context: {
+          'stage': stage ?? 'unknown',
+          'mode': _mode.name,
+          'canSync': canSync,
+        },
+      );
       // token 失效独立分支：不是普通网络错误，标记鉴权失效供页面跳转登录。
       if (e is TokenInvalidException) {
         _authExpired = true;

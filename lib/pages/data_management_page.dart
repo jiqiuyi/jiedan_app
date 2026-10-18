@@ -7,6 +7,7 @@ import '../api_client.dart';
 import '../app_state.dart';
 import '../database.dart';
 import '../services/backup_service.dart';
+import '../services/error_reporter.dart';
 import '../theme.dart';
 
 /// 数据管理页：导出备份 / 导入恢复。
@@ -35,7 +36,13 @@ class _DataManagementPageState extends State<DataManagementPage> {
       final path = await BackupService.instance.exportBackup();
       _toast('备份文件已生成（$path），正在弹出分享');
       await BackupService.instance.shareBackup(path);
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporter.instance.logError(
+        'backup_export_failed',
+        e,
+        st,
+        module: LogModule.db,
+      );
       _toast('导出失败：$e');
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -61,8 +68,10 @@ class _DataManagementPageState extends State<DataManagementPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认导入恢复？'),
-        content: const Text('导入会清空当前手机上的客户、项目、收款等全部数据，'
-            '并用备份文件内容覆盖。建议先导出当前数据再导入。'),
+        content: const Text(
+          '导入会清空当前手机上的客户、项目、收款等全部数据，'
+          '并用备份文件内容覆盖。建议先导出当前数据再导入。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -104,7 +113,13 @@ class _DataManagementPageState extends State<DataManagementPage> {
       );
     } on FormatException catch (e) {
       _toast('导入失败：${e.message}');
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporter.instance.logError(
+        'backup_import_failed',
+        e,
+        st,
+        module: LogModule.db,
+      );
       _toast('导入失败：$e');
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -132,7 +147,9 @@ class _DataManagementPageState extends State<DataManagementPage> {
                       Text(
                         '数据安全说明',
                         style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.bold),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -154,8 +171,10 @@ class _DataManagementPageState extends State<DataManagementPage> {
           // ---- 导出 ----
           Card(
             child: ListTile(
-              leading: const Icon(Icons.upload_file_outlined,
-                  color: AppTheme.primary),
+              leading: const Icon(
+                Icons.upload_file_outlined,
+                color: AppTheme.primary,
+              ),
               title: const Text('导出备份'),
               subtitle: const Text('将全部数据打包成文件，可分享保存到网盘/微信'),
               trailing: _busy
@@ -172,11 +191,16 @@ class _DataManagementPageState extends State<DataManagementPage> {
           // ---- 导入 ----
           Card(
             child: ListTile(
-              leading: const Icon(Icons.download_outlined,
-                  color: AppTheme.primary),
+              leading: const Icon(
+                Icons.download_outlined,
+                color: AppTheme.primary,
+              ),
               title: const Text('导入恢复'),
               subtitle: const Text('从备份文件恢复数据（会覆盖当前数据）'),
-              trailing: const Icon(Icons.chevron_right, color: AppTheme.textSub),
+              trailing: const Icon(
+                Icons.chevron_right,
+                color: AppTheme.textSub,
+              ),
               onTap: _import,
             ),
           ),
@@ -184,11 +208,16 @@ class _DataManagementPageState extends State<DataManagementPage> {
           // ---- 数据库自检（v1.23.0）----
           Card(
             child: ListTile(
-              leading: const Icon(Icons.health_and_safety_outlined,
-                  color: AppTheme.primary),
+              leading: const Icon(
+                Icons.health_and_safety_outlined,
+                color: AppTheme.primary,
+              ),
               title: const Text('数据库自检'),
               subtitle: const Text('检查表结构完整性与数据可恢复性'),
-              trailing: const Icon(Icons.chevron_right, color: AppTheme.textSub),
+              trailing: const Icon(
+                Icons.chevron_right,
+                color: AppTheme.textSub,
+              ),
               onTap: _healthCheck,
             ),
           ),
@@ -215,22 +244,33 @@ class _DataManagementPageState extends State<DataManagementPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _row('检查时间', _fmtTime(report.checkedAt)),
-                _row('文件完整性',
-                    report.integrityCheck == 'ok' ? '正常' : '异常：${report.integrityCheck}'),
-                _row('外键引用校验',
-                    report.foreignKeyIssues.isEmpty
-                        ? '正常'
-                        : '发现 ${report.foreignKeyIssues.length} 处问题'),
-                _row('表结构完整性', report.tables.isEmpty
-                    ? '全部完整'
-                    : '${report.tables.length} 张表异常'),
+                _row(
+                  '文件完整性',
+                  report.integrityCheck == 'ok'
+                      ? '正常'
+                      : '异常：${report.integrityCheck}',
+                ),
+                _row(
+                  '外键引用校验',
+                  report.foreignKeyIssues.isEmpty
+                      ? '正常'
+                      : '发现 ${report.foreignKeyIssues.length} 处问题',
+                ),
+                _row(
+                  '表结构完整性',
+                  report.tables.isEmpty
+                      ? '全部完整'
+                      : '${report.tables.length} 张表异常',
+                ),
                 _row('数据量', '共 ${report.totalRows} 条记录'),
                 if (report.tables.isNotEmpty)
                   for (final t in report.tables)
                     Padding(
                       padding: const EdgeInsets.only(top: 6),
-                      child: Text('• ${t.table}：${t.describe}',
-                          style: const TextStyle(color: AppTheme.danger)),
+                      child: Text(
+                        '• ${t.table}：${t.describe}',
+                        style: const TextStyle(color: AppTheme.danger),
+                      ),
                     ),
                 const SizedBox(height: 12),
                 Text(
@@ -238,7 +278,10 @@ class _DataManagementPageState extends State<DataManagementPage> {
                       ? '数据完整可正常使用。为防手机丢失 / 卸载清空，建议定期到「导出备份」将数据另存到网盘或微信。'
                       : '检测到异常，当前不影响继续使用；为稳妥建议先「导出备份」，必要时可在本页做一次恢复演练，并联系开发者排查。',
                   style: const TextStyle(
-                      color: AppTheme.textSub, fontSize: 13, height: 1.5),
+                    color: AppTheme.textSub,
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
                 ),
               ],
             ),
@@ -266,12 +309,12 @@ class _DataManagementPageState extends State<DataManagementPage> {
         children: [
           SizedBox(
             width: 118,
-            child: Text(key,
-                style: const TextStyle(color: AppTheme.textSub, fontSize: 14)),
+            child: Text(
+              key,
+              style: const TextStyle(color: AppTheme.textSub, fontSize: 14),
+            ),
           ),
-          Expanded(
-            child: Text(value, style: const TextStyle(fontSize: 14)),
-          ),
+          Expanded(child: Text(value, style: const TextStyle(fontSize: 14))),
         ],
       ),
     );

@@ -13,6 +13,73 @@ final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 final GlobalKey<ScaffoldMessengerState> appMessengerKey =
     GlobalKey<ScaffoldMessengerState>();
 
+/// 日志模块标识（v1.47.0）：错误日志页顶部 Tab 分类依据。
+/// 每条日志写入时在 header 中携带模块段 `[module]`；存量无模块日志由页面
+/// 按 tag 推断归属。值全部为小写下划线，与既有 tag 风格一致。
+abstract final class LogModule {
+  static const String all = 'all';
+  static const String dashboard = 'dashboard';
+  static const String customer = 'customer';
+  static const String project = 'project';
+  static const String quote = 'quote';
+  static const String sync = 'sync';
+  static const String db = 'db';
+  static const String updater = 'updater';
+  static const String login = 'login';
+  static const String other = 'other';
+
+  /// Tab 展示顺序（all 为第一项「全部」）。
+  static const List<String> order = [
+    all,
+    dashboard,
+    customer,
+    project,
+    quote,
+    sync,
+    db,
+    updater,
+    login,
+    other,
+  ];
+
+  /// 模块中文名（页面 Tab / 卡片标签展示用）。
+  static String label(String m) => switch (m) {
+    all => '全部',
+    dashboard => '看板',
+    customer => '客户',
+    project => '项目',
+    quote => '报价',
+    sync => '同步',
+    db => '数据库',
+    updater => '更新',
+    login => '登录',
+    _ => '其他',
+  };
+
+  /// 由 tag 推断日志模块（存量日志 / 调用方未显式传 module 时的兜底）。
+  /// 前缀优先匹配；未知 tag 归 [LogModule.other]。
+  static String moduleOfTag(String tag) {
+    final t = tag.toLowerCase();
+    if (t.startsWith('login') || t.startsWith('register')) {
+      return LogModule.login;
+    }
+    if (t.startsWith('cloud_refresh')) return LogModule.login;
+    if (t.startsWith('db_') ||
+        t.startsWith('init_db') ||
+        t.startsWith('postlaunch_db') ||
+        t.contains('_db_')) {
+      return LogModule.db;
+    }
+    if (t.startsWith('sync')) return LogModule.sync;
+    if (t.startsWith('update')) return LogModule.updater;
+    if (t.startsWith('dashboard')) return LogModule.dashboard;
+    if (t.startsWith('customer')) return LogModule.customer;
+    if (t.startsWith('project')) return LogModule.project;
+    if (t.startsWith('quote')) return LogModule.quote;
+    return LogModule.other;
+  }
+}
+
 /// 全局异常捕获与日志（v1.20.0）。
 ///
 /// 捕获范围：
@@ -113,18 +180,22 @@ class ErrorReporter {
   ///
   /// [context] 为可选附加诊断字段（如 DB 文件路径 / 大小 / 耗时 / dbVersion 等），
   /// 序列化为 `key=value` 逐行追加，便于远程定位 DB 打开 / 恢复 / 查询失败真因。
+  /// [module] 为日志模块标识（错误日志页 Tab 分类依据）；缺省时按
+  /// [moduleOfTag] 从 tag 推断，保证存量无模块调用自动归类。
   Future<void> logError(
     String tag,
     Object error,
     StackTrace? stack, {
     Map<String, Object?>? context,
+    String? module,
   }) async {
     try {
       final dir = await _logDir();
       final now = DateTime.now();
       final f = File(p.join(dir.path, 'error_${_stamp(now)}.log'));
+      final m = module ?? LogModule.moduleOfTag(tag);
       final buf = StringBuffer()
-        ..writeln('[$now] [$tag] $error')
+        ..writeln('[$now] [$tag] [$m] $error')
         ..writeln('  ${stack ?? '(无堆栈)'}');
       if (context != null && context.isNotEmpty) {
         context.forEach((k, v) {
@@ -171,20 +242,20 @@ class ErrorReporter {
 
   Future<void> _prune(Directory dir) async {
     try {
-      final files = dir
-          .listSync()
-          .whereType<File>()
-          .where((f) => p.basename(f.path).startsWith('error_'))
-          .toList()
-        ..sort((a, b) => b.path.compareTo(a.path));
+      final files =
+          dir
+              .listSync()
+              .whereType<File>()
+              .where((f) => p.basename(f.path).startsWith('error_'))
+              .toList()
+            ..sort((a, b) => b.path.compareTo(a.path));
       for (final f in files.skip(_retainCount)) {
         f.deleteSync();
       }
     } catch (_) {}
   }
 
-  static String _stamp(DateTime t) =>
-      '${t.year}${_two(t.month)}${_two(t.day)}';
+  static String _stamp(DateTime t) => '${t.year}${_two(t.month)}${_two(t.day)}';
 
   static String _two(int v) => v.toString().padLeft(2, '0');
 }
