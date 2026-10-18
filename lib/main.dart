@@ -42,7 +42,11 @@ Future<void> main() async {
     _schedulePostLaunch();
   }, (Object error, StackTrace stack) {
     ErrorReporter.instance.logError('zone', error, stack);
-    ErrorReporter.instance.notify();
+    // 已降级处理的良性异常（三星 Keystore / secure storage 等）不弹全局兜底，
+    // 其余未捕获异常保留原全局友好提示，避免白屏/静默。
+    if (!ErrorReporter.isBenignError(error)) {
+      ErrorReporter.instance.notify();
+    }
   });
 }
 

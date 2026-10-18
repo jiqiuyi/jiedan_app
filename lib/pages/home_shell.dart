@@ -54,16 +54,25 @@ class HomeShellState extends State<HomeShell> {
   }
 
   /// 从 SharedPreferences 恢复悬浮球位置（比例值），无历史值时保持默认右下。
+  /// 读取失败（三星等机型存储偶发异常）静默保持默认位置，绝不冒泡到全局兜底。
   Future<void> _loadFabPosition() async {
-    final prefs = await SharedPreferences.getInstance();
-    final rx = prefs.getDouble(_prefFabDx);
-    final ry = prefs.getDouble(_prefFabDy);
+    double? rx;
+    double? ry;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      rx = prefs.getDouble(_prefFabDx);
+      ry = prefs.getDouble(_prefFabDy);
+    } catch (_) {
+      // 恢复失败保持默认位置，不影响主界面。
+    }
     if (!mounted) return;
     if (rx != null && ry != null) {
+      final rxv = rx;
+      final ryv = ry;
       final bound = _fabBounds();
       setState(() {
-        _fabDx = _edgeMargin + rx * (bound.maxX - _edgeMargin);
-        _fabDy = bound.minY + ry * (bound.maxY - bound.minY);
+        _fabDx = _edgeMargin + rxv * (bound.maxX - _edgeMargin);
+        _fabDy = bound.minY + ryv * (bound.maxY - bound.minY);
         _fabLoaded = true;
       });
     } else {

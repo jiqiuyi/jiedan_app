@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../constants.dart';
+import '../services/error_reporter.dart';
 import '../theme.dart';
 import 'privacy_policy_page.dart';
 
@@ -127,25 +128,45 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     String? result;
-    if (_isRegister) {
-      result = await AppState.instance.register(
-        _phoneCtrl.text.trim(),
-        _pwdCtrl.text,
-        _nameCtrl.text.trim(),
-        inviteCode: _inviteCtrl.text.trim(),
-      );
-      // 注册成功即已自动登录（云端返回 token 与用户信息）
-    } else {
-      result = await AppState.instance.login(
-        _phoneCtrl.text.trim(),
-        _pwdCtrl.text,
-      );
+    try {
+      if (_isRegister) {
+        result = await AppState.instance.register(
+          _phoneCtrl.text.trim(),
+          _pwdCtrl.text,
+          _nameCtrl.text.trim(),
+          inviteCode: _inviteCtrl.text.trim(),
+        );
+        // 注册成功即已自动登录（云端返回 token 与用户信息）
+      } else {
+        result = await AppState.instance.login(
+          _phoneCtrl.text.trim(),
+          _pwdCtrl.text,
+        );
+      }
+    } catch (e, st) {
+      // 兜底：登录/注册链路任何未预期异常（三星 Keystore/加密存储、
+      // 数据库迁移失败、SharedPreferences 写入等）一律转成登录页局部错误，
+      // 绝不冒泡到 runZonedGuarded 触发全局「操作未能完成，请稍后重试」误导文案。
+      ErrorReporter.instance.logError(
+          _isRegister ? 'register_submit' : 'login_submit', e, st);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = '操作异常，请重试；若反复出现请查看「设置-关于-错误日志」';
+        });
+      }
+      return;
     }
 
     if (!mounted) return;
     if (result == null) {
       if (_isRegister) {
-        await AppState.instance.clearPendingInviteCode();
+        try {
+          await AppState.instance.clearPendingInviteCode();
+        } catch (e, st) {
+          // 清理暂存邀请码失败不阻断注册成功（仅留日志）。
+          ErrorReporter.instance.logError('clear_pending_invite', e, st);
+        }
       }
       if (!mounted) return;
       Navigator.pop(context, true);

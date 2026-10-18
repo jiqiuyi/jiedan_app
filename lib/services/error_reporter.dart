@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -51,9 +52,31 @@ class ErrorReporter {
 
     PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
       logError('platform', error, stack);
-      notify();
+      // 三星等机型 Keystore/secure storage 平台线程偶发未处理异常（Dart 侧
+      // timeout+catch 接不住），属于已降级场景，不弹全局「操作未能完成」误导。
+      if (!isBenignError(error)) {
+        notify();
+      }
       return true; // 捕获平台层未处理异常，防止应用直接崩溃退出。
     };
+  }
+
+  /// 判断是否属于「业务已降级、无需全局弹窗」的已知良性异常：
+  /// - 三星/部分 ROM 上 flutter_secure_storage（Keystore）平台线程残余异常，
+  ///   调用侧均已做 3s 超时 + catch 降级，弹全局兜底会误导用户以为操作失败；
+  /// - SharedPreferences 偶发读取失败（登录页/首页已有局部降级）；
+  /// - MissingPluginException（插件回调未注册时的平台残余错误）。
+  static bool isBenignError(Object e) {
+    if (e is MissingPluginException) return true;
+    final s = e.toString();
+    return s.contains('flutter_secure_storage') ||
+        s.contains('keystore') ||
+        s.contains('KeyStore') ||
+        s.contains('secure storage') ||
+        s.contains('BadPadding') ||
+        s.contains('Cipher') ||
+        s.contains('SharedPreferences') ||
+        s.contains('MissingPluginException');
   }
 
   /// 写入错误日志（按天滚动，保留最近 [_retainCount] 天，超限截断尾部）。
