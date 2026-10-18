@@ -87,6 +87,11 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
         return;
       }
       await _openFile(files.first.path);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     } catch (e, st) {
       setState(() {
         _loading = false;
@@ -121,12 +126,21 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
 
   Future<void> _openFile(String path) async {
     final f = File(path);
-    if (!await f.exists().timeout(_fileTimeout)) return;
+    if (!await f.exists().timeout(_fileTimeout)) {
+      // 目标文件不存在（如切换后已被清理）：结束加载态，避免卡在转圈。
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+      return;
+    }
     // 文件上限 512KB（截断后 ≤256KB），直接整体读入展示。
     final bytes = await f.readAsBytes().timeout(_fileTimeout);
     // 按 UTF-8 宽容解码，避免个别乱码字节中断展示。
     final text = utf8.decode(bytes, allowMalformed: true);
     setState(() {
+      _loading = false;
       _selectedPath = path;
       _content = text;
       _info = '${p.basename(path)} · ${bytes.length} 字节 · 共 ${_files.length} 个日志文件';
