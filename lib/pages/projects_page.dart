@@ -15,6 +15,7 @@ import 'paywall_page.dart';
 import '../widgets/payment_dialog.dart';
 import '../utils/money_input.dart';
 import '../widgets/app_ui.dart';
+import '../services/error_reporter.dart';
 
 class ProjectsPage extends StatefulWidget {
   const ProjectsPage({super.key});
@@ -31,6 +32,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
   String _query = '';
   Timer? _debounce;
   bool _loading = true;
+  bool _loadFailed = false;
 
   final _tabs = ['全部', '接单', '制作中', '待收尾款', '完结'];
 
@@ -53,17 +55,29 @@ class _ProjectsPageState extends State<ProjectsPage> {
   }
 
   Future<void> _load() async {
-    final db = AppDb.instance;
-    final projects = await db.getProjects();
-    final customers = await db.getCustomers();
-    final paidTotals = await db.projectPaidTotals();
-    if (!mounted) return;
-    setState(() {
-      _projects = projects;
-      _customers = customers;
-      _paidTotals = paidTotals;
-      _loading = false;
-    });
+    // 三态兜底：DB 异常不得让页面停留在无限转圈（_loading 永不置 false），
+    // 一律落到「加载失败 + 重试按钮」终态；Ticker 周期后续重试成功会自动恢复。
+    try {
+      final db = AppDb.instance;
+      final projects = await db.getProjects();
+      final customers = await db.getCustomers();
+      final paidTotals = await db.projectPaidTotals();
+      if (!mounted) return;
+      setState(() {
+        _projects = projects;
+        _customers = customers;
+        _paidTotals = paidTotals;
+        _loading = false;
+        _loadFailed = false;
+      });
+    } catch (e, st) {
+      ErrorReporter.instance.logError('projects_load', e, st);
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadFailed = true;
+      });
+    }
   }
 
   // 列表交付截止标记（v1.24.0）：未设交付时间不标记；超期红色 / 3 天内黄色。
@@ -328,7 +342,19 @@ class _ProjectsPageState extends State<ProjectsPage> {
           Expanded(
             child: _loading
                 ? const AppLoading()
-                : items.isEmpty
+                : _loadFailed
+                    ? AppError(
+                        title: '加载失败',
+                        hint: '本地数据读取异常，请检查存储空间后重试',
+                        onRetry: () {
+                          setState(() {
+                            _loading = true;
+                            _loadFailed = false;
+                          });
+                          _load();
+                        },
+                      )
+                    : items.isEmpty
                     ? Center(
                         child: Text(
                           _projects.isEmpty || _query.trim().isNotEmpty

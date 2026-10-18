@@ -13,6 +13,7 @@ import '../models.dart';
 import '../database.dart';
 import '../services/quote_pdf_service.dart';
 import '../services/quote_web_service.dart';
+import '../services/error_reporter.dart';
 import '../utils/money_input.dart';
 import '../widgets/app_ui.dart';
 
@@ -103,13 +104,17 @@ class _QuotePageState extends State<QuotePage>
   }
 
   Future<void> _loadProjects() async {
-    final list = await AppDb.instance.getProjects();
-    final customers = await AppDb.instance.getCustomers();
-    if (mounted) {
+    // 三态兜底：DB 异常不冒泡（报价页表单仍可手填），项目下拉为空不影响出单。
+    try {
+      final list = await AppDb.instance.getProjects();
+      final customers = await AppDb.instance.getCustomers();
+      if (!mounted) return;
       setState(() {
         _projects = list;
         _customers = customers;
       });
+    } catch (e, st) {
+      ErrorReporter.instance.logError('quote_load_projects', e, st);
     }
   }
 
@@ -686,7 +691,20 @@ class _QuotePageState extends State<QuotePage>
 
   // ================= 历史弹层 =================
   Future<void> _openHistory() async {
-    final quotes = await AppDb.instance.getQuotes();
+    // 三态兜底：DB 读取失败不得让历史弹层一直转圈/无反应，
+    // 直接提示「加载失败」并返回（用户可再次点击重试）。
+    final List<Quote> quotes;
+    try {
+      quotes = await AppDb.instance.getQuotes();
+    } catch (e, st) {
+      ErrorReporter.instance.logError('quote_open_history', e, st);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('报价历史加载失败，请稍后重试')),
+        );
+      }
+      return;
+    }
     if (!mounted) return;
     if (quotes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1195,7 +1213,19 @@ class _QuotePageState extends State<QuotePage>
 
   /// 打开模板列表：选择套用或删除模板
   Future<void> _openTemplateSheet() async {
-    final templates = await AppDb.instance.getQuoteTemplates();
+    // 三态兜底：DB 读取失败提示「加载失败」，不静默无反应。
+    final List<Quote> templates;
+    try {
+      templates = await AppDb.instance.getQuoteTemplates();
+    } catch (e, st) {
+      ErrorReporter.instance.logError('quote_open_template', e, st);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('模板加载失败，请稍后重试')),
+        );
+      }
+      return;
+    }
     if (!mounted) return;
     if (templates.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

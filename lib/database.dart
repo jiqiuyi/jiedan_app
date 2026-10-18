@@ -3,9 +3,11 @@ import 'package:path/path.dart' as p;
 import 'package:crypto/crypto.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'constants.dart';
 import 'models.dart';
+import 'services/error_reporter.dart';
 
 // ============================================================
 // 金额口径（全库统一约束）
@@ -55,7 +57,6 @@ String hashPassword(String phone, String raw) {
 class AppDb {
   AppDb._();
   static final AppDb instance = AppDb._();
-  Database? _db;
 
   // 业务数据（同步范围表）发生本地写入/删除时回调，由 SyncService 挂接做异步推送。
   static void Function()? onDataChanged;
@@ -71,9 +72,68 @@ class AppDb {
   // 当前写入时间戳，供 updated_at 使用。
   static int now() => DateTime.now().millisecondsSinceEpoch;
 
+  // 首次打开的 in-flight Future：并发访问（看板/项目/报价页 IndexedStack 同帧
+  // initState + Ticker 周期 + 启动后台任务）只允许一路执行 _open()。
+  // 若不单例化，sqflite 会对同一路径并发执行 openDatabase，onOpen/_ensureSchema
+  // 里「探测后 ALTER」存在竞态（两路同时发现缺列都执行 ALTER → duplicate column），
+  // 导致三星等设备上 DB 打开失败、所有查询抛异常、页面永远 loading。
+  Future<Database>? _opening;
+
   Future<Database> get db async {
-    _db ??= await _open();
-    return _db!;
+    final opening = _opening ??= _openWithRecovery();
+    try {
+      final d = await opening;
+      return d;
+    } catch (_) {
+      // 打开失败重置 in-flight，允许下个请求重试（避免一次性失败后整个会话全挂）。
+      _opening = null;
+      rethrow;
+    }
+  }
+
+  // DB 打开统一入口：一次成功返回；失败时先备份现场再重建空库兜底。
+  // 覆盖三星 Android 16 上：1) 平台通道挂起（openDatabase 永不返回）——
+  //    用 timeout 打断；2) 数据库文件损坏 / CANTOPEN——rename 备份后重建；
+  //    3) 迁移失败——原文件备份保留，重建新库后应用可继续使用。
+  Future<Database> _openWithRecovery() async {
+    try {
+      return await _open();
+    } catch (e, st) {
+      ErrorReporter.instance.logError('db_open_failed', e, st);
+      final recovered = await _recoverDb(e);
+      if (recovered != null) return recovered;
+      rethrow;
+    }
+  }
+
+  // 重建兜底：把当前 DB 文件（含 -wal/-shm）改名保留现场（.corrupt_<ts>），
+  // 再重新 _open() 让 onCreate 全量建表，得到可用的全新空库。
+  // 原数据仍留在同目录 .corrupt_ 文件内，可通过「数据管理 → 导入备份」恢复。
+  Future<Database?> _recoverDb(Object cause) async {
+    try {
+      final dir = await getDatabasesPath();
+      final dbPath = p.join(dir, AppConfig.dbName);
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final f = File(dbPath);
+      if (await f.exists()) {
+        // 备份（rename 即备份：SQLite 打开新库前旧文件被移走，现场完整保留）
+        final backupPath = '$dbPath.corrupt_$ts';
+        await f.rename(backupPath);
+        for (final suffix in ['-wal', '-shm']) {
+          final side = File('$dbPath$suffix');
+          if (await side.exists()) {
+            try {
+              await side.rename('$backupPath$suffix');
+            } catch (_) {}
+          }
+        }
+      }
+      // 重建空库（onCreate 全量建表，保证后续查询可用）
+      return await _open();
+    } catch (e2, st2) {
+      ErrorReporter.instance.logError('db_recover_failed', e2, st2);
+      return null;
+    }
   }
 
   // ============================================================
@@ -272,7 +332,7 @@ class AppDb {
           '为防止数据被破坏已停止打开数据库。请安装不低于原版本的应用（或先还原旧版数据备份）。',
         );
       },
-    );
+    ).timeout(const Duration(seconds: 12));
   }
 
   // 迁移成功/失败日志的 settings 键（保留最近若干条，便于排查版本升级问题）。

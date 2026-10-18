@@ -11,6 +11,7 @@ import '../app_state.dart';
 import '../constants.dart';
 import '../state/ticker.dart';
 import '../theme.dart';
+import '../services/error_reporter.dart';
 import 'paywall_page.dart';
 import '../widgets/app_ui.dart';
 
@@ -24,6 +25,7 @@ class CustomersPage extends StatefulWidget {
 class _CustomersPageState extends State<CustomersPage> {
   List<Customer> _customers = [];
   bool _loading = true;
+  bool _loadFailed = false;
   String _query = '';
   Timer? _debounce;
   // 订阅全局数据变更广播（删除/编辑来自本页或项目详情页级联），自动刷新。
@@ -48,16 +50,28 @@ class _CustomersPageState extends State<CustomersPage> {
   }
 
   Future<void> _load() async {
-    final list = await AppDb.instance.getCustomers();
-    final tags = await AppDb.instance.getTags();
-    final map = await AppDb.instance.tagsByCustomers();
-    if (!mounted) return;
-    setState(() {
-      _customers = list;
-      _allTags = tags;
-      _tagsByCust = map;
-      _loading = false;
-    });
+    // 三态兜底：DB 异常进入错误态（加载失败+重试），绝不无限转圈。
+    try {
+      final list = await AppDb.instance.getCustomers();
+      final tags = await AppDb.instance.getTags();
+      final map = await AppDb.instance.tagsByCustomers();
+      if (!mounted) return;
+      setState(() {
+        _customers = list;
+        _allTags = tags;
+        _tagsByCust = map;
+        _loading = false;
+        _loadFailed = false;
+      });
+    } catch (e, st) {
+      ErrorReporter.instance.logError('customers_load', e, st);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _loadFailed = true;
+        });
+      }
+    }
   }
 
   List<Customer> get _filtered {
@@ -583,7 +597,19 @@ class _CustomersPageState extends State<CustomersPage> {
       ),
       body: _loading
           ? const AppLoading()
-          : Column(
+          : _loadFailed
+              ? AppError(
+                  title: '加载失败',
+                  hint: '本地数据读取异常，请检查存储空间后重试',
+                  onRetry: () {
+                    setState(() {
+                      _loading = true;
+                      _loadFailed = false;
+                    });
+                    _load();
+                  },
+                )
+              : Column(
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),

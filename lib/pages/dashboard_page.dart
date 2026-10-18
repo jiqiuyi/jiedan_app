@@ -32,6 +32,7 @@ class _DashboardPageState extends State<DashboardPage> {
   StreamSubscription<int>? _sub;
   Map<String, dynamic> _announce = {'title': '', 'content': '', 'active': false};
   bool _announceHidden = false;
+  bool _loadFailed = false;
 
   @override
   void initState() {
@@ -84,9 +85,17 @@ class _DashboardPageState extends State<DashboardPage> {
         _doneCount = projects.where((e) => e.status == ProjectStatus.done).length;
         _recent = projects.take(5).toList();
         _pendings = pendings;
+        _loadFailed = false;
       });
     } catch (e, st) {
       ErrorReporter.instance.logError('dashboard_refesh', e, st);
+      // 三态兜底：DB 持续失败时置错误态，页面顶部显示「加载失败 + 重试」横幅，
+      // 避免用户以为一直加载中无任何反馈（旧数据仍保留展示）。
+      if (mounted) {
+        setState(() {
+          _loadFailed = true;
+        });
+      }
     }
   }
 
@@ -202,6 +211,33 @@ class _DashboardPageState extends State<DashboardPage> {
       body: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         children: [
+          if (_loadFailed)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+              child: Material(
+                color: AppTheme.danger.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline,
+                          size: 18, color: AppTheme.danger),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text('数据加载失败，请重试',
+                            style: TextStyle(
+                                fontSize: 13, color: AppTheme.danger)),
+                      ),
+                      TextButton(
+                        onPressed: () => _refesh(),
+                        child: const Text('重试'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           if (!_announceHidden &&
               _announce['active'] == true &&
               (_announce['title'] as String? ?? '').isNotEmpty)
