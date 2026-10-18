@@ -551,6 +551,7 @@ class AppDb {
         customer_id INTEGER,
         title TEXT,
         status INTEGER,
+        note TEXT,
         amount_total INTEGER DEFAULT 0,
         created_at INTEGER,
         updated_at INTEGER,
@@ -879,6 +880,46 @@ class AppDb {
   //   4) 种子：_seed 类在 onCreate 与迁移链均执行且幂等。
   // ═══════════════════════════════════════════════════════════════════════
 
+  // 关键列补丁契约（结构自愈第 3 步基准）：表名 -> {列名: ALTER ADD 的 DDL 类型}。
+  // 覆盖历史上所有由迁移链 ALTER 引入、但可能因「onCreate 未同步 / user_version 已到
+  // 顶不再触发 onUpgrade」而缺失的列。逐项幂等：先探测列存在再 ADD，重复执行零副作用。
+  static const Map<String, Map<String, String>> _patchColumns = {
+    'customers': {
+      'industry': 'TEXT',
+      'source': 'TEXT',
+      'location': 'TEXT',
+      'last_contact_at': 'INTEGER DEFAULT 0',
+      'updated_at': 'INTEGER',
+    },
+    'projects': {
+      'note': 'TEXT',
+      'updated_at': 'INTEGER',
+      'progress': 'INTEGER DEFAULT 0',
+      'deliver_date': 'INTEGER DEFAULT 0',
+    },
+    'payments': {
+      'type_label': 'TEXT',
+      'updated_at': 'INTEGER',
+      'reconciled': 'INTEGER DEFAULT 0',
+      'quote_id': 'INTEGER',
+    },
+    'quotes': {
+      'customer_id': 'INTEGER',
+      'quote_type': "TEXT DEFAULT 'full'",
+      'note': 'TEXT',
+      'tax_include': 'INTEGER DEFAULT 1',
+      'status': 'INTEGER DEFAULT 0',
+      'is_template': 'INTEGER DEFAULT 0',
+      'updated_at': 'INTEGER',
+      'image_path': 'TEXT',
+    },
+    'pending_collections': {'updated_at': 'INTEGER'},
+    'milestones': {'updated_at': 'INTEGER', 'due_date': 'INTEGER DEFAULT 0'},
+    'contracts': {'updated_at': 'INTEGER'},
+    'tag_items': {'updated_at': 'INTEGER'},
+    'tags': {'updated_at': 'INTEGER'},
+  };
+
   // 结构自愈（v1.43.2）：统一保证「只在迁移链里增补过」的表 / 列在任意来源的库上
   // 都存在。历史遗留根因：onCreate 的建表语句未与迁移链最终结构保持同步，而全新
   // 安装只走 onCreate（不触发 onUpgrade 的 ALTER / CREATE），于是新库缺
@@ -905,22 +946,28 @@ class AppDb {
     await _createLedgerEntries(db);
     await _createContracts(db);
     await _createSubscriptionOrders(db);
-    // 3) 补齐历史库缺失的 updated_at 列（同步写入路径会引用该列）。
-    const needUpdatedAt = <String>[
-      'customers',
-      'payments',
-      'quotes',
-      'pending_collections',
-      'milestones',
-      'contracts',
-      'tag_items',
-      'tags',
-    ];
-    for (final t in needUpdatedAt) {
-      final cols = await db.rawQuery('PRAGMA table_info($t)');
+    // 3) 补齐历史库缺失的关键列（同步写入路径会引用这些列）。以 _patchColumns
+    //    契约为基准全量遍历：先 PRAGMA 探测表存在性（表缺失时交由对应建表函数负责，
+    //    绝不 ALTER 不存在的表），再逐列探测缺失后 ALTER 补列；单表补列失败不吞错，
+    //    落 ErrorReporter 日志后继续其它表 / 其它列，保证坏库也能尽可能自愈。
+    //    覆盖 tags.updated_at（v20）、tag_items.updated_at（v21）、projects.note
+    //    （服务器契约列）等全部历史迁移 ALTER 引入的列，避免「磁盘 user_version 已
+    //    到 23 但 schema 停留在旧版」的设备因 onUpgrade 不再触发而永远缺列。
+    for (final entry in _patchColumns.entries) {
+      final table = entry.key;
+      final cols = await db.rawQuery('PRAGMA table_info($table)');
       if (cols.isEmpty) continue; // 表尚未创建，交由对应建表 / 迁移负责
-      if (!cols.any((c) => c['name'] == 'updated_at')) {
-        await db.execute('ALTER TABLE $t ADD COLUMN updated_at INTEGER');
+      final existing = cols.map((c) => c['name']).toSet();
+      for (final col in entry.value.entries) {
+        if (existing.contains(col.key)) continue;
+        try {
+          await db.execute('ALTER TABLE $table ADD COLUMN ${col.key} ${col.value}');
+          ErrorReporter.instance.logError('db_schema_repair', 'repaired', null,
+              context: {'table': table, 'column': col.key, 'dbVersion': AppConfig.dbVersion});
+        } catch (e, st) {
+          ErrorReporter.instance.logError('db_schema_repair_failed', e, st,
+              context: {'table': table, 'column': col.key, 'dbVersion': AppConfig.dbVersion});
+        }
       }
     }
     // 注意：tags 种子数据（_seedTags）会写入 updated_at，坏库必须先补列再执行
@@ -1181,6 +1228,11 @@ class AppDb {
   // 种子标签再次 INSERT OR IGNORE 幂等补写 updated_at（老库种子行无该列值）。
   Future<void> _migrateToV20(Database db) async {
     final cols = await db.rawQuery('PRAGMA table_info(tags)');
+    if (cols.isEmpty) {
+      // 防御异常库：tags 表缺失时按最新结构建表 + 种子，避免 ALTER 不存在的表抛错。
+      await _createTags(db);
+      return;
+    }
     if (!cols.any((c) => c['name'] == 'updated_at')) {
       await db.execute('ALTER TABLE tags ADD COLUMN updated_at INTEGER');
     }
@@ -1229,6 +1281,11 @@ class AppDb {
   // v22 迁移（里程碑到期日）：milestones 表补 due_date 列（ms 时间戳，0=未设置）。
   Future<void> _migrateToV22(Database db) async {
     final cols = await db.rawQuery('PRAGMA table_info(milestones)');
+    if (cols.isEmpty) {
+      // 防御异常库：milestones 表缺失时按最新结构建表，避免 ALTER 不存在的表抛错。
+      await _createMilestones(db);
+      return;
+    }
     if (!cols.any((c) => c['name'] == 'due_date')) {
       await db.execute('ALTER TABLE milestones ADD COLUMN due_date INTEGER DEFAULT 0');
     }
@@ -2685,7 +2742,7 @@ const Map<String, Set<String>> expectedColumns = {
     'last_contact_at', 'created_at', 'updated_at',
   },
   'projects': {
-    'id', 'customer_id', 'title', 'status', 'amount_total', 'created_at',
+    'id', 'customer_id', 'title', 'status', 'note', 'amount_total', 'created_at',
     'updated_at', 'due_date', 'remind_at', 'progress', 'deliver_date',
   },
   'payments': {
