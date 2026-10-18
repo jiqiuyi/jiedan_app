@@ -146,6 +146,9 @@ class SyncService extends ChangeNotifier {
   // v1.46.5 修复：周期增量同步定时器（保证网页端删除墓碑及时到达 App 端）。
   Timer? _periodicSyncTimer;
 
+  // v1.47.0：回前台自动同步的防抖时间戳（10 秒内不重复触发）。
+  DateTime? _lastResumeSyncAt;
+
   /// 应用启动时调用：读取持久化存储方式并立即执行一次首次合并（仅含服务器模式）。
   /// 必须在 AppDb 可用后调用。
   Future<void> init() async {
@@ -300,6 +303,25 @@ class SyncService extends ChangeNotifier {
 
   /// 立即后台推送本地全部数据（含墓碑）到云端。供页面「立即同步」调用。
   Future<void> pushNow() => _runMutex(() => _pushNow(), stage: 'manual_push');
+
+  /// 手动触发完整双向同步（先拉取服务器最新数据并落地、再推送本地变更），
+  /// 供页面「立即同步」调用。v1.47.0：由原 pushNow 只上传升级为与 syncOnStart
+  /// 一致的全量对齐流程，点「立即同步」即可同时拉取网页端/其他端新增数据。
+  Future<void> syncNow() => _runMutex(() => syncOnStart(), stage: 'manual');
+
+  /// App 回到前台时调用：立即与服务器对齐一次（拉取+推送），
+  /// 确保切回 App 时能看到网页端最新数据。带 10 秒防抖，避免频繁前后台
+  /// 切换触发无谓请求。
+  void onAppResumed() {
+    if (!canSync) return;
+    final nowDt = DateTime.now();
+    final last = _lastResumeSyncAt;
+    if (last != null && nowDt.difference(last) < const Duration(seconds: 10)) {
+      return;
+    }
+    _lastResumeSyncAt = nowDt;
+    unawaited(_runMutex(() => syncOnStart(), stage: 'resume'));
+  }
 
   /// 删除服务器上本账号的全部同步数据（存储方式切回「仅本地」时的可选项）。
   /// 仅清除云端命名空间，本地数据保持不变；同时清空本地同步水位，

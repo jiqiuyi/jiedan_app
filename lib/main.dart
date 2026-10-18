@@ -203,6 +203,9 @@ class _JieDanAppState extends State<JieDanApp> with WidgetsBindingObserver {
       unawaited(_maybeOpenQuickLedger());
       // 前台恢复：消费通知点击「下载完成」置位的安装意图（v1.46.4）
       unawaited(AppUpdater.instance.checkPendingInstall());
+      // 前台恢复：立即与云端同步一次（拉取+推送），切回 App 即可看到网页端最新数据（v1.47.0）
+      unawaited(_safePostLaunch(
+          'sync_resume', () async => SyncService.instance.onAppResumed()));
     }
   }
 
