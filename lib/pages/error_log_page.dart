@@ -35,6 +35,13 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
   String _selectedPath = '';
   String _content = '';
   String _info = '';
+  /// 当前文件的日志条目（_openFile 时解析，折叠交互数据源）。
+  List<_LogEntry> _entries = const [];
+  /// 已展开完整堆栈的条目索引集合。
+  final Set<int> _expanded = {};
+
+  /// 折叠时默认展示的堆栈关键帧行数。
+  static const int _previewLineCount = 5;
 
   /// 平台通道超时：三星等设备偶发 platform channel 无响应，必须限时，
   /// 避免页面永远停在 loading。
@@ -139,10 +146,13 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
     final bytes = await f.readAsBytes().timeout(_fileTimeout);
     // 按 UTF-8 宽容解码，避免个别乱码字节中断展示。
     final text = utf8.decode(bytes, allowMalformed: true);
+    final parsed = _parseEntries(text);
     setState(() {
       _loading = false;
       _selectedPath = path;
       _content = text;
+      _entries = parsed;
+      _expanded.clear();
       _info = '${p.basename(path)} · ${bytes.length} 字节 · 共 ${_files.length} 个日志文件';
     });
   }
@@ -166,6 +176,57 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('日志已复制到剪贴板，可直接粘贴发给开发者')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('复制失败：$e')),
+        );
+      }
+    }
+  }
+
+  /// 组装精简日志文本：每条目仅保留 header（异常类型+时间）与堆栈前
+  /// [_previewLineCount] 行关键帧，省略其余堆栈，便于快速反馈排查。
+  Future<String> _buildCompactLogText() async {
+    final buf = StringBuffer();
+    for (final f in _files) {
+      buf.writeln('===== ${p.basename(f.path)} =====');
+      final bytes = await File(f.path).readAsBytes().timeout(_fileTimeout);
+      final text = utf8.decode(bytes, allowMalformed: true);
+      final entries = _parseEntries(text);
+      if (entries.isEmpty) continue;
+      for (final e in entries) {
+        buf.writeln(e.header);
+        final shown = e.bodyLines.take(_previewLineCount).toList();
+        for (final l in shown) {
+          buf.writeln(l);
+        }
+        final hidden = e.bodyLines.length - shown.length;
+        if (hidden > 0) {
+          buf.writeln('  … 省略 $hidden 行堆栈');
+        }
+        buf.writeln();
+      }
+    }
+    return buf.toString();
+  }
+
+  /// 复制日志：[compact] 为 true 时复制精简版，否则复制完整版。
+  Future<void> _copyLog(bool compact) async {
+    if (!compact) {
+      await _copyAll();
+      return;
+    }
+    try {
+      final text = await _buildCompactLogText();
+      await Clipboard.setData(ClipboardData(text: text));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('日志已复制（精简版：每条目异常+时间+前 $_previewLineCount 行堆栈），可直接粘贴发给开发者'),
+          ),
         );
       }
     } catch (e) {
@@ -256,10 +317,20 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
               icon: const Icon(Icons.cloud_upload_outlined),
               onPressed: _uploading ? null : _uploadAll,
             ),
-            IconButton(
-              tooltip: '复制全部日志',
+            PopupMenuButton<_CopyMode>(
+              tooltip: '复制日志',
               icon: const Icon(Icons.copy_all_outlined),
-              onPressed: _copyAll,
+              onSelected: (mode) => _copyLog(mode == _CopyMode.compact),
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _CopyMode.compact,
+                  child: Text('复制精简版（异常+时间+前5行堆栈）'),
+                ),
+                PopupMenuItem(
+                  value: _CopyMode.full,
+                  child: Text('复制完整版'),
+                ),
+              ],
             ),
           ],
         ],
@@ -347,22 +418,161 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
         Expanded(
           child: _content.isEmpty
               ? const Center(child: Text('日志为空'))
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: SelectableText(
-                    _content,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontFamily: 'monospace',
-                      height: 1.4,
-                    ),
-                  ),
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: _entries.length,
+                  itemBuilder: (context, index) =>
+                      _buildEntryTile(index),
                 ),
         ),
       ],
     );
   }
+
+  /// 单条日志折叠卡片：默认展示 header（异常类型+时间）与堆栈前
+  /// [_previewLineCount] 行关键帧，点击条目 / 按钮可展开完整堆栈。
+  Widget _buildEntryTile(int index) {
+    final e = _entries[index];
+    final expanded = _expanded.contains(index);
+    final preview = e.bodyLines.take(_previewLineCount).toList();
+    final hiddenCount = e.bodyLines.length - preview.length;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.card,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppTheme.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => _toggleEntry(index),
+            borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(AppRadius.md)),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    expanded ? Icons.unfold_less : Icons.unfold_more,
+                    size: 18,
+                    color: AppTheme.textSub,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SelectableText(
+                      e.header,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                        height: 1.4,
+                        color: AppTheme.textMain,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final line in expanded ? e.bodyLines : preview)
+                  _frameLine(line),
+                if (hiddenCount > 0)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, 32),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        textStyle: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                      onPressed: () => _toggleEntry(index),
+                      child: Text(expanded
+                          ? '收起堆栈'
+                          : '展开完整堆栈（剩余 $hiddenCount 行）'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 单行堆栈 / ctx 帧：等宽小字，轻微缩进。
+  Widget _frameLine(String line) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: SelectableText(
+        line,
+        style: const TextStyle(
+          fontSize: 11,
+          fontFamily: 'monospace',
+          height: 1.4,
+          color: AppTheme.textSub,
+        ),
+      ),
+    );
+  }
+
+  void _toggleEntry(int index) {
+    setState(() {
+      if (!_expanded.add(index)) {
+        _expanded.remove(index);
+      }
+    });
+  }
+
+  /// 解析日志文本为条目列表。
+  /// 每条目以「[时间] [tag] …」首行开头，后续缩进行为堆栈帧 / ctx 诊断行；
+  /// 日志超限截断后可能从堆栈中间开始，开头无 header 的散行归入「截断残片」条目。
+  static List<_LogEntry> _parseEntries(String content) {
+    final entries = <_LogEntry>[];
+    _LogEntry? cur;
+    StringBuffer orphan = StringBuffer();
+    for (final line in const LineSplitter().convert(content)) {
+      if (line.startsWith('[')) {
+        if (orphan.isNotEmpty) {
+          entries.add(_LogEntry(
+              header: '（日志截断残片）',
+              bodyLines: [orphan.toString().trimRight()]));
+          orphan = StringBuffer();
+        }
+        cur = _LogEntry(header: line, bodyLines: []);
+        entries.add(cur);
+      } else if (line.isEmpty) {
+        continue;
+      } else if (cur != null) {
+        cur.bodyLines.add(line);
+      } else {
+        orphan.writeln(line);
+      }
+    }
+    if (orphan.isNotEmpty) {
+      entries.add(_LogEntry(
+          header: '（日志截断残片）',
+          bodyLines: [orphan.toString().trimRight()]));
+    }
+    return entries;
+  }
 }
+
+class _LogEntry {
+  final String header;
+  final List<String> bodyLines;
+  _LogEntry({required this.header, required this.bodyLines});
+}
+
+/// 复制模式：精简版（异常+时间+前5行关键帧）与完整版。
+enum _CopyMode { compact, full }
 
 class _LogFile {
   final String path;

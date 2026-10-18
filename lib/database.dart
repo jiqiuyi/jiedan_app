@@ -422,6 +422,9 @@ class AppDb {
         await _createContracts(db);
         await _createSubscriptionOrders(db);
         await _createTags(db);
+        // tag_items 行业 / 来源标签字典表（v1.43.5）：v19 迁移建表，初始建表必须同步，
+        // 否则全新安装（onCreate 不走 onUpgrade）的库缺表，同步通道查询抛 no such table。
+        await _createTagItems(db);
         await _ensureSchema(db);
       },
       // 打开数据库后的幂等结构自愈（v1.43.2）：历史版本的 onCreate 建表语句未与
@@ -821,6 +824,61 @@ class AppDb {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_tomb_table ON sync_tombstones(table_name)');
   }
 
+  // ═══ Schema 审计清单（防复发机制）════════════════════════════════════════
+  // 核心原则：新装库只走 onCreate + _ensureSchema（不触发 onUpgrade），因此迁移链里
+  // CREATE / ALTER 出的结构必须同时在 onCreate 建表路径或 _ensureSchema 自愈路径存在，
+  // 否则新库结构落后于老升级库（同类历史问题：tag_items 缺表 / tags 缺 updated_at /
+  // v14 索引缺失）。
+  //
+  // 表 → 建表函数 → 覆盖路径：
+  //   customers/projects/payments/settings  _createCoreTables   onCreate + _ensureSchema②
+  //   users                                 _createUsers        onCreate + _ensureSchema②
+  //   feedbacks                             _createFeedbacks    onCreate + _ensureSchema②
+  //   invitees                              _createInvitees     onCreate + _ensureSchema②
+  //   withdrawals                           _createWithdrawals  onCreate + _ensureSchema②
+  //   recharges                             _createRecharges    onCreate + _ensureSchema②
+  //   quotes                                _createQuotes       onCreate + _ensureSchema②
+  //   pending_collections                   _createPendingCollections onCreate + _ensureSchema②
+  //   milestones                            _createMilestones   onCreate + _ensureSchema②
+  //   contracts                             _createContracts    onCreate + _ensureSchema②
+  //   subscription_orders                   _createSubscriptionOrders onCreate + _ensureSchema②
+  //   tags / customer_tags                  _createTags         onCreate + _ensureSchema②
+  //   tag_items                             _createTagItems     onCreate + _ensureSchema②（曾漏：只存在于 _migrateToV19）
+  //   ledger_entries                        _createLedgerEntries onCreate + _ensureSchema②
+  //   sync_tombstones                       _createSyncTombstones _ensureSchema①（onCreate 经由 _ensureSchema）
+  //   invoices                              仅 v9 建 / v10 删（历史残留，新库不建）
+  //
+  // 列补丁（迁移链 ALTER → 新库兜底）：
+  //   v7  payments.type_label                       → _createCoreTables 已含
+  //   v8  quotes.quote_type/note/tax_include        → _createQuotes 已含
+  //   v9  x100 重建 + quotes.customer_id + projects.due_date/remind_at → 建表函数已含
+  //   v11 customers/payments/quotes/pending_collections/milestones/contracts.updated_at
+  //       → payments/pending_collections/milestones/contracts 由 needUpdatedAt 自愈兜底
+  //   v12 feedbacks.server_id/reply/replied_at/synced → _createFeedbacks 已含
+  //   v13 customers.industry/source/location/last_contact_at/updated_at；
+  //       quotes.updated_at/status/is_template       → 建表函数已含
+  //   v15 projects.progress/deliver_date；quotes.image_path → 建表函数已含
+  //   v16 payments.reconciled/quote_id               → _createCoreTables 已含
+  //   v20 tags.updated_at                            → _createTags 已含
+  //   v21 tag_items.updated_at                       → _createTagItems 已含；
+  //       customer_tags 重建（补 id 列）              → 建表已含 + _ensureSchema④ 自愈
+  //   v22 milestones.due_date                        → _createMilestones 已含
+  //
+  // 索引：
+  //   v11 idx_tomb_table  → _createSyncTombstones 已含（_ensureSchema①）
+  //   v14 8 个高频查询索引 → _ensureSchema 幂等补建（曾漏：新库缺索引仅损失性能）
+  //
+  // 种子：
+  //   v18/v20 tags 预设 6 条 → _createTags → _seedTags（onCreate 与自愈均执行，幂等）
+  //
+  // 新增版本自检清单（对照本清单）：
+  //   1) 新表：加建表函数，并同步加入 onCreate 列表与 _ensureSchema 第 2 步；
+  //   2) 新列：建表 SQL 同步补列；历史列若由迁移 ALTER 引入，需确认新库兜底
+  //      （建表 SQL 含 / needUpdatedAt 自愈 / 显式探测补列），缺一即复发；
+  //   3) 新索引：_migrateToV* 与 _ensureSchema 同步 CREATE INDEX IF NOT EXISTS；
+  //   4) 种子：_seed 类在 onCreate 与迁移链均执行且幂等。
+  // ═══════════════════════════════════════════════════════════════════════
+
   // 结构自愈（v1.43.2）：统一保证「只在迁移链里增补过」的表 / 列在任意来源的库上
   // 都存在。历史遗留根因：onCreate 的建表语句未与迁移链最终结构保持同步，而全新
   // 安装只走 onCreate（不触发 onUpgrade 的 ALTER / CREATE），于是新库缺
@@ -868,6 +926,22 @@ class AppDb {
     // 注意：tags 种子数据（_seedTags）会写入 updated_at，坏库必须先补列再执行
     // _createTags 建表 + 种子，否则又抛「table tags has no column named updated_at」。
     await _createTags(db);
+    // tag_items 行业/来源标签字典表：v1.43.5 曾只在 _migrateToV19 建表，全新安装
+    // （onCreate 不走 onUpgrade）的库缺该表，同步查询 SELECT * FROM tag_items 抛
+    // 「no such table: tag_items」。此处幂等补建（CREATE TABLE IF NOT EXISTS），
+    // 结构与 _createTagItems / _migrateToV19 完全一致，老库与新装库均自愈。
+    await _createTagItems(db);
+    // v14 高频查询索引：只在迁移链 _migrateToV14 建过，新装库缺索引仅损失查询性能，
+    // 此处幂等补建（CREATE INDEX IF NOT EXISTS），与老库迁移后结构保持一致。
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_projects_customer ON projects(customer_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_payments_project ON payments(project_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_payments_paid_at ON payments(paid_at)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_quotes_project ON quotes(project_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_quotes_customer ON quotes(customer_id)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_pending_collections_project ON pending_collections(project_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_milestones_project ON milestones(project_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_contracts_project ON contracts(project_id)');
     // 4) customer_tags 同步化自愈：缺 id 列的老库（v20 及以前结构）按 v21 重建，
     //    幂等：已有 id 列则跳过；表缺失时交由 _createTags 按最新结构创建。
     final ctCols = await db.rawQuery('PRAGMA table_info(customer_tags)');
