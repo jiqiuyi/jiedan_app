@@ -52,6 +52,10 @@ class AppUpdater {
   static const String _lastUrlKey = 'update_last_url';
   static const String _lastVersionKey = 'update_last_version';
   static const String _lastExpectBytesKey = 'update_last_expect_bytes';
+  /// 待安装下载任务 ID（enqueue 成功即写入，v1.48.1）：flutter_downloader
+  /// complete 回调丢失（下载期间进程被杀 / isolate 被回收）时，冷启动/回前台
+  /// 兜底扫描据此确认「下载已开始」，配合下载目录 APK 完成自动安装。
+  static const String _pendingTaskIdKey = 'update_pending_task_id';
 
   /// 应用启动时初始化：注册下载回调（后台 isolate 事件转发到主 isolate）。
   /// 失败不阻断启动（仅失去自动安装能力，可手动重试）。
@@ -161,6 +165,30 @@ class AppUpdater {
         return;
       }
       _showSnack('已开始后台下载，完成后自动安装');
+      // enqueue 成功即写待安装记录（v1.48.1）：taskId 持久化，覆盖
+      // 「complete 回调丢失」场景——冷启动/回前台兜底扫描不依赖回调，
+      // 只要有下载目录 APK 即可自动校验并安装。
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_pendingTaskIdKey, taskId);
+      } catch (_) {
+        // pending 持久化失败不阻塞下载（last 记录仍可兜底）
+      }
+      // pending 记录写入留痕（v1.48.1）
+      unawaited(
+        ErrorReporter.instance.logError(
+          'updater_pending_saved',
+          StateError('pending taskId=$taskId'),
+          StackTrace.current,
+          context: {
+            'taskId': taskId,
+            'url': _withCacheBust(url),
+            'version': version,
+            'expectBytes': '$_lastExpectedBytes',
+            'savedDir': dir.path,
+          },
+        ),
+      );
       // 下载开始留痕（v1.47.2）：记录 URL 与期望大小，供安装失败时比对
       unawaited(
         ErrorReporter.instance.logError(
@@ -448,6 +476,15 @@ class AppUpdater {
   /// 「后台下载完成但回调丢失 / 通知被清」场景），弹窗让用户决定是否安装。
   Future<void> checkPendingInstall() async {
     try {
+      // 兜底触发留痕（v1.48.1）：冷启动 / 回前台每次扫描均记录，便于确认
+      // 兜底链路被正确触发（complete 回调丢失时依赖此路径完成安装）。
+      unawaited(
+        ErrorReporter.instance.logError(
+          'updater_resume_check',
+          StateError('pending install check triggered'),
+          StackTrace.current,
+        ),
+      );
       // 拉取原生侧 PackageInstaller 提交结果并留痕（v1.47.2）：用户在系统
       // 安装确认界面的最终结果（成功/失败/取消）经此通道回传错误日志。
       await _consumeInstallResult();
@@ -490,12 +527,32 @@ class AppUpdater {
     }
   }
 
-  /// 启动兜底：下载目录存在比当前版本新的 APK 时弹窗询问安装。
-  /// 用 SharedPreferences 记录已询问过的文件名，避免每次启动重复打扰。
+  /// 启动兜底：下载目录存在比当前版本新的 APK 时**自动提交安装**（v1.48.1：
+  /// 由「弹窗询问」改为「自动拉起系统安装界面」——complete 回调丢失时，用户
+  /// 重启 App 即自动校验并安装，无需手动点击）。数据源为 enqueue 时写入的
+  /// pending / last 持久化记录。用 SharedPreferences 记录已提交过的文件名，
+  /// 避免每次启动重复提交（用户取消系统界面后不再打扰）。
   static const String _offeredApkKey = 'update_install_offered_apk';
 
   Future<void> _offerPendingApkOnStartup() async {
     try {
+      // 读取 pending 记录留痕（v1.48.1）：确认兜底扫描的数据源不依赖
+      // complete 回调写入。
+      String? pendingTaskId;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        pendingTaskId = prefs.getString(_pendingTaskIdKey);
+      } catch (_) {
+        // 读取失败不阻塞扫描
+      }
+      unawaited(
+        ErrorReporter.instance.logError(
+          'updater_startup_scan_triggered',
+          StateError('startup scan pendingTaskId=$pendingTaskId'),
+          StackTrace.current,
+          context: {'pendingTaskId': pendingTaskId ?? ''},
+        ),
+      );
       final dir = await _ensureDownloadDir();
       final files =
           dir
@@ -506,7 +563,17 @@ class AppUpdater {
             ..sort(
               (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()),
             );
-      if (files.isEmpty) return;
+      if (files.isEmpty) {
+        // 扫描未发现 APK：无待安装包，静默并留痕（供远程确认兜底扫描生效）
+        unawaited(
+          ErrorReporter.instance.logError(
+            'updater_startup_scan_none',
+            StateError('no apk found in download dir'),
+            StackTrace.current,
+          ),
+        );
+        return;
+      }
       final latest = files.first.path;
       // 启动兜底同样校验完整性；校验不通过时（v1.47.2）**不删除**安装包
       // （避免误杀合法包），仅留痕后静默跳过，不再弹窗打扰。
@@ -526,35 +593,24 @@ class AppUpdater {
       final apkVersion = _versionFromApkName(apkName);
       if (apkVersion == null) return;
       final info = await PackageInfo.fromPlatform();
-      if (!_isVersionNewer(apkVersion, info.version)) return;
-
+      if (!_isVersionNewer(apkVersion, info.version)) {
+        // 当前版本不低于 APK：非待装包（残留旧包 / 已安装更新），跳过
+        return;
+      }
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getString(_offeredApkKey) == apkName) return;
+      // 先记录已提交文件名，再提交安装（防并发 / 重复提交）
       await prefs.setString(_offeredApkKey, apkName);
-
-      final ctx = appNavigatorKey.currentContext;
-      if (ctx == null) return;
-      if (!ctx.mounted) return;
-      await showDialog<void>(
-        context: ctx,
-        builder: (dialogCtx) => AlertDialog(
-          title: Text('检测到新版本 v$apkVersion'),
-          content: const Text('新版本安装包已下载完成，是否现在安装？'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx),
-              child: const Text('暂不'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(dialogCtx);
-                unawaited(_installApk(latest));
-              },
-              child: const Text('立即安装'),
-            ),
-          ],
+      // 扫描发现更新的 APK：自动提交安装（v1.48.1 替代原弹窗询问）
+      unawaited(
+        ErrorReporter.instance.logError(
+          'updater_startup_scan_found',
+          StateError('auto install apk=$apkName v$apkVersion'),
+          StackTrace.current,
+          context: {'path': latest, 'apkName': apkName, 'version': apkVersion},
         ),
       );
+      await _installApk(latest);
     } catch (_) {
       // 兜底失败静默即可：用户仍可走「检查更新」主动下载
     }
@@ -577,6 +633,15 @@ class AppUpdater {
       );
       if (ok != true) {
         _showInstallFailedDialog(reason ?? '系统未启动安装界面，请重试', path: path);
+      } else {
+        // 安装界面已成功拉起（v1.48.1）：清除 pending 记录，避免后续启动
+        // 重复扫描同一任务；系统安装结果仍由 PackageInstaller 广播回传。
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(_pendingTaskIdKey);
+        } catch (_) {
+          // 清除失败不阻塞（_offeredApkKey 仍可防重复提交）
+        }
       }
     } on PlatformException catch (e) {
       unawaited(
