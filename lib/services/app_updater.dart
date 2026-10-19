@@ -85,6 +85,9 @@ class AppUpdater {
     _lastVersion = version;
     if (resetRetry) _retriedOnce = false;
     _lastExpectedBytes = null;
+    // 下载前预检「安装未知来源应用」权限（v1.47.2）：未授权时先弹引导，
+    // 避免下载完成后才提示 / 无法拉起系统安装界面。
+    await _preCheckInstallPermissionBeforeDownload(url, version);
     // 预取服务器 Content-Length，供下载完成后做完整性校验；同时持久化，
     // 覆盖「进程被杀 → complete 回调丢失 / 冷启动兜底」场景仍能拿到期望大小。
     try {
@@ -96,6 +99,15 @@ class AppUpdater {
       if (head.statusCode == 200 && cl != null) {
         _lastExpectedBytes = int.tryParse(cl);
       }
+      // HEAD 预取结果留痕（v1.47.2）：便于远程核对期望大小与实际下载差异
+      unawaited(
+        ErrorReporter.instance.logError(
+          'updater_head_ok',
+          StateError('HEAD ${head.statusCode} content-length=$cl'),
+          StackTrace.current,
+          context: {'url': url, 'expectBytes': '$_lastExpectedBytes'},
+        ),
+      );
     } catch (e) {
       // HEAD 失败不影响下载，仅失去大小校验依据；记录日志便于远程诊断。
       unawaited(
@@ -149,6 +161,20 @@ class AppUpdater {
         return;
       }
       _showSnack('已开始后台下载，完成后自动安装');
+      // 下载开始留痕（v1.47.2）：记录 URL 与期望大小，供安装失败时比对
+      unawaited(
+        ErrorReporter.instance.logError(
+          'updater_download_start',
+          StateError('enqueue ok taskId=$taskId'),
+          StackTrace.current,
+          context: {
+            'url': _withCacheBust(url),
+            'version': version,
+            'expectBytes': '$_lastExpectedBytes',
+            'savedDir': dir.path,
+          },
+        ),
+      );
     } catch (e) {
       _showSnack('开始下载失败，请稍后重试');
       unawaited(
@@ -233,6 +259,16 @@ class AppUpdater {
     if (status == DownloadTaskStatus.complete) {
       // 下载完成即拉起安装（前台 complete 回调路径）。带 Content-Length
       // 大小校验，坏文件直接删除并提示，不进入安装流程。
+      // 回调留痕（v1.47.2）：记录收到 complete 时的期望大小，便于远程核对
+      // 是否发生过「complete 后未触发安装」。
+      unawaited(
+        ErrorReporter.instance.logError(
+          'updater_complete_received',
+          StateError('task $id complete'),
+          StackTrace.current,
+          context: {'taskId': id, 'expectBytes': '$_lastExpectedBytes'},
+        ),
+      );
       unawaited(_installByTaskId(id, expectBytes: _lastExpectedBytes));
     } else if (status == DownloadTaskStatus.failed) {
       unawaited(_handleDownloadFailed(id));
@@ -247,6 +283,15 @@ class AppUpdater {
       final tasks = await FlutterDownloader.loadTasks();
       if (tasks != null) {
         final task = tasks.where((t) => t.taskId == taskId).firstOrNull;
+        // taskId 匹配结果留痕（v1.47.2）：区分「按 taskId 命中」与「走扫描兜底」
+        unawaited(
+          ErrorReporter.instance.logError(
+            'updater_task_lookup',
+            StateError('taskId=$taskId matched=${task != null}'),
+            StackTrace.current,
+            context: {'taskId': taskId, 'tasks': '${tasks.length}'},
+          ),
+        );
         if (task != null && task.filename != null) {
           final dir = task.savedDir;
           // savedDir 运行时可能为 null（下载器任务表未持久化目录，模型声明
@@ -271,15 +316,26 @@ class AppUpdater {
       }
       // 兜底 2：安装前完整性校验（大小 / magic bytes / EOCD / Content-Length）。
       // 内存期望大小丢失时（进程被杀 / 回调丢失）从持久化记录补齐；
-      // 坏文件（截断 / HTML 错误页）直接删除，避免进入系统安装器报「解析失败」。
+      // 校验不通过时（v1.47.2）**不再删除安装包**——避免 HEAD/GET 大小
+      // 差异或服务器临时异常误杀合法包，改为保留文件并弹「手动安装/重新下载」。
       final verr = await _validateApkWithPersisted(path, expectBytes);
       if (verr != null) {
-        try {
-          File(path).deleteSync();
-        } catch (_) {
-          // 删除失败不阻塞提示
-        }
-        _showSnack('$verr，已删除损坏安装包，请重新下载更新');
+        // 校验失败留痕（v1.47.2）：记录文件大小与期望大小，便于远程确认
+        // 是真实截断还是校验过严误杀。
+        unawaited(
+          ErrorReporter.instance.logError(
+            'updater_validate_failed',
+            StateError(verr),
+            StackTrace.current,
+            context: {
+              'path': path,
+              'expectBytes': '${expectBytes ?? _lastExpectedBytes ?? ''}',
+              'fileBytes':
+                  '${File(path).existsSync() ? File(path).lengthSync() : -1}',
+            },
+          ),
+        );
+        await _showInvalidApkDialog(verr, path);
         return;
       }
       await _installApk(path);
@@ -311,7 +367,9 @@ class AppUpdater {
   /// 安装包完整性初检：
   /// - 存在且体积 ≥ 1MB（真实 APK 远大于此，可拦截下载到 HTML 错误页 / 空文件）；
   /// - 文件头为 zip magic（PK\x03\x04，APK 本质是 zip）；
-  /// - 可选：与服务器 Content-Length 完全一致（下载完成校验截断文件）。
+  /// - 可选：与服务器 Content-Length 容差校验（v1.47.2：HEAD 期望大小与实际
+  ///   下载大小允许 ±5% 差异——CDN/gzip/节点差异或服务器更新同 URL 文件时
+  ///   不会误杀合法包；真正截断包仍会被头部 PK / 尾部 EOCD 校验拦截）。
   /// 返回 null 表示通过；否则返回失败原因文案。
   String? _validateApk(String path, {int? expectBytes}) {
     try {
@@ -319,8 +377,12 @@ class AppUpdater {
       if (!f.existsSync()) return '安装包文件不存在';
       final len = f.lengthSync();
       if (len < 1024 * 1024) return '安装包文件不完整（大小异常）';
-      if (expectBytes != null && expectBytes > 0 && len != expectBytes) {
-        return '安装包文件不完整（大小与服务器不一致）';
+      if (expectBytes != null && expectBytes > 0) {
+        final lower = (expectBytes * 0.95).floor();
+        final upper = (expectBytes * 1.05).ceil();
+        if (len < lower || len > upper) {
+          return '安装包文件不完整（大小与服务器不一致）';
+        }
       }
       final raf = f.openSync();
       try {
@@ -386,6 +448,9 @@ class AppUpdater {
   /// 「后台下载完成但回调丢失 / 通知被清」场景），弹窗让用户决定是否安装。
   Future<void> checkPendingInstall() async {
     try {
+      // 拉取原生侧 PackageInstaller 提交结果并留痕（v1.47.2）：用户在系统
+      // 安装确认界面的最终结果（成功/失败/取消）经此通道回传错误日志。
+      await _consumeInstallResult();
       final pending = await _installChannel.invokeMapMethod<String, dynamic>(
         'consumeNotificationInstall',
       );
@@ -402,16 +467,19 @@ class AppUpdater {
         if (!f.existsSync()) {
           _showSnack('安装包不存在，请重新下载更新');
         } else {
-          // 通知点击 / 文件打开路径：同样先做完整性校验，坏文件删除后提示，
-          // 避免系统安装器报「安装包解析失败」。
+          // 通知点击 / 文件打开路径：同样先做完整性校验；校验不通过时
+          // （v1.47.2）保留文件并弹「手动安装/重新下载」，不再删除。
           final verr = await _validateApkWithPersisted(path, null);
           if (verr != null) {
-            try {
-              f.deleteSync();
-            } catch (_) {
-              // 删除失败不阻塞提示
-            }
-            _showSnack('$verr，已删除损坏安装包，请重新下载更新');
+            unawaited(
+              ErrorReporter.instance.logError(
+                'updater_pending_validate_failed',
+                StateError(verr),
+                StackTrace.current,
+                context: {'path': path},
+              ),
+            );
+            await _showInvalidApkDialog(verr, path);
           } else {
             await _installApk(path);
           }
@@ -440,14 +508,18 @@ class AppUpdater {
             );
       if (files.isEmpty) return;
       final latest = files.first.path;
-      // 启动兜底同样校验完整性：残留的半截 / 错误页 APK 直接删除，不再弹窗打扰。
+      // 启动兜底同样校验完整性；校验不通过时（v1.47.2）**不删除**安装包
+      // （避免误杀合法包），仅留痕后静默跳过，不再弹窗打扰。
       final verr = await _validateApkWithPersisted(latest, null);
       if (verr != null) {
-        try {
-          File(latest).deleteSync();
-        } catch (_) {
-          // 删除失败静默即可
-        }
+        unawaited(
+          ErrorReporter.instance.logError(
+            'updater_startup_scan_invalid',
+            StateError(verr),
+            StackTrace.current,
+            context: {'path': latest},
+          ),
+        );
         return;
       }
       final apkName = latest.split(Platform.pathSeparator).last;
@@ -488,16 +560,39 @@ class AppUpdater {
     }
   }
 
-  /// 拉起系统安装界面（原生侧经 FileProvider 提供 content:// URI）。
-  /// 失败时弹可见对话框（原因 + 手动安装 + 重新尝试），绝不静默。
+  /// 拉起系统安装界面（原生侧 Android 8.0+ 走 PackageInstaller.Session
+  /// 提交，不受后台 Activity 启动限制；低版本回退 FileProvider+ACTION_VIEW）。
+  /// 失败时弹可见对话框（原因 + 手动安装 + 重新尝试），绝不静默；日志留痕。
   Future<void> _installApk(String path, {String? reason}) async {
     try {
       final ok = await _installChannel.invokeMethod<bool>('installApk', path);
+      // 安装提交结果留痕（v1.47.2）
+      unawaited(
+        ErrorReporter.instance.logError(
+          'updater_install_submit',
+          StateError('installApk result=$ok'),
+          StackTrace.current,
+          context: {'path': path, 'reason': reason ?? ''},
+        ),
+      );
       if (ok != true) {
         _showInstallFailedDialog(reason ?? '系统未启动安装界面，请重试', path: path);
       }
     } on PlatformException catch (e) {
+      unawaited(
+        ErrorReporter.instance.logError(
+          'updater_install_failed',
+          e,
+          StackTrace.current,
+          module: LogModule.updater,
+          context: {'code': e.code, 'message': '${e.message}', 'path': path},
+        ),
+      );
       if (e.code == 'need_unknown_sources') {
+        // v1.47.2：权限未授权时自动拉起系统设置页并弹说明，替代仅弹对话框
+        unawaited(
+          _installChannel.invokeMethod('openUnknownSourcesSettings'),
+        );
         _showNeedUnknownSourcesDialog();
       } else {
         _showInstallFailedDialog(e.message ?? '请稍后重试', path: path);
@@ -510,6 +605,129 @@ class AppUpdater {
         module: LogModule.updater,
       );
       _showInstallFailedDialog('$e', path: path);
+    }
+  }
+
+  /// 下载前预检「安装未知来源应用」权限（v1.47.2 缺陷3修复）：
+  /// 用户点「立即更新」进入下载前就检查 REQUEST_INSTALL_PACKAGES，未授权时
+  /// 弹引导对话框（去开启 / 仍然下载），避免下载完成后才提示导致装不上。
+  Future<void> _preCheckInstallPermissionBeforeDownload(
+    String url,
+    String version,
+  ) async {
+    try {
+      final can = await _installChannel.invokeMethod<bool>(
+            'canRequestPackageInstalls',
+          ) ??
+          true;
+      if (can) return;
+      // 权限缺失留痕（v1.47.2）
+      unawaited(
+        ErrorReporter.instance.logError(
+          'updater_permission_denied',
+          StateError('REQUEST_INSTALL_PACKAGES not granted'),
+          StackTrace.current,
+          module: LogModule.updater,
+          context: {'version': version},
+        ),
+      );
+      final ctx = appNavigatorKey.currentContext;
+      if (ctx == null || !ctx.mounted) return;
+      var goSettings = false;
+      await showDialog<void>(
+        context: ctx,
+        barrierDismissible: false,
+        builder: (dialogCtx) => AlertDialog(
+          title: const Text('需要允许安装新版本'),
+          content: const Text(
+            '安装新版本前需要允许「安装未知来源应用」权限，否则下载完成后无法自动弹出安装界面。\n'
+            '华为/荣耀设备：设置 → 更多安全设置 → 外部来源应用（或安装外部来源应用）→ 允许本应用。\n'
+            '其他设备：设置 → 安全 → 安装未知应用 → 允许本应用。\n'
+            '开启后返回即可继续下载安装。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text('仍然下载'),
+            ),
+            FilledButton(
+              onPressed: () {
+                goSettings = true;
+                Navigator.pop(dialogCtx);
+              },
+              child: const Text('去开启'),
+            ),
+          ],
+        ),
+      );
+      if (goSettings) {
+        await _installChannel.invokeMethod('openUnknownSourcesSettings');
+        // 引导后不阻塞下载：用户开启后返回，下载完成仍可正常拉起安装
+      }
+    } catch (_) {
+      // 预检失败不阻塞下载（保持原行为）
+    }
+  }
+
+  /// 安装包校验失败对话框（v1.47.2 缺陷2修复）：不再自动删除安装包，
+  /// 保留文件并提供「手动安装」与「重新下载」两条出路，避免合法包被销毁。
+  Future<void> _showInvalidApkDialog(String reason, String path) async {
+    final ctx = appNavigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+    await showDialog<void>(
+      context: ctx,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('安装包校验未通过'),
+        content: Text(
+          '$reason\n\n安装包已保留在本地，可尝试手动安装；若仍失败建议重新下载后安装。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('关闭'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              if (_lastDownloadUrl != null && _lastVersion != null) {
+                unawaited(startDownload(_lastDownloadUrl!, _lastVersion!));
+              }
+            },
+            child: const Text('重新下载'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              unawaited(_installApk(path));
+            },
+            child: const Text('手动安装'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 拉取原生侧 PackageInstaller 提交的安装结果（成功/失败/用户取消），
+  /// 留痕到错误日志（v1.47.2），便于远程定位「下载完成但安装失败」场景。
+  Future<void> _consumeInstallResult() async {
+    try {
+      final r = await _installChannel.invokeMapMethod<String, dynamic>(
+        'consumeInstallResult',
+      );
+      if (r == null || r.isEmpty) return;
+      final status = r['status'] as String? ?? '';
+      final code = r['code'] as String? ?? '';
+      unawaited(
+        ErrorReporter.instance.logError(
+          'updater_install_result',
+          StateError('PackageInstaller status=$status code=$code'),
+          StackTrace.current,
+          module: LogModule.updater,
+          context: {'status': status, 'code': code},
+        ),
+      );
+    } catch (_) {
+      // 消费失败静默
     }
   }
 
