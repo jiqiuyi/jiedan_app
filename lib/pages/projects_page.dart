@@ -149,6 +149,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
     if (!mounted) return;
     final titleCtrl = TextEditingController();
     final amountCtrl = TextEditingController();
+    final noteCtrl = TextEditingController();
     // 成本行：名称=成本标签名快照 + 金额输入（元，转分存储）
     final costRows = <({String name, TextEditingController amount})>[];
     int selectedCustomer = customers.first.id!;
@@ -176,6 +177,13 @@ class _ProjectsPageState extends State<ProjectsPage> {
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: moneyInputFormatters,
                   decoration: const InputDecoration(labelText: '约定总额（元）', hintText: '0.00'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: noteCtrl,
+                  maxLines: 3,
+                  maxLength: 500,
+                  decoration: const InputDecoration(labelText: '备注（可选）', hintText: '项目背景、需求要点等'),
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -266,6 +274,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
         amountTotal: Money.parseYuanToFen(amountCtrl.text.trim()),
         createdAt: now,
         updatedAt: now,
+        note: noteCtrl.text.trim(),
       ));
       // 新建项目时一并插入成本行（_insertSync 同步通道，created_at 归属当月）
       for (final row in costRows) {
@@ -285,11 +294,12 @@ class _ProjectsPageState extends State<ProjectsPage> {
     }
   }
 
-  // 左滑「编辑」：改项目名称 / 所属客户 / 约定总额
+  // 左滑「编辑」：改项目名称 / 所属客户 / 约定总额 / 备注
   Future<void> _editProject(Project pr) async {
     final titleCtrl = TextEditingController(text: pr.title);
     final amountCtrl = TextEditingController(
         text: pr.amountTotal > 0 ? (pr.amountTotal / 100).toStringAsFixed(2) : '');
+    final noteCtrl = TextEditingController(text: pr.note);
     int selectedCustomer = pr.customerId;
     final customers = await AppDb.instance.getCustomers();
     if (!mounted) return;
@@ -316,6 +326,13 @@ class _ProjectsPageState extends State<ProjectsPage> {
                 inputFormatters: moneyInputFormatters,
                 decoration: const InputDecoration(labelText: '约定总额（元）'),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteCtrl,
+                maxLines: 3,
+                maxLength: 500,
+                decoration: const InputDecoration(labelText: '备注（可选）', hintText: '项目背景、需求要点等'),
+              ),
             ],
           ),
           actions: [
@@ -333,6 +350,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
         customerId: selectedCustomer,
         title: titleCtrl.text.trim(),
         amountTotal: Money.parseYuanToFen(amountCtrl.text.trim()),
+        note: noteCtrl.text.trim(),
         updatedAt: DateTime.now().millisecondsSinceEpoch,
       ));
       Ticker.ping();

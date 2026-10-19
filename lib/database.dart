@@ -428,6 +428,9 @@ class AppDb {
         // project_costs 项目成本表（v1.47.4 / db v24）：v24 迁移建表，初始建表必须同步，
         // 否则全新安装的库缺表，看板成本统计 / 同步通道查询抛 no such table。
         await _createProjectCosts(db);
+        // attachments 附件表（v1.48.0 / db v25）：v25 迁移建表，初始建表必须同步，
+        // 否则全新安装的库缺表，项目/合同附件查询与同步通道抛 no such table。
+        await _createAttachments(db);
         await _ensureSchema(db);
       },
       // 打开数据库后的幂等结构自愈（v1.43.2）：历史版本的 onCreate 建表语句未与
@@ -509,6 +512,7 @@ class AppDb {
       if (oldVersion < 22) await _migrateToV22(db);
       if (oldVersion < 23) await _migrateToV23(db);
       if (oldVersion < 24) await _migrateToV24(db);
+      if (oldVersion < 25) await _migrateToV25(db);
       await _appendMigrationLog(db, '成功 v$oldVersion -> v$newVersion @ $now()');
     } catch (e, st) {
       // 记录失败日志后抛出统一中文异常；平台事务回滚后数据库保持旧版本与全部数据，
@@ -950,6 +954,10 @@ class AppDb {
     await _createLedgerEntries(db);
     await _createContracts(db);
     await _createSubscriptionOrders(db);
+    // attachments 附件表（v1.48.0 / db v25）：v25 迁移建表，初始建表必须同步，
+    // 否则老库经迁移链建表、新装库经 onCreate 建表后，此处幂等补建兜底，
+    // 保证任意来源的库都具备该表（同步通道查询不抛 no such table）。
+    await _createAttachments(db);
     // 3) 补齐历史库缺失的关键列（同步写入路径会引用这些列）。以 _patchColumns
     //    契约为基准全量遍历：先 PRAGMA 探测表存在性（表缺失时交由对应建表函数负责，
     //    绝不 ALTER 不存在的表），再逐列探测缺失后 ALTER 补列；单表补列失败不吞错，
@@ -1205,6 +1213,29 @@ class AppDb {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_project_costs_created ON project_costs(created_at)');
   }
 
+  // v25 新增：附件表（v1.48.0 项目/合同备注+附件）。
+  // 同步表：id / owner_type('project'|'contract') / owner_id / filename / mime /
+  // size / server_path（服务器落盘路径，仅服务器写入；本地无实际文件）/
+  // created_at / updated_at。owner_id 为项目或合同的本地/服务器 id。
+  Future<void> _createAttachments(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS attachments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_type TEXT NOT NULL,
+        owner_id INTEGER NOT NULL,
+        filename TEXT,
+        mime TEXT,
+        size INTEGER DEFAULT 0,
+        server_path TEXT,
+        created_at INTEGER,
+        updated_at INTEGER,
+        _ts INTEGER DEFAULT 0,
+        _deleted INTEGER DEFAULT 0
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_attachments_owner ON attachments(owner_type, owner_id)');
+  }
+
   // 预设标签池种子（第19批）：6 个常用标签 + 各自默认颜色，随建表/迁移落库。
   // 幂等：name 有 UNIQUE 约束，INSERT OR IGNORE 保证重复执行不产生重复数据；
   // 用户可后续自定义新增 / 改色 / 删除，本批不重置已存在的同名标签。
@@ -1328,6 +1359,15 @@ class AppDb {
         "SELECT name FROM sqlite_master WHERE type='table' AND name='project_costs'");
     if (cols.isEmpty) {
       await _createProjectCosts(db);
+    }
+  }
+
+  // v25 迁移（附件表）：PRAGMA 防重入，幂等建表。
+  Future<void> _migrateToV25(Database db) async {
+    final cols = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='attachments'");
+    if (cols.isEmpty) {
+      await _createAttachments(db);
     }
   }
 
@@ -2445,6 +2485,24 @@ class AppDb {
 
   Future<void> deleteContract(int id) async {
     await _deleteSyncById('contracts', id);
+  }
+
+  // ---------- attachments（附件 v25，同步表）----------
+  // 按归属（项目/合同）查询附件，按创建时间倒序。
+  Future<List<Map<String, Object?>>> getAttachments(
+      String ownerType, int ownerId) async {
+    return _all('attachments',
+        where: 'owner_type=? AND owner_id=?',
+        whereArgs: [ownerType, ownerId],
+        orderBy: 'created_at DESC');
+  }
+
+  Future<int> insertAttachment(Map<String, Object?> data) async {
+    return _insertSync('attachments', data..remove('id'));
+  }
+
+  Future<void> deleteAttachment(int id) async {
+    await _deleteSyncById('attachments', id);
   }
 
   // ---------- feedbacks（意见反馈）----------

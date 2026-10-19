@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.48.1+97';
+  static const String version = '1.48.2+98';
   // 工信部 ICP 备案号（Android 合规要求：App 内显著位置可查，展示于「我的」页底部）
   static const String icpCode = '苏ICP备2026065744号-3A';
 
@@ -70,7 +70,8 @@ class AppConfig {
   // v22：milestones 补 due_date（里程碑到期日）
   // v23：新增 ledger_entries 日常记账表（同步通道）
   // v24：新增 project_costs 项目成本表（成本挂项目 + 看板本月成本/利润，同步通道）
-  static const int dbVersion = 24;
+  // v25：新增 attachments 附件表（项目/合同备注+附件，同步通道）
+  static const int dbVersion = 25;
 
   /// 日常记账分类（v23）：与网页端约定同一套；「项目支出」允许关联 project_id，
   /// 其余分类默认 project_id=0（纯日常开支，不挂项目）。

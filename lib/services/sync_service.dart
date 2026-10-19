@@ -81,6 +81,7 @@ class SyncService extends ChangeNotifier {
     'tag_items', // v21 行业/来源标签字典上云：App 与网页端共享字典条目
     'ledger_entries', // v23 日常记账：三餐/交通/日用等日常开支（与项目收款解耦，可挂项目）
     'project_costs', // v24 项目成本：成本挂项目 + 看板本月成本/利润（三端同步）
+    'attachments', // v25 附件：项目/合同备注+附件，文件本体在服务器 /opt/jiedan-attachments，本地只存元数据
   ];
 
   StorageMode _mode = StorageMode.local;
@@ -580,6 +581,7 @@ class SyncService extends ChangeNotifier {
     'pending_collections' => '待收款',
     'milestones' => '里程碑',
     'contracts' => '合同',
+    'attachments' => '附件',
     'customer_tags' => '客户标签关联',
     'tag_items' => '行业来源标签',
     'ledger_entries' => '记账',

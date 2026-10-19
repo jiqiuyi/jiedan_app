@@ -150,6 +150,7 @@ class Project {
   final int remindAt; // 提醒时间点（ms），0 未设置
   final int progress; // 项目进度（%，0-100），v1.24.0
   final int deliverDate; // 交付时间（ms），0 未设置，v1.24.0
+  final String note; // 项目备注，v1.48.0
 
   const Project({
     this.id,
@@ -163,6 +164,7 @@ class Project {
     this.remindAt = 0,
     this.progress = 0,
     this.deliverDate = 0,
+    this.note = '',
   });
 
   Map<String, Object?> toMap() => {
@@ -177,6 +179,7 @@ class Project {
         'remind_at': remindAt,
         'progress': progress,
         'deliver_date': deliverDate,
+        'note': note,
       };
 
   // status 号越界时兜底到首个枚举，避免历史脏数据触发 RangeError。
@@ -195,6 +198,7 @@ class Project {
       remindAt: (m['remind_at'] as num?)?.toInt() ?? 0,
       progress: ((m['progress'] as num?)?.toInt() ?? 0).clamp(0, 100),
       deliverDate: (m['deliver_date'] as num?)?.toInt() ?? 0,
+      note: (m['note'] as String?) ?? '',
     );
   }
 
@@ -212,6 +216,7 @@ class Project {
     int? remindAt,
     int? progress,
     int? deliverDate,
+    String? note,
   }) =>
       Project(
         id: id,
@@ -225,6 +230,7 @@ class Project {
         remindAt: remindAt ?? this.remindAt,
         progress: (progress ?? this.progress).clamp(0, 100),
         deliverDate: deliverDate ?? this.deliverDate,
+        note: note ?? this.note,
       );
 }
 

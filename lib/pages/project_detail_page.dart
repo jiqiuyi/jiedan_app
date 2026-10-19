@@ -9,6 +9,8 @@ import '../state/ticker.dart';
 import '../widgets/payment_dialog.dart';
 import '../widgets/show_payment_code.dart';
 import '../services/notify_service.dart';
+import '../widgets/attachment_section.dart';
+import '../widgets/contract_section.dart';
 import 'quote_page.dart';
 import '../utils/money_input.dart';
 import '../widgets/app_ui.dart';
@@ -775,6 +777,18 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                     ),
                   ),
                 ),
+                if (_project.note.isNotEmpty) ...[
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(18, 10, 18, 4),
+                    child: Text('项目备注', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  ),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(_project.note, style: const TextStyle(fontSize: 14, height: 1.5)),
+                    ),
+                  ),
+                ],
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
                   child: Row(
@@ -856,6 +870,13 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                         ),
                       )),
                 const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: ContractSection(projectId: _project.id!),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
                   child: Row(
@@ -888,6 +909,13 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                           ),
                         ),
                       )),
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: AttachmentSection(ownerType: 'project', ownerId: _project.id!),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 AppButton(
                   label: '删除项目',
