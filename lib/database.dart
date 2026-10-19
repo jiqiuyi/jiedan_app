@@ -2584,6 +2584,8 @@ class AppDb {
   }
 
   // 可提现余额（分）= 累计收款 + 累计充值到账 - 已提交提现
+  // ⚠️ 已废弃（v1.47.1 钱包资金漏洞修复）：钱包余额只累计推广返利佣金，
+  // 项目收款/充值不再进入钱包；此方法保留仅为兼容旧数据查询，勿再用于余额/提现判断。
   Future<int> withdrawableBalance() async {
     final paid = await allPaidTotal();
     final recharged = await totalRecharged();

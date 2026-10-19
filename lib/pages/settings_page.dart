@@ -70,16 +70,15 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadStats() async {
     final db = AppDb.instance;
     final now = DateTime.now();
-    final totals = await Future.wait<int>([
-      db.monthPaidTotal(now.year, now.month),
-      db.withdrawableBalance(),
-    ]);
+    final monthIncome = await db.monthPaidTotal(now.year, now.month);
+    // 钱包只累计推广返利佣金：余额 = 服务端待打款返现（云端权威）
+    final stats = await AppState.instance.inviteStats();
     final customers = await db.getCustomers();
     final projects = await db.getProjects();
     if (!mounted) return;
     setState(() {
-      _monthIncome = totals[0];
-      _balance = totals[1];
+      _monthIncome = monthIncome;
+      _balance = stats.pendingRebate;
       _customerCount = customers.length;
       _projectCount = projects.length;
     });
@@ -429,7 +428,7 @@ class _ProfileHeader extends StatelessWidget {
               const _MetricDivider(),
               _MetricTile(value: '$projectCount', label: '项目'),
               const _MetricDivider(),
-              _MetricTile(value: '¥${fmt.format(balance / 100)}', label: '钱包余额'),
+              _MetricTile(value: '¥${fmt.format(balance / 100)}', label: '返佣余额'),
             ],
           ),
         ],
