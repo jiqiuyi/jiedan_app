@@ -9,6 +9,8 @@ import '../state/ticker.dart';
 import '../widgets/payment_dialog.dart';
 import '../widgets/show_payment_code.dart';
 import '../services/notify_service.dart';
+import '../widgets/attachment_section.dart';
+import '../widgets/contract_section.dart';
 import 'quote_page.dart';
 import '../utils/money_input.dart';
 import '../widgets/app_ui.dart';
@@ -26,7 +28,9 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
   late Project _project;
   List<Payment> _payments = [];
   List<Milestone> _milestones = [];
+  List<ProjectCost> _costs = [];
   int _paidTotal = 0; // 分
+  int _costTotal = 0; // 分
   bool _loading = true;
   final _fmt = NumberFormat('#,##0.00');
 
@@ -42,13 +46,101 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     final payments = await db.getPayments(_project.id!);
     final paid = await db.projectPaidTotal(_project.id!);
     final milestones = await db.getMilestones(_project.id!);
+    final costs = await db.getProjectCosts(_project.id!);
     if (!mounted) return;
     setState(() {
       _payments = payments;
       _paidTotal = paid;
       _milestones = milestones;
+      _costs = costs;
+      _costTotal = costs.fold<int>(0, (s, c) => s + c.amount);
       _loading = false;
     });
+  }
+
+  // 添加项目成本（成本名称=成本标签快照 + 金额元→分）
+  Future<void> _addCost() async {
+    final costTags = await AppDb.instance.getTagItems('cost');
+    if (!mounted) return;
+    if (costTags.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂无成本标签，请先到「我的-标签维护」添加成本标签')),
+      );
+      return;
+    }
+    final amountCtrl = TextEditingController();
+    String selected = costTags.first;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          title: const Text('添加成本'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: selected,
+                decoration: const InputDecoration(labelText: '成本名称'),
+                items: costTags.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                onChanged: (v) => setDlg(() => selected = v ?? selected),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: amountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: moneyInputFormatters,
+                decoration: const InputDecoration(labelText: '金额（元）', hintText: '0.00'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(
+              onPressed: () => Money.parseYuanToFen(amountCtrl.text.trim()) <= 0
+                  ? null
+                  : Navigator.pop(ctx, true),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok == true) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await AppDb.instance.insertProjectCost(ProjectCost(
+        projectId: _project.id!,
+        name: selected,
+        amount: Money.parseYuanToFen(amountCtrl.text.trim()),
+        createdAt: now,
+        updatedAt: now,
+      ));
+      Ticker.ping();
+      await _load();
+    }
+  }
+
+  Future<void> _deleteCost(ProjectCost c) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除成本'),
+        content: Text('确定删除成本「${c.name}」¥${_fmt.format(c.amount / 100)} 吗？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          AppButton(
+            label: '删除',
+            kind: AppButtonKind.danger,
+            size: AppButtonSize.medium,
+            expand: false,
+            onPressed: () => Navigator.pop(ctx, true),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await AppDb.instance.deleteProjectCost(c.id!);
+    Ticker.ping();
+    await _load();
   }
 
   // 状态流转
@@ -685,6 +777,18 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                     ),
                   ),
                 ),
+                if (_project.note.isNotEmpty) ...[
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(18, 10, 18, 4),
+                    child: Text('项目备注', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  ),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(_project.note, style: const TextStyle(fontSize: 14, height: 1.5)),
+                    ),
+                  ),
+                ],
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
                   child: Row(
@@ -765,6 +869,53 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                           ),
                         ),
                       )),
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: ContractSection(projectId: _project.id!),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
+                  child: Row(
+                    children: [
+                      const Expanded(child: Text('项目成本', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+                      Text('合计 ¥${_fmt.format(_costTotal / 100)}',
+                          style: const TextStyle(fontSize: 13, color: AppTheme.warn, fontWeight: FontWeight.w700)),
+                      TextButton.icon(
+                        onPressed: _addCost,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('添加成本'),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_costs.isEmpty)
+                  const AppEmpty(
+                    icon: Icons.account_balance_outlined,
+                    title: '还没有成本记录',
+                  )
+                else
+                  ..._costs.map((c) => Card(
+                        child: ListTile(
+                          leading: Icon(Icons.shopping_cart_outlined, color: AppTheme.warn),
+                          title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: Text('¥${_fmt.format(c.amount / 100)} · ${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(c.createdAt))}'),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 20, color: AppTheme.textSub),
+                            onPressed: () => _deleteCost(c),
+                          ),
+                        ),
+                      )),
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: AttachmentSection(ownerType: 'project', ownerId: _project.id!),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 AppButton(
                   label: '删除项目',

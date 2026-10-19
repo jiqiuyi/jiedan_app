@@ -4,9 +4,10 @@ import '../database.dart';
 import '../theme.dart';
 import '../widgets/app_ui.dart';
 
-/// 标签维护页：维护「行业」「来源」两类标签字典。
+/// 标签维护页：维护「行业」「来源」「成本」三类标签字典。
 /// 维护结果持久化到本地 SQLite（tag_items 表），
-/// 供新增 / 编辑客户表单下拉选择与客户列表筛选下拉共用。
+/// 行业 / 来源供新增 / 编辑客户表单下拉选择与客户列表筛选下拉共用，
+/// 成本标签供项目成本记录选择。
 class TagManagementPage extends StatefulWidget {
   const TagManagementPage({super.key});
 
@@ -15,7 +16,7 @@ class TagManagementPage extends StatefulWidget {
 }
 
 class _TagManagementPageState extends State<TagManagementPage> {
-  static const _kinds = ['industry', 'source'];
+  static const _kinds = ['industry', 'source', 'cost'];
 
   final Map<String, List<String>> _tags = {
     for (final k in _kinds) k: <String>[],
@@ -43,10 +44,12 @@ class _TagManagementPageState extends State<TagManagementPage> {
     final db = AppDb.instance;
     final industry = await db.getTagItems('industry');
     final source = await db.getTagItems('source');
+    final cost = await db.getTagItems('cost');
     if (!mounted) return;
     setState(() {
       _tags['industry'] = industry;
       _tags['source'] = source;
+      _tags['cost'] = cost;
       _loading = false;
     });
   }
@@ -100,7 +103,7 @@ class _TagManagementPageState extends State<TagManagementPage> {
     _reload();
   }
 
-  Widget _section(String kind, String label, String hint) {
+  Widget _section(String kind, String label, String hint, {String emptyTip = '暂无标签，添加后可在新增 / 编辑客户中下拉选择'}) {
     final tags = _tags[kind] ?? const <String>[];
     return Card(
       child: Padding(
@@ -149,9 +152,9 @@ class _TagManagementPageState extends State<TagManagementPage> {
             ),
             const SizedBox(height: 12),
             if (tags.isEmpty)
-              const Text(
-                '暂无标签，添加后可在新增 / 编辑客户中下拉选择',
-                style: TextStyle(fontSize: 12.5, color: AppTheme.textSub),
+              Text(
+                emptyTip,
+                style: const TextStyle(fontSize: 12.5, color: AppTheme.textSub),
               )
             else
               Wrap(
@@ -200,9 +203,12 @@ class _TagManagementPageState extends State<TagManagementPage> {
                 _section('industry', '行业标签', '输入行业标签，如：餐饮、电商、装修'),
                 const SizedBox(height: 14),
                 _section('source', '来源标签', '输入来源标签，如：朋友介绍、小红书、老客'),
+                const SizedBox(height: 14),
+                _section('cost', '成本标签', '输入成本标签，如：物料、人工、外包',
+                    emptyTip: '暂无标签，添加后可在项目成本中选择'),
                 const SizedBox(height: 8),
                 const Text(
-                  '提示：标签用于新增 / 编辑客户时快速选择，仍可手动输入；客户列表筛选下拉同源。',
+                  '提示：行业 / 来源标签用于新增 / 编辑客户时快速选择，仍可手动输入；成本标签用于项目成本记录。客户列表筛选下拉同源。',
                   style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                 ),
               ],

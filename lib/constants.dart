@@ -5,7 +5,7 @@
 class AppConfig {
   // ---- 应用基础 ----
   static const String appName = '接单管家';
-  static const String version = '1.46.25+89';
+  static const String version = '1.48.2+98';
   // 工信部 ICP 备案号（Android 合规要求：App 内显著位置可查，展示于「我的」页底部）
   static const String icpCode = '苏ICP备2026065744号-3A';
 
@@ -66,7 +66,12 @@ class AppConfig {
   // v18：第19批 标签系统 —— 新增 tags 标签表 + customer_tags 客户-标签多对多关联表
   // v19：标签维护 —— 新增 tag_items 行业/来源标签字典表（表单与筛选下拉共用）
   // v20：客户分类标签上云 —— tags 表补 updated_at 列并入同步通道（App 与网页端共享颜色/增删改）
-  static const int dbVersion = 23;
+  // v21：tag_items 补 updated_at + customer_tags 同步化重建（App 与网页端共享字典条目）
+  // v22：milestones 补 due_date（里程碑到期日）
+  // v23：新增 ledger_entries 日常记账表（同步通道）
+  // v24：新增 project_costs 项目成本表（成本挂项目 + 看板本月成本/利润，同步通道）
+  // v25：新增 attachments 附件表（项目/合同备注+附件，同步通道）
+  static const int dbVersion = 25;
 
   /// 日常记账分类（v23）：与网页端约定同一套；「项目支出」允许关联 project_id，
   /// 其余分类默认 project_id=0（纯日常开支，不挂项目）。

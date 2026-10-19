@@ -1,7 +1,12 @@
 package com.jiedan.guanjia
 
+import android.app.PendingIntent
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -26,9 +31,51 @@ class MainActivity : FlutterActivity() {
     private val NOTIFICATION_CLICK_ACTION =
         "com.vincent.file.downloader.action.FLUTTER_NOTIFICATION_CLICK"
 
+    /// PackageInstaller 安装结果广播 action（v1.47.2）：Session.commit 的
+    /// PendingIntent 指向该 action，接收系统安装器最终状态供 Flutter 侧留痕。
+    private val ACTION_INSTALL_RESULT = "com.jiedan.guanjia.INSTALL_RESULT"
+    private val EXTRA_SESSION_ID = "extra_session_id"
+
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
+        // 注册 PackageInstaller 安装结果接收器（动态注册，App 进程存活即可收到；
+        // Android 13+ 必须显式指定 exported 标志，这里仅接收系统安装器广播）。
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(
+                    installResultReceiver,
+                    IntentFilter(ACTION_INSTALL_RESULT),
+                    Context.RECEIVER_NOT_EXPORTED
+                )
+            } else {
+                registerReceiver(
+                    installResultReceiver,
+                    IntentFilter(ACTION_INSTALL_RESULT)
+                )
+            }
+        }
         handleIncomingIntent(intent)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        runCatching { unregisterReceiver(installResultReceiver) }
+    }
+
+    /// PackageInstaller.Session 提交后系统安装器返回的状态接收器（v1.47.2）：
+    /// 保存到静态字段，由 Flutter 侧 consumeInstallResult 拉取并写入错误日志。
+    private val installResultReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != ACTION_INSTALL_RESULT) return
+            val sessionId = intent.getIntExtra(EXTRA_SESSION_ID, -1)
+            val status = intent.getIntExtra(
+                PackageInstaller.EXTRA_STATUS,
+                PackageInstaller.STATUS_PENDING_USER_ACTION
+            )
+            lastInstallResultSessionId = sessionId
+            lastInstallResultStatus = status
+            Log.i("JieDanUpdate", "PackageInstaller result session=$sessionId status=$status")
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -143,6 +190,44 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "installApk" -> installApk(call.arguments as? String ?: "", result)
+                    "canRequestPackageInstalls" -> {
+                        // 下载前权限预检（v1.47.2）：Android O+ 才需要未知来源授权
+                        result.success(
+                            Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                                packageManager.canRequestPackageInstalls()
+                        )
+                    }
+                    "consumeInstallResult" -> {
+                        // PackageInstaller 安装结果（v1.47.2）：Flutter 侧拉取后
+                        // 写入错误日志；-2 表示无记录则返回空 Map。
+                        val s = lastInstallResultStatus
+                        val sid = lastInstallResultSessionId
+                        lastInstallResultStatus = -2
+                        lastInstallResultSessionId = -2
+                        if (s == -2) {
+                            result.success(emptyMap<String, String>())
+                        } else {
+                            val statusText = when (s) {
+                                PackageInstaller.STATUS_SUCCESS -> "success"
+                                PackageInstaller.STATUS_PENDING_USER_ACTION -> "pending_user_action"
+                                PackageInstaller.STATUS_FAILURE -> "failure"
+                                PackageInstaller.STATUS_FAILURE_ABORTED -> "aborted"
+                                PackageInstaller.STATUS_FAILURE_BLOCKED -> "blocked"
+                                PackageInstaller.STATUS_FAILURE_CONFLICT -> "conflict"
+                                PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> "incompatible"
+                                PackageInstaller.STATUS_FAILURE_INVALID -> "invalid"
+                                PackageInstaller.STATUS_FAILURE_STORAGE -> "storage"
+                                else -> "unknown($s)"
+                            }
+                            result.success(
+                                mapOf(
+                                    "status" to statusText,
+                                    "code" to s.toString(),
+                                    "sessionId" to sid.toString(),
+                                )
+                            )
+                        }
+                    }
                     "consumeNotificationInstall" -> {
                         val taskId = pendingInstallTaskId
                         pendingInstallTaskId = null
@@ -176,11 +261,89 @@ class MainActivity : FlutterActivity() {
         private var pendingInstallTaskId: String? = null
         @Volatile
         private var pendingInstallApkPath: String? = null
+        /// PackageInstaller 最近一次提交的安装结果（v1.47.2）；-2 表示无记录。
+        @Volatile
+        private var lastInstallResultSessionId: Int = -2
+        @Volatile
+        private var lastInstallResultStatus: Int = -2
     }
 
-    /// 拉起系统安装界面安装 APK。FileProvider authority 与 AndroidManifest 中
-    /// "${applicationId}.fileprovider" 保持一致。
+    /// 拉起系统安装界面安装 APK（v1.47.2 缺陷1修复）：
+    /// - Android 8.0+（API 26）：PackageInstaller.Session 提交安装——安装确认
+    ///   界面由系统进程显示，**不受后台 Activity 启动限制**，下载完成时 App
+    ///   在后台也能正常拉起安装确认页；结果经广播回传供 Flutter 侧留痕。
+    /// - Android 7.x 及以下：回退 FileProvider + ACTION_VIEW（无后台限制问题）。
     private fun installApk(path: String, result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            installViaPackageInstaller(path, result)
+        } else {
+            installViaActionView(path, result)
+        }
+    }
+
+    /// PackageInstaller.Session 安装（Android 8.0+，v1.47.2）：
+    /// 将 APK 字节写入 session 后 commit，由系统安装器弹出确认界面；结果经
+    /// [ACTION_INSTALL_RESULT] 广播回传 [installResultReceiver]。
+    private fun installViaPackageInstaller(path: String, result: MethodChannel.Result) {
+        val file = File(path)
+        try {
+            if (!file.exists()) {
+                result.error("file_not_found", "APK 文件不存在", null)
+                return
+            }
+            if (!isInFileProviderScope(file)) {
+                result.error("file_not_in_scope", "APK 不在允许共享的目录内", null)
+                return
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                !packageManager.canRequestPackageInstalls()
+            ) {
+                result.error("need_unknown_sources", "需要开启允许安装未知来源应用", null)
+                return
+            }
+            val installer = packageManager.packageInstaller
+            val params = PackageInstaller.SessionParams(
+                PackageInstaller.SessionParams.MODE_FULL_INSTALL
+            ).apply {
+                setAppPackageName(packageName)
+                setSize(file.length())
+            }
+            val sessionId = installer.createSession(params)
+            val session = installer.openSession(sessionId)
+            try {
+                file.inputStream().use { input ->
+                    session.openWrite(file.name, 0, file.length()).use { out ->
+                        input.copyTo(out)
+                    }
+                }
+            } catch (e: Exception) {
+                runCatching { session.abandon() }
+                result.error("install_failed", "写入安装包失败：${e.message}", null)
+                return
+            }
+            val senderIntent = Intent(ACTION_INSTALL_RESULT).apply {
+                setPackage(packageName)
+                putExtra(EXTRA_SESSION_ID, sessionId)
+            }
+            val sender = PendingIntent.getBroadcast(
+                this,
+                sessionId,
+                senderIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            ).intentSender
+            session.commit(sender)
+            result.success(true)
+        } catch (e: SecurityException) {
+            result.error("need_unknown_sources", "需要开启允许安装未知来源应用", null)
+        } catch (e: Exception) {
+            result.error("install_failed", "提交安装失败：${e.message}", null)
+        }
+    }
+
+    /// ACTION_VIEW 安装（Android 7.x 及以下 / 无 PackageInstaller 环境）：
+    /// FileProvider authority 与 AndroidManifest 中 "${applicationId}.fileprovider"
+    /// 保持一致。
+    private fun installViaActionView(path: String, result: MethodChannel.Result) {
         val uri: Uri?
         try {
             val file = File(path)

@@ -23,6 +23,9 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   final _fmt = NumberFormat('#,##0.00');
   int _monthIncome = 0;
+  int _monthCost = 0; // 本月成本（当月新增 project_costs 合计）
+  int _monthProfit = 0; // 本月利润 = 本月收入 − 本月成本
+  int _allCostTotal = 0; // 累计成本（全部 project_costs 合计）
   int _projectCount = 0;
   int _customerCount = 0;
   int _awaitingAmount = 0;
@@ -63,6 +66,8 @@ class _DashboardPageState extends State<DashboardPage> {
       final now = DateTime.now();
       final db = AppDb.instance;
       final month = await db.monthPaidTotal(now.year, now.month);
+      final monthCost = await db.monthCostTotal(now.year, now.month);
+      final allCost = await db.allCostTotal();
       final projects = await db.getProjects();
       final customers = await db.getCustomers();
       final pendings = await db.getPendingCollections(onlyPending: true);
@@ -79,6 +84,9 @@ class _DashboardPageState extends State<DashboardPage> {
       if (!mounted) return;
       setState(() {
         _monthIncome = month;
+        _monthCost = monthCost;
+        _monthProfit = month - monthCost;
+        _allCostTotal = allCost;
         _projectCount = projects.length;
         _customerCount = customers.length;
         _awaitingAmount = awaiting;
@@ -251,7 +259,13 @@ class _DashboardPageState extends State<DashboardPage> {
               context,
               MaterialPageRoute(builder: (_) => const IncomeHistoryPage()),
             ),
-            child: _IncomeCard(amount: _monthIncome, fmt: _fmt),
+            child: _IncomeCard(
+              amount: _monthIncome,
+              monthCost: _monthCost,
+              monthProfit: _monthProfit,
+              allCost: _allCostTotal,
+              fmt: _fmt,
+            ),
           ),
           Row(
             children: [
@@ -314,8 +328,17 @@ class _DashboardPageState extends State<DashboardPage> {
 
 class _IncomeCard extends StatelessWidget {
   final int amount; // 分
+  final int monthCost; // 本月成本（分）
+  final int monthProfit; // 本月利润（分）
+  final int allCost; // 累计成本（分）
   final NumberFormat fmt;
-  const _IncomeCard({required this.amount, required this.fmt});
+  const _IncomeCard({
+    required this.amount,
+    required this.monthCost,
+    required this.monthProfit,
+    required this.allCost,
+    required this.fmt,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -338,9 +361,48 @@ class _IncomeCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text('¥${fmt.format(amount / 100)}',
               style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: _MiniStat(label: '本月成本', value: '¥${fmt.format(monthCost / 100)}')),
+              const SizedBox(width: 8),
+              Expanded(child: _MiniStat(label: '本月利润', value: '¥${fmt.format(monthProfit / 100)}')),
+              const SizedBox(width: 8),
+              Expanded(child: _MiniStat(label: '累计成本', value: '¥${fmt.format(allCost / 100)}')),
+            ],
+          ),
           const SizedBox(height: 14),
           Text('本月新增款项合计 · $month · 点击查看历史记录',
               style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  final String label;
+  final String value;
+  const _MiniStat({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(AppRadius.sheet),
+      ),
+      child: Column(
+        children: [
+          Text(label,
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 11)),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(value,
+                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+          ),
         ],
       ),
     );

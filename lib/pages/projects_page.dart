@@ -28,6 +28,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
   List<Project> _projects = [];
   List<Customer> _customers = [];
   Map<int, int> _paidTotals = {}; // 项目已收总额（分）
+  Map<int, int> _costTotals = {}; // 项目成本合计（分）
   int _tab = 0; // 0=全部, 1..4=状态+1
   String _query = '';
   Timer? _debounce;
@@ -62,11 +63,13 @@ class _ProjectsPageState extends State<ProjectsPage> {
       final projects = await db.getProjects();
       final customers = await db.getCustomers();
       final paidTotals = await db.projectPaidTotals();
+      final costTotals = await db.projectCostTotals();
       if (!mounted) return;
       setState(() {
         _projects = projects;
         _customers = customers;
         _paidTotals = paidTotals;
+        _costTotals = costTotals;
         _loading = false;
         _loadFailed = false;
       });
@@ -142,33 +145,113 @@ class _ProjectsPageState extends State<ProjectsPage> {
     if (customers.length != _customers.length) {
       setState(() => _customers = customers);
     }
+    final costTags = await AppDb.instance.getTagItems('cost');
+    if (!mounted) return;
     final titleCtrl = TextEditingController();
     final amountCtrl = TextEditingController();
+    final noteCtrl = TextEditingController();
+    // 成本行：名称=成本标签名快照 + 金额输入（元，转分存储）
+    final costRows = <({String name, TextEditingController amount})>[];
     int selectedCustomer = customers.first.id!;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) => AlertDialog(
           title: const Text('新建项目'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: '项目名称 *', hintText: '如：品牌官网改版')),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<int>(
-                initialValue: selectedCustomer,
-                decoration: const InputDecoration(labelText: '所属客户'),
-                items: customers.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
-                onChanged: (v) => setDlg(() => selectedCustomer = v!),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: amountCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: moneyInputFormatters,
-                decoration: const InputDecoration(labelText: '约定总额（元）', hintText: '0.00'),
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: '项目名称 *', hintText: '如：品牌官网改版')),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: selectedCustomer,
+                  decoration: const InputDecoration(labelText: '所属客户'),
+                  items: customers.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
+                  onChanged: (v) => setDlg(() => selectedCustomer = v!),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: amountCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: moneyInputFormatters,
+                  decoration: const InputDecoration(labelText: '约定总额（元）', hintText: '0.00'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: noteCtrl,
+                  maxLines: 3,
+                  maxLength: 500,
+                  decoration: const InputDecoration(labelText: '备注（可选）', hintText: '项目背景、需求要点等'),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Text('成本', style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text('（可选，多条）', style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
+                    ),
+                    if (costTags.isNotEmpty)
+                      TextButton.icon(
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('添加'),
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                        onPressed: () => setDlg(() => costRows.add((
+                          name: costTags.first,
+                          amount: TextEditingController(),
+                        ))),
+                      ),
+                  ],
+                ),
+                if (costTags.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text('暂无成本标签，请先到「我的-标签维护」添加成本标签后再录入成本',
+                        style: TextStyle(fontSize: 12, color: AppTheme.warn)),
+                  ),
+                ...costRows.asMap().entries.map((e) {
+                  final i = e.key;
+                  final row = e.value;
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: DropdownButtonFormField<String>(
+                            initialValue: row.name,
+                            isDense: true,
+                            decoration: const InputDecoration(labelText: '成本名称'),
+                            items: costTags
+                                .map((t) => DropdownMenuItem(value: t, child: Text(t)))
+                                .toList(),
+                            onChanged: (v) => setDlg(() =>
+                                costRows[i] = (name: v ?? row.name, amount: row.amount)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: row.amount,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: moneyInputFormatters,
+                            decoration: const InputDecoration(labelText: '金额（元）', hintText: '0.00', isDense: true),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => setDlg(() => costRows.removeAt(i)),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
@@ -184,24 +267,39 @@ class _ProjectsPageState extends State<ProjectsPage> {
     );
     if (ok == true) {
       final now = DateTime.now().millisecondsSinceEpoch;
-      await AppDb.instance.insertProject(Project(
+      final projectId = await AppDb.instance.insertProject(Project(
         customerId: selectedCustomer,
         title: titleCtrl.text.trim(),
         status: ProjectStatus.accepted,
         amountTotal: Money.parseYuanToFen(amountCtrl.text.trim()),
         createdAt: now,
         updatedAt: now,
+        note: noteCtrl.text.trim(),
       ));
+      // 新建项目时一并插入成本行（_insertSync 同步通道，created_at 归属当月）
+      for (final row in costRows) {
+        final amt = Money.parseYuanToFen(row.amount.text.trim());
+        if (amt > 0) {
+          await AppDb.instance.insertProjectCost(ProjectCost(
+            projectId: projectId,
+            name: row.name,
+            amount: amt,
+            createdAt: now,
+            updatedAt: now,
+          ));
+        }
+      }
       Ticker.ping();
       await _load();
     }
   }
 
-  // 左滑「编辑」：改项目名称 / 所属客户 / 约定总额
+  // 左滑「编辑」：改项目名称 / 所属客户 / 约定总额 / 备注
   Future<void> _editProject(Project pr) async {
     final titleCtrl = TextEditingController(text: pr.title);
     final amountCtrl = TextEditingController(
         text: pr.amountTotal > 0 ? (pr.amountTotal / 100).toStringAsFixed(2) : '');
+    final noteCtrl = TextEditingController(text: pr.note);
     int selectedCustomer = pr.customerId;
     final customers = await AppDb.instance.getCustomers();
     if (!mounted) return;
@@ -228,6 +326,13 @@ class _ProjectsPageState extends State<ProjectsPage> {
                 inputFormatters: moneyInputFormatters,
                 decoration: const InputDecoration(labelText: '约定总额（元）'),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteCtrl,
+                maxLines: 3,
+                maxLength: 500,
+                decoration: const InputDecoration(labelText: '备注（可选）', hintText: '项目背景、需求要点等'),
+              ),
             ],
           ),
           actions: [
@@ -245,6 +350,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
         customerId: selectedCustomer,
         title: titleCtrl.text.trim(),
         amountTotal: Money.parseYuanToFen(amountCtrl.text.trim()),
+        note: noteCtrl.text.trim(),
         updatedAt: DateTime.now().millisecondsSinceEpoch,
       ));
       Ticker.ping();
@@ -436,6 +542,13 @@ class _ProjectsPageState extends State<ProjectsPage> {
                                                   : '¥${NumberFormat('#,##0.00').format(remaining / 100)}',
                                               style: TextStyle(
                                                   color: remaining <= 0 ? AppTheme.accent : AppTheme.warn,
+                                                  fontWeight: FontWeight.w700),
+                                            ),
+                                            const TextSpan(text: '　成本 ', style: TextStyle(color: AppTheme.textSub)),
+                                            TextSpan(
+                                              text: '¥${NumberFormat('#,##0.00').format((_costTotals[pr.id] ?? 0) / 100)}',
+                                              style: TextStyle(
+                                                  color: AppTheme.warn,
                                                   fontWeight: FontWeight.w700),
                                             ),
                                           ],

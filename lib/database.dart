@@ -425,6 +425,12 @@ class AppDb {
         // tag_items 行业 / 来源标签字典表（v1.43.5）：v19 迁移建表，初始建表必须同步，
         // 否则全新安装（onCreate 不走 onUpgrade）的库缺表，同步通道查询抛 no such table。
         await _createTagItems(db);
+        // project_costs 项目成本表（v1.47.4 / db v24）：v24 迁移建表，初始建表必须同步，
+        // 否则全新安装的库缺表，看板成本统计 / 同步通道查询抛 no such table。
+        await _createProjectCosts(db);
+        // attachments 附件表（v1.48.0 / db v25）：v25 迁移建表，初始建表必须同步，
+        // 否则全新安装的库缺表，项目/合同附件查询与同步通道抛 no such table。
+        await _createAttachments(db);
         await _ensureSchema(db);
       },
       // 打开数据库后的幂等结构自愈（v1.43.2）：历史版本的 onCreate 建表语句未与
@@ -505,6 +511,8 @@ class AppDb {
       if (oldVersion < 21) await _migrateToV21(db);
       if (oldVersion < 22) await _migrateToV22(db);
       if (oldVersion < 23) await _migrateToV23(db);
+      if (oldVersion < 24) await _migrateToV24(db);
+      if (oldVersion < 25) await _migrateToV25(db);
       await _appendMigrationLog(db, '成功 v$oldVersion -> v$newVersion @ $now()');
     } catch (e, st) {
       // 记录失败日志后抛出统一中文异常；平台事务回滚后数据库保持旧版本与全部数据，
@@ -551,6 +559,7 @@ class AppDb {
         customer_id INTEGER,
         title TEXT,
         status INTEGER,
+        note TEXT,
         amount_total INTEGER DEFAULT 0,
         created_at INTEGER,
         updated_at INTEGER,
@@ -879,6 +888,46 @@ class AppDb {
   //   4) 种子：_seed 类在 onCreate 与迁移链均执行且幂等。
   // ═══════════════════════════════════════════════════════════════════════
 
+  // 关键列补丁契约（结构自愈第 3 步基准）：表名 -> {列名: ALTER ADD 的 DDL 类型}。
+  // 覆盖历史上所有由迁移链 ALTER 引入、但可能因「onCreate 未同步 / user_version 已到
+  // 顶不再触发 onUpgrade」而缺失的列。逐项幂等：先探测列存在再 ADD，重复执行零副作用。
+  static const Map<String, Map<String, String>> _patchColumns = {
+    'customers': {
+      'industry': 'TEXT',
+      'source': 'TEXT',
+      'location': 'TEXT',
+      'last_contact_at': 'INTEGER DEFAULT 0',
+      'updated_at': 'INTEGER',
+    },
+    'projects': {
+      'note': 'TEXT',
+      'updated_at': 'INTEGER',
+      'progress': 'INTEGER DEFAULT 0',
+      'deliver_date': 'INTEGER DEFAULT 0',
+    },
+    'payments': {
+      'type_label': 'TEXT',
+      'updated_at': 'INTEGER',
+      'reconciled': 'INTEGER DEFAULT 0',
+      'quote_id': 'INTEGER',
+    },
+    'quotes': {
+      'customer_id': 'INTEGER',
+      'quote_type': "TEXT DEFAULT 'full'",
+      'note': 'TEXT',
+      'tax_include': 'INTEGER DEFAULT 1',
+      'status': 'INTEGER DEFAULT 0',
+      'is_template': 'INTEGER DEFAULT 0',
+      'updated_at': 'INTEGER',
+      'image_path': 'TEXT',
+    },
+    'pending_collections': {'updated_at': 'INTEGER'},
+    'milestones': {'updated_at': 'INTEGER', 'due_date': 'INTEGER DEFAULT 0'},
+    'contracts': {'updated_at': 'INTEGER'},
+    'tag_items': {'updated_at': 'INTEGER'},
+    'tags': {'updated_at': 'INTEGER'},
+  };
+
   // 结构自愈（v1.43.2）：统一保证「只在迁移链里增补过」的表 / 列在任意来源的库上
   // 都存在。历史遗留根因：onCreate 的建表语句未与迁移链最终结构保持同步，而全新
   // 安装只走 onCreate（不触发 onUpgrade 的 ALTER / CREATE），于是新库缺
@@ -905,22 +954,32 @@ class AppDb {
     await _createLedgerEntries(db);
     await _createContracts(db);
     await _createSubscriptionOrders(db);
-    // 3) 补齐历史库缺失的 updated_at 列（同步写入路径会引用该列）。
-    const needUpdatedAt = <String>[
-      'customers',
-      'payments',
-      'quotes',
-      'pending_collections',
-      'milestones',
-      'contracts',
-      'tag_items',
-      'tags',
-    ];
-    for (final t in needUpdatedAt) {
-      final cols = await db.rawQuery('PRAGMA table_info($t)');
+    // attachments 附件表（v1.48.0 / db v25）：v25 迁移建表，初始建表必须同步，
+    // 否则老库经迁移链建表、新装库经 onCreate 建表后，此处幂等补建兜底，
+    // 保证任意来源的库都具备该表（同步通道查询不抛 no such table）。
+    await _createAttachments(db);
+    // 3) 补齐历史库缺失的关键列（同步写入路径会引用这些列）。以 _patchColumns
+    //    契约为基准全量遍历：先 PRAGMA 探测表存在性（表缺失时交由对应建表函数负责，
+    //    绝不 ALTER 不存在的表），再逐列探测缺失后 ALTER 补列；单表补列失败不吞错，
+    //    落 ErrorReporter 日志后继续其它表 / 其它列，保证坏库也能尽可能自愈。
+    //    覆盖 tags.updated_at（v20）、tag_items.updated_at（v21）、projects.note
+    //    （服务器契约列）等全部历史迁移 ALTER 引入的列，避免「磁盘 user_version 已
+    //    到 23 但 schema 停留在旧版」的设备因 onUpgrade 不再触发而永远缺列。
+    for (final entry in _patchColumns.entries) {
+      final table = entry.key;
+      final cols = await db.rawQuery('PRAGMA table_info($table)');
       if (cols.isEmpty) continue; // 表尚未创建，交由对应建表 / 迁移负责
-      if (!cols.any((c) => c['name'] == 'updated_at')) {
-        await db.execute('ALTER TABLE $t ADD COLUMN updated_at INTEGER');
+      final existing = cols.map((c) => c['name']).toSet();
+      for (final col in entry.value.entries) {
+        if (existing.contains(col.key)) continue;
+        try {
+          await db.execute('ALTER TABLE $table ADD COLUMN ${col.key} ${col.value}');
+          ErrorReporter.instance.logError('db_schema_repair', 'repaired', null,
+              context: {'table': table, 'column': col.key, 'dbVersion': AppConfig.dbVersion});
+        } catch (e, st) {
+          ErrorReporter.instance.logError('db_schema_repair_failed', e, st,
+              context: {'table': table, 'column': col.key, 'dbVersion': AppConfig.dbVersion});
+        }
       }
     }
     // 注意：tags 种子数据（_seedTags）会写入 updated_at，坏库必须先补列再执行
@@ -1136,6 +1195,47 @@ class AppDb {
     ''');
   }
 
+  // v24 新增：项目成本表（v1.47.4 成本挂项目 + 看板利润）。
+  // 同步表：id / project_id / name（成本标签名快照）/ amount（分）/
+  // created_at（归属当月成本统计）/ updated_at。
+  Future<void> _createProjectCosts(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS project_costs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL,
+        name TEXT,
+        amount INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER,
+        updated_at INTEGER
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_project_costs_project ON project_costs(project_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_project_costs_created ON project_costs(created_at)');
+  }
+
+  // v25 新增：附件表（v1.48.0 项目/合同备注+附件）。
+  // 同步表：id / owner_type('project'|'contract') / owner_id / filename / mime /
+  // size / server_path（服务器落盘路径，仅服务器写入；本地无实际文件）/
+  // created_at / updated_at。owner_id 为项目或合同的本地/服务器 id。
+  Future<void> _createAttachments(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS attachments(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_type TEXT NOT NULL,
+        owner_id INTEGER NOT NULL,
+        filename TEXT,
+        mime TEXT,
+        size INTEGER DEFAULT 0,
+        server_path TEXT,
+        created_at INTEGER,
+        updated_at INTEGER,
+        _ts INTEGER DEFAULT 0,
+        _deleted INTEGER DEFAULT 0
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_attachments_owner ON attachments(owner_type, owner_id)');
+  }
+
   // 预设标签池种子（第19批）：6 个常用标签 + 各自默认颜色，随建表/迁移落库。
   // 幂等：name 有 UNIQUE 约束，INSERT OR IGNORE 保证重复执行不产生重复数据；
   // 用户可后续自定义新增 / 改色 / 删除，本批不重置已存在的同名标签。
@@ -1181,6 +1281,11 @@ class AppDb {
   // 种子标签再次 INSERT OR IGNORE 幂等补写 updated_at（老库种子行无该列值）。
   Future<void> _migrateToV20(Database db) async {
     final cols = await db.rawQuery('PRAGMA table_info(tags)');
+    if (cols.isEmpty) {
+      // 防御异常库：tags 表缺失时按最新结构建表 + 种子，避免 ALTER 不存在的表抛错。
+      await _createTags(db);
+      return;
+    }
     if (!cols.any((c) => c['name'] == 'updated_at')) {
       await db.execute('ALTER TABLE tags ADD COLUMN updated_at INTEGER');
     }
@@ -1229,6 +1334,11 @@ class AppDb {
   // v22 迁移（里程碑到期日）：milestones 表补 due_date 列（ms 时间戳，0=未设置）。
   Future<void> _migrateToV22(Database db) async {
     final cols = await db.rawQuery('PRAGMA table_info(milestones)');
+    if (cols.isEmpty) {
+      // 防御异常库：milestones 表缺失时按最新结构建表，避免 ALTER 不存在的表抛错。
+      await _createMilestones(db);
+      return;
+    }
     if (!cols.any((c) => c['name'] == 'due_date')) {
       await db.execute('ALTER TABLE milestones ADD COLUMN due_date INTEGER DEFAULT 0');
     }
@@ -1240,6 +1350,24 @@ class AppDb {
         "SELECT name FROM sqlite_master WHERE type='table' AND name='ledger_entries'");
     if (cols.isEmpty) {
       await _createLedgerEntries(db);
+    }
+  }
+
+  // v24 迁移（项目成本表）：PRAGMA 防重入，幂等建表。
+  Future<void> _migrateToV24(Database db) async {
+    final cols = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='project_costs'");
+    if (cols.isEmpty) {
+      await _createProjectCosts(db);
+    }
+  }
+
+  // v25 迁移（附件表）：PRAGMA 防重入，幂等建表。
+  Future<void> _migrateToV25(Database db) async {
+    final cols = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='attachments'");
+    if (cols.isEmpty) {
+      await _createAttachments(db);
     }
   }
 
@@ -1828,6 +1956,11 @@ class AppDb {
     for (final r in qs) {
       await addTombstone('quotes', r['id'] as int);
     }
+    // v24：项目成本项随项目级联删除（同步表，写墓碑 + 物理删）。
+    final csts = await _all('project_costs', where: 'project_id=?', whereArgs: [id]);
+    for (final r in csts) {
+      await addTombstone('project_costs', r['id'] as int);
+    }
     await _deleteByWhere('payments', where: 'project_id=?', whereArgs: [id]);
     await _deleteByWhere('milestones', where: 'project_id=?', whereArgs: [id]);
     await _deleteByWhere('pending_collections',
@@ -1836,6 +1969,7 @@ class AppDb {
     // （否则新版数据库删除项目时会因表不存在抛异常，导致删除中断）。
     await _deleteByWhere('contracts', where: 'project_id=?', whereArgs: [id]);
     await _deleteByWhere('quotes', where: 'project_id=?', whereArgs: [id]);
+    await _deleteByWhere('project_costs', where: 'project_id=?', whereArgs: [id]);
     await _deleteById('projects', id, strict: false);
     await addTombstone('projects', id);
     _notify();
@@ -1889,6 +2023,56 @@ class AppDb {
           [start, end],
         ));
     return (rows.first['t'] as num?)?.toInt() ?? 0;
+  }
+
+  // ---------- project_costs（同步表，v1.47.4 / db v24）----------
+  // 项目成本列表（按创建时间倒序）
+  Future<List<ProjectCost>> getProjectCosts(int projectId) async {
+    final rows = await _all('project_costs',
+        where: 'project_id=?',
+        whereArgs: [projectId],
+        orderBy: 'created_at ASC');
+    return rows.map(ProjectCost.fromMap).toList();
+  }
+
+  // 插入一条项目成本（同步表：自动补 updated_at + 触发同步通知）
+  Future<int> insertProjectCost(ProjectCost c) async {
+    return _insertSync('project_costs', c.toMap()..remove('id'));
+  }
+
+  Future<void> deleteProjectCost(int id) async {
+    await _deleteSyncById('project_costs', id);
+  }
+
+  // 全部项目成本合计（看板「累计成本」），单位分
+  Future<int> allCostTotal() async {
+    final d = await db;
+    final rows = await _guard(() => d.rawQuery(
+        'SELECT COALESCE(SUM(amount),0) AS t FROM project_costs'));
+    return (rows.first['t'] as num?)?.toInt() ?? 0;
+  }
+
+  // 本月成本（当月新增 project_costs 合计，按 created_at 归属当月），单位分
+  Future<int> monthCostTotal(int year, int month) async {
+    final d = await db;
+    final start = DateTime(year, month, 1).millisecondsSinceEpoch;
+    final end = DateTime(year, month + 1, 1).millisecondsSinceEpoch;
+    final rows = await _guard(() => d.rawQuery(
+          'SELECT COALESCE(SUM(amount),0) AS t FROM project_costs WHERE created_at>=? AND created_at<?',
+          [start, end],
+        ));
+    return (rows.first['t'] as num?)?.toInt() ?? 0;
+  }
+
+  // 各项目成本合计（项目列表页一次取齐，避免逐项目查询），值单位分
+  Future<Map<int, int>> projectCostTotals() async {
+    final d = await db;
+    final rows = await _guard(() => d.rawQuery(
+        'SELECT project_id, COALESCE(SUM(amount),0) AS t FROM project_costs GROUP BY project_id'));
+    return {
+      for (final r in rows)
+        r['project_id'] as int: (r['t'] as num?)?.toInt() ?? 0,
+    };
   }
 
   // 指定月份全部收款明细（含项目标题），按收款时间倒序
@@ -2303,6 +2487,24 @@ class AppDb {
     await _deleteSyncById('contracts', id);
   }
 
+  // ---------- attachments（附件 v25，同步表）----------
+  // 按归属（项目/合同）查询附件，按创建时间倒序。
+  Future<List<Map<String, Object?>>> getAttachments(
+      String ownerType, int ownerId) async {
+    return _all('attachments',
+        where: 'owner_type=? AND owner_id=?',
+        whereArgs: [ownerType, ownerId],
+        orderBy: 'created_at DESC');
+  }
+
+  Future<int> insertAttachment(Map<String, Object?> data) async {
+    return _insertSync('attachments', data..remove('id'));
+  }
+
+  Future<void> deleteAttachment(int id) async {
+    await _deleteSyncById('attachments', id);
+  }
+
   // ---------- feedbacks（意见反馈）----------
   // 插入一条本地反馈。[serverId] 服务器反馈 id（便于合并作者回复）；
   // [synced] 1=已提交服务器，0=仅本地草稿（网络失败自动标记）。
@@ -2527,6 +2729,8 @@ class AppDb {
   }
 
   // 可提现余额（分）= 累计收款 + 累计充值到账 - 已提交提现
+  // ⚠️ 已废弃（v1.47.1 钱包资金漏洞修复）：钱包余额只累计推广返利佣金，
+  // 项目收款/充值不再进入钱包；此方法保留仅为兼容旧数据查询，勿再用于余额/提现判断。
   Future<int> withdrawableBalance() async {
     final paid = await allPaidTotal();
     final recharged = await totalRecharged();
@@ -2685,7 +2889,7 @@ const Map<String, Set<String>> expectedColumns = {
     'last_contact_at', 'created_at', 'updated_at',
   },
   'projects': {
-    'id', 'customer_id', 'title', 'status', 'amount_total', 'created_at',
+    'id', 'customer_id', 'title', 'status', 'note', 'amount_total', 'created_at',
     'updated_at', 'due_date', 'remind_at', 'progress', 'deliver_date',
   },
   'payments': {

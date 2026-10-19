@@ -150,6 +150,7 @@ class Project {
   final int remindAt; // 提醒时间点（ms），0 未设置
   final int progress; // 项目进度（%，0-100），v1.24.0
   final int deliverDate; // 交付时间（ms），0 未设置，v1.24.0
+  final String note; // 项目备注，v1.48.0
 
   const Project({
     this.id,
@@ -163,6 +164,7 @@ class Project {
     this.remindAt = 0,
     this.progress = 0,
     this.deliverDate = 0,
+    this.note = '',
   });
 
   Map<String, Object?> toMap() => {
@@ -177,6 +179,7 @@ class Project {
         'remind_at': remindAt,
         'progress': progress,
         'deliver_date': deliverDate,
+        'note': note,
       };
 
   // status 号越界时兜底到首个枚举，避免历史脏数据触发 RangeError。
@@ -195,6 +198,7 @@ class Project {
       remindAt: (m['remind_at'] as num?)?.toInt() ?? 0,
       progress: ((m['progress'] as num?)?.toInt() ?? 0).clamp(0, 100),
       deliverDate: (m['deliver_date'] as num?)?.toInt() ?? 0,
+      note: (m['note'] as String?) ?? '',
     );
   }
 
@@ -212,6 +216,7 @@ class Project {
     int? remindAt,
     int? progress,
     int? deliverDate,
+    String? note,
   }) =>
       Project(
         id: id,
@@ -225,6 +230,45 @@ class Project {
         remindAt: remindAt ?? this.remindAt,
         progress: (progress ?? this.progress).clamp(0, 100),
         deliverDate: deliverDate ?? this.deliverDate,
+        note: note ?? this.note,
+      );
+}
+
+// 项目成本项（v1.47.4 / db v24）：挂在项目下的一条成本，金额单位分。
+// name 为创建时选中的成本标签名快照；created_at 归属当月成本统计。
+class ProjectCost {
+  final int? id;
+  final int projectId;
+  final String name;
+  final int amount; // 金额（分）
+  final int createdAt;
+  final int updatedAt; // 最后修改时间（ms），同步用
+
+  const ProjectCost({
+    this.id,
+    required this.projectId,
+    required this.name,
+    this.amount = 0,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'project_id': projectId,
+        'name': name,
+        'amount': amount,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+      };
+
+  factory ProjectCost.fromMap(Map<String, Object?> m) => ProjectCost(
+        id: m['id'] as int?,
+        projectId: (m['project_id'] as num?)?.toInt() ?? 0,
+        name: (m['name'] as String?) ?? '',
+        amount: (m['amount'] as num?)?.toInt() ?? 0,
+        createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
+        updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
       );
 }
 

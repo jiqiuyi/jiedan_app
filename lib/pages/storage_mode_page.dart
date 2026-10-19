@@ -609,7 +609,7 @@ class _StorageModePageState extends State<StorageModePage> {
   Future<void> _syncNow() async {
     if (_syncing) return;
     try {
-      await SyncService.instance.pushNow();
+      await SyncService.instance.syncNow();
     } on TokenInvalidException {
       // token 失效独立分支：同步失败，引导重新登录。
       await _handleAuthExpired();
