@@ -80,6 +80,7 @@ class SyncService extends ChangeNotifier {
     'customer_tags', // v21 客户挂标签关联上云：App 与网页端共享客户-标签多对多关系
     'tag_items', // v21 行业/来源标签字典上云：App 与网页端共享字典条目
     'ledger_entries', // v23 日常记账：三餐/交通/日用等日常开支（与项目收款解耦，可挂项目）
+    'project_costs', // v24 项目成本：成本挂项目 + 看板本月成本/利润（三端同步）
   ];
 
   StorageMode _mode = StorageMode.local;

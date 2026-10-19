@@ -228,6 +228,44 @@ class Project {
       );
 }
 
+// 项目成本项（v1.47.4 / db v24）：挂在项目下的一条成本，金额单位分。
+// name 为创建时选中的成本标签名快照；created_at 归属当月成本统计。
+class ProjectCost {
+  final int? id;
+  final int projectId;
+  final String name;
+  final int amount; // 金额（分）
+  final int createdAt;
+  final int updatedAt; // 最后修改时间（ms），同步用
+
+  const ProjectCost({
+    this.id,
+    required this.projectId,
+    required this.name,
+    this.amount = 0,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'project_id': projectId,
+        'name': name,
+        'amount': amount,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+      };
+
+  factory ProjectCost.fromMap(Map<String, Object?> m) => ProjectCost(
+        id: m['id'] as int?,
+        projectId: (m['project_id'] as num?)?.toInt() ?? 0,
+        name: (m['name'] as String?) ?? '',
+        amount: (m['amount'] as num?)?.toInt() ?? 0,
+        createdAt: (m['created_at'] as num?)?.toInt() ?? 0,
+        updatedAt: (m['updated_at'] as num?)?.toInt() ?? 0,
+      );
+}
+
 class Payment {
   final int? id;
   final int projectId;

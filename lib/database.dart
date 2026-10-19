@@ -425,6 +425,9 @@ class AppDb {
         // tag_items 行业 / 来源标签字典表（v1.43.5）：v19 迁移建表，初始建表必须同步，
         // 否则全新安装（onCreate 不走 onUpgrade）的库缺表，同步通道查询抛 no such table。
         await _createTagItems(db);
+        // project_costs 项目成本表（v1.47.4 / db v24）：v24 迁移建表，初始建表必须同步，
+        // 否则全新安装的库缺表，看板成本统计 / 同步通道查询抛 no such table。
+        await _createProjectCosts(db);
         await _ensureSchema(db);
       },
       // 打开数据库后的幂等结构自愈（v1.43.2）：历史版本的 onCreate 建表语句未与
@@ -505,6 +508,7 @@ class AppDb {
       if (oldVersion < 21) await _migrateToV21(db);
       if (oldVersion < 22) await _migrateToV22(db);
       if (oldVersion < 23) await _migrateToV23(db);
+      if (oldVersion < 24) await _migrateToV24(db);
       await _appendMigrationLog(db, '成功 v$oldVersion -> v$newVersion @ $now()');
     } catch (e, st) {
       // 记录失败日志后抛出统一中文异常；平台事务回滚后数据库保持旧版本与全部数据，
@@ -1183,6 +1187,24 @@ class AppDb {
     ''');
   }
 
+  // v24 新增：项目成本表（v1.47.4 成本挂项目 + 看板利润）。
+  // 同步表：id / project_id / name（成本标签名快照）/ amount（分）/
+  // created_at（归属当月成本统计）/ updated_at。
+  Future<void> _createProjectCosts(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS project_costs(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL,
+        name TEXT,
+        amount INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER,
+        updated_at INTEGER
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_project_costs_project ON project_costs(project_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_project_costs_created ON project_costs(created_at)');
+  }
+
   // 预设标签池种子（第19批）：6 个常用标签 + 各自默认颜色，随建表/迁移落库。
   // 幂等：name 有 UNIQUE 约束，INSERT OR IGNORE 保证重复执行不产生重复数据；
   // 用户可后续自定义新增 / 改色 / 删除，本批不重置已存在的同名标签。
@@ -1297,6 +1319,15 @@ class AppDb {
         "SELECT name FROM sqlite_master WHERE type='table' AND name='ledger_entries'");
     if (cols.isEmpty) {
       await _createLedgerEntries(db);
+    }
+  }
+
+  // v24 迁移（项目成本表）：PRAGMA 防重入，幂等建表。
+  Future<void> _migrateToV24(Database db) async {
+    final cols = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='project_costs'");
+    if (cols.isEmpty) {
+      await _createProjectCosts(db);
     }
   }
 
@@ -1885,6 +1916,11 @@ class AppDb {
     for (final r in qs) {
       await addTombstone('quotes', r['id'] as int);
     }
+    // v24：项目成本项随项目级联删除（同步表，写墓碑 + 物理删）。
+    final csts = await _all('project_costs', where: 'project_id=?', whereArgs: [id]);
+    for (final r in csts) {
+      await addTombstone('project_costs', r['id'] as int);
+    }
     await _deleteByWhere('payments', where: 'project_id=?', whereArgs: [id]);
     await _deleteByWhere('milestones', where: 'project_id=?', whereArgs: [id]);
     await _deleteByWhere('pending_collections',
@@ -1893,6 +1929,7 @@ class AppDb {
     // （否则新版数据库删除项目时会因表不存在抛异常，导致删除中断）。
     await _deleteByWhere('contracts', where: 'project_id=?', whereArgs: [id]);
     await _deleteByWhere('quotes', where: 'project_id=?', whereArgs: [id]);
+    await _deleteByWhere('project_costs', where: 'project_id=?', whereArgs: [id]);
     await _deleteById('projects', id, strict: false);
     await addTombstone('projects', id);
     _notify();
@@ -1946,6 +1983,56 @@ class AppDb {
           [start, end],
         ));
     return (rows.first['t'] as num?)?.toInt() ?? 0;
+  }
+
+  // ---------- project_costs（同步表，v1.47.4 / db v24）----------
+  // 项目成本列表（按创建时间倒序）
+  Future<List<ProjectCost>> getProjectCosts(int projectId) async {
+    final rows = await _all('project_costs',
+        where: 'project_id=?',
+        whereArgs: [projectId],
+        orderBy: 'created_at ASC');
+    return rows.map(ProjectCost.fromMap).toList();
+  }
+
+  // 插入一条项目成本（同步表：自动补 updated_at + 触发同步通知）
+  Future<int> insertProjectCost(ProjectCost c) async {
+    return _insertSync('project_costs', c.toMap()..remove('id'));
+  }
+
+  Future<void> deleteProjectCost(int id) async {
+    await _deleteSyncById('project_costs', id);
+  }
+
+  // 全部项目成本合计（看板「累计成本」），单位分
+  Future<int> allCostTotal() async {
+    final d = await db;
+    final rows = await _guard(() => d.rawQuery(
+        'SELECT COALESCE(SUM(amount),0) AS t FROM project_costs'));
+    return (rows.first['t'] as num?)?.toInt() ?? 0;
+  }
+
+  // 本月成本（当月新增 project_costs 合计，按 created_at 归属当月），单位分
+  Future<int> monthCostTotal(int year, int month) async {
+    final d = await db;
+    final start = DateTime(year, month, 1).millisecondsSinceEpoch;
+    final end = DateTime(year, month + 1, 1).millisecondsSinceEpoch;
+    final rows = await _guard(() => d.rawQuery(
+          'SELECT COALESCE(SUM(amount),0) AS t FROM project_costs WHERE created_at>=? AND created_at<?',
+          [start, end],
+        ));
+    return (rows.first['t'] as num?)?.toInt() ?? 0;
+  }
+
+  // 各项目成本合计（项目列表页一次取齐，避免逐项目查询），值单位分
+  Future<Map<int, int>> projectCostTotals() async {
+    final d = await db;
+    final rows = await _guard(() => d.rawQuery(
+        'SELECT project_id, COALESCE(SUM(amount),0) AS t FROM project_costs GROUP BY project_id'));
+    return {
+      for (final r in rows)
+        r['project_id'] as int: (r['t'] as num?)?.toInt() ?? 0,
+    };
   }
 
   // 指定月份全部收款明细（含项目标题），按收款时间倒序
