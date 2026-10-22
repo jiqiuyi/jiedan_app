@@ -55,8 +55,7 @@ class RangeFilterChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-
-  const RangeFilterChip({
+const RangeFilterChip({
     super.key,
     required this.label,
     required this.selected,

@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../l10n/l10n.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -11,12 +12,16 @@ import 'error_reporter.dart';
 
 /// 同步冲突处理策略（v1.20.0）。
 enum SyncConflictPolicy {
-  autoNewest('自动保留较新的数据', '同步时自动以「更新时间较新」的一方为准，无需手动处理'),
-  askMe('有冲突时先问我', '云端与本地对同一条数据都有修改时，先停下来由您选择采用哪一方');
+  autoNewest('i18n_543', 'i18n_172'),
+  askMe('i18n_434', 'i18n_092');
 
-  const SyncConflictPolicy(this.label, this.desc);
-  final String label;
-  final String desc;
+  const SyncConflictPolicy(this.labelKey, this.descKey);
+
+  final String labelKey;
+  final String descKey;
+
+  String get label => L10n.instance.t(labelKey);
+  String get desc => L10n.instance.t(descKey);
 }
 
 /// 一条待用户决策的同步冲突（云端更新将与本地不同版本冲突）。
@@ -194,7 +199,7 @@ class SyncService extends ChangeNotifier {
   /// 切换存储方式。[silent] 为 true 时不触发首次全量合并（用于 UI 仅展示）。
   /// 返回切换结果描述供页面提示（首次切到含服务器模式会做一次性全量上传）。
   Future<String> setMode(StorageMode m, {bool silent = false}) async {
-    if (m == _mode) return '已是当前模式';
+    if (m == _mode) return L10n.instance.t('i18n_282');
     final wasInvolvesServer = _mode.involvesServer;
     final from = _mode;
     _mode = m;
@@ -205,9 +210,9 @@ class SyncService extends ChangeNotifier {
       unawaited(_runMutex(() => syncOnStart(), stage: 'set_mode'));
       return switch (from) {
         StorageMode.local =>
-          '已切换到「${m.label}」。本地存量数据将一次性全量上传到云端并完成合并；'
-              '上传期间若云端暂无数据，以本地为基准建立云端副本。',
-        _ => '已切换到「${m.label}」，正在同步…',
+          L10n.instance.t('i18n_261', args: {'v0': m.label}) +
+              L10n.instance.t('i18n_067'),
+        _ => L10n.instance.t('i18n_262', args: {'v0': m.label}),
       };
     }
     if (!m.involvesServer) {
@@ -215,7 +220,7 @@ class SyncService extends ChangeNotifier {
       _lastError = null;
       notifyListeners();
     }
-    return '已切换到「${m.label}」。';
+    return L10n.instance.t('i18n_260', args: {'v0': m.label});
   }
 
   /// 登录/启动时执行的同步：
@@ -574,17 +579,17 @@ class SyncService extends ChangeNotifier {
 
   /// 表的中文名（面向用户展示用）。
   static String _tableLabel(String t) => switch (t) {
-    'customers' => '客户',
-    'projects' => '项目',
-    'payments' => '收款',
-    'quotes' => '报价',
-    'pending_collections' => '待收款',
-    'milestones' => '里程碑',
-    'contracts' => '合同',
-    'attachments' => '附件',
-    'customer_tags' => '客户标签关联',
-    'tag_items' => '行业来源标签',
-    'ledger_entries' => '记账',
+    'customers' => L10n.instance.t('common_customer'),
+    'projects' => L10n.instance.t('common_project'),
+    'payments' => L10n.instance.t('sync_service_collect'),
+    'quotes' => L10n.instance.t('common_quote'),
+    'pending_collections' => L10n.instance.t('constants_pending_collection'),
+    'milestones' => L10n.instance.t('common_milestone'),
+    'contracts' => L10n.instance.t('common_contract'),
+    'attachments' => L10n.instance.t('common_attachment'),
+    'customer_tags' => L10n.instance.t('i18n_229'),
+    'tag_items' => L10n.instance.t('i18n_551'),
+    'ledger_entries' => L10n.instance.t('sync_service_ledger'),
     _ => t,
   };
 
@@ -647,11 +652,11 @@ class SyncService extends ChangeNotifier {
       // token 失效独立分支：不是普通网络错误，标记鉴权失效供页面跳转登录。
       if (e is TokenInvalidException) {
         _authExpired = true;
-        _lastError = '登录已失效，请重新登录';
+        _lastError = L10n.instance.t('common_session_expired');
       } else {
-        _lastError = '同步失败：$e';
+        _lastError = L10n.instance.t('i18n_171', args: {'v0':'$e'});
         // 全局友好提示（错误文本变化时才提示一次，避免刷屏）：指向页面重试。
-        ErrorReporter.instance.notify('云端数据同步失败，请稍后在设置中重试');
+        ErrorReporter.instance.notify(L10n.instance.t('sync_failed_retry_in_settings'));
       }
       notifyListeners();
     } finally {

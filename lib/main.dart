@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'l10n/l10n.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -30,7 +31,7 @@ Future<void> main() async {
       runApp(SignatureWarningApp(
         onContinue: () async {
           await _initAppServices();
-          runApp(const JieDanApp());
+          runApp(JieDanApp());
           _schedulePostLaunch();
         },
         onExit: () => SystemNavigator.pop(),
@@ -38,7 +39,7 @@ Future<void> main() async {
       return;
     }
     await _initAppServices();
-    runApp(const JieDanApp());
+    runApp(JieDanApp());
     _schedulePostLaunch();
   }, (Object error, StackTrace stack) {
     // 全局兜底：一律只留日志，不再弹「操作未能完成，请稍后重试」。
@@ -86,7 +87,7 @@ void _schedulePostLaunch() {
   unawaited(_safePostLaunch(
       'remind', () => NotifyService.instance.checkLocalReminders()));
   // App 在线期间每小时再巡检一次，跨过到期时间点也能及时本地提醒（轻量，仅查本地 SQLite）
-  Timer.periodic(const Duration(hours: 1), (_) {
+  Timer.periodic(Duration(hours: 1), (_) {
     unawaited(_safePostLaunch(
         'remind', () => NotifyService.instance.checkLocalReminders()));
   });
@@ -109,7 +110,7 @@ Future<void> _safePostLaunch(String tag, Future<void> Function() fn) async {
 /// 三星 / 第三方应用商店会对 APK 重签，直接拒绝会把合法用户挡在门外（表现同「打不开」）；
 /// 改为显式告知风险并保留选择权，防破解同时不误伤真实用户。
 class SignatureWarningApp extends StatelessWidget {
-  const SignatureWarningApp({
+const   SignatureWarningApp({
     super.key,
     required this.onContinue,
     required this.onExit,
@@ -130,28 +131,28 @@ class SignatureWarningApp extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.gpp_maybe_outlined,
+                Icon(Icons.gpp_maybe_outlined,
                     size: 64, color: AppTheme.warn),
-                const SizedBox(height: 16),
-                const Text(
-                  '安装包签名校验未通过',
+                SizedBox(height: 16),
+                Text(
+                  L10n.instance.t('signature_title'),
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 12),
-                const Text(
-                  '当前安装包签名与官方版本不一致，可能来自第三方应用商店或安装包被修改，存在账号与数据安全风险。\n请优先从官方渠道下载安装；如确认来源可信，可选择继续使用。',
+                SizedBox(height: 12),
+                Text(
+                  L10n.instance.t('i18n_307'),
                   textAlign: TextAlign.center,
                   style: TextStyle(height: 1.6),
                 ),
-                const SizedBox(height: 24),
+                SizedBox(height: 24),
                 FilledButton(
                   onPressed: onExit,
-                  child: const Text('退出应用'),
+                  child: Text(L10n.instance.t('signature_exit')),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 OutlinedButton(
                   onPressed: () => onContinue(),
-                  child: const Text('继续使用'),
+                  child: Text(L10n.instance.t('signature_continue')),
                 ),
               ],
             ),
@@ -163,7 +164,7 @@ class SignatureWarningApp extends StatelessWidget {
 }
 
 class JieDanApp extends StatefulWidget {
-  const JieDanApp({super.key});
+const JieDanApp({super.key});
 
   @override
   State<JieDanApp> createState() => _JieDanAppState();
@@ -222,7 +223,7 @@ class _JieDanAppState extends State<JieDanApp> with WidgetsBindingObserver {
     return MaterialApp(
       navigatorKey: appNavigatorKey,
       scaffoldMessengerKey: appMessengerKey,
-      title: '接单管家',
+      title: L10n.instance.t('app_name'),
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       // 中文本地化：让系统组件（日期选择器/时间选择器等）显示中文

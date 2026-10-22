@@ -20,8 +20,7 @@ class AppCard extends StatelessWidget {
 
   /// 卡片底色。
   final Color color;
-
-  const AppCard({
+const AppCard({
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(16),
@@ -64,8 +63,7 @@ class AppCard extends StatelessWidget {
 class AppCardDivider extends StatelessWidget {
   /// 左右缩进（默认 16）。
   final double indent;
-
-  const AppCardDivider({super.key, this.indent = 16});
+const AppCardDivider({super.key, this.indent = 16});
 
   @override
   Widget build(BuildContext context) {

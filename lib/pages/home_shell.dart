@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,7 +18,7 @@ import 'settings_page.dart';
 
 /// App 主壳：底部五栏导航
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key});
+const   HomeShell({super.key});
 
   @override
   State<HomeShell> createState() => HomeShellState();
@@ -46,7 +47,7 @@ class HomeShellState extends State<HomeShell> {
     super.initState();
     // 启动后稍等片刻自动检查更新（非强制，网络失败静默）
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 1500), () {
+      Future.delayed(Duration(milliseconds: 1500), () {
         if (!mounted) return;
         // 三星等机型存储/平台偶发异常若冒泡会触发全局兜底弹窗，
         // 这里一律降级为留日志静默（用户可在「设置-检查更新」手动触发）。
@@ -157,8 +158,8 @@ class HomeShellState extends State<HomeShell> {
           onPressed: openQuickLedger,
           backgroundColor: AppTheme.accent,
           foregroundColor: Colors.white,
-          tooltip: '极速记账',
-          child: const Icon(Icons.edit_note, size: 30),
+          tooltip: L10n.instance.t('home_quick_ledger'),
+          child: Icon(Icons.edit_note, size: 30),
         ),
       ),
     );
@@ -180,12 +181,12 @@ class HomeShellState extends State<HomeShell> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const QuickLedgerSheet(),
+      builder: (_) => QuickLedgerSheet(),
     );
     if (saved == true && mounted) {
       ScaffoldMessenger.of(context)
         ..removeCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('已记账')));
+        ..showSnackBar(SnackBar(content: Text(L10n.instance.t('home_logged'))));
     }
   }
 
@@ -201,12 +202,12 @@ class HomeShellState extends State<HomeShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: '看板'),
-          NavigationDestination(icon: Icon(Icons.work_outline), selectedIcon: Icon(Icons.work), label: '项目'),
-          NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: '客户'),
-          NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: '报价'),
-          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '我的'),
+        destinations: [
+          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: L10n.instance.t('home_tab_home')),
+          NavigationDestination(icon: Icon(Icons.work_outline), selectedIcon: Icon(Icons.work), label: L10n.instance.t('common_project')),
+          NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: L10n.instance.t('common_customer')),
+          NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: L10n.instance.t('common_quote')),
+          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: L10n.instance.t('settings_title')),
         ],
       ),
     );
@@ -216,7 +217,7 @@ class HomeShellState extends State<HomeShell> {
 /// 极速记账面板（全局悬浮球/桌面小组件「记一笔」弹出）：分类 chip + 大号金额 + 快捷金额 + 备注 + 保存。
 /// 保存成功 `Navigator.pop(context, true)`，由 HomeShell toast「已记账」。
 class QuickLedgerSheet extends StatefulWidget {
-  const QuickLedgerSheet({super.key});
+const   QuickLedgerSheet({super.key});
 
   @override
   State<QuickLedgerSheet> createState() => QuickLedgerSheetState();
@@ -246,7 +247,7 @@ class QuickLedgerSheetState extends State<QuickLedgerSheet> {
     final v = double.tryParse(_amountCtrl.text.trim());
     if (v == null || v <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请输入金额')));
+          SnackBar(content: Text(L10n.instance.t('home_amount_hint'))));
       return;
     }
     if (_saving) return;
@@ -288,11 +289,11 @@ class QuickLedgerSheetState extends State<QuickLedgerSheet> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('极速记账',
+                    Text(L10n.instance.t('home_quick_ledger'),
                         style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
                     IconButton(
                       onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
+                      icon: Icon(Icons.close),
                       visualDensity: VisualDensity.compact,
                     ),
                   ],
@@ -304,7 +305,7 @@ class QuickLedgerSheetState extends State<QuickLedgerSheet> {
                   children: AppConfig.LEDGER_CATEGORIES.map((c) {
                     final selected = _category == c;
                     return ChoiceChip(
-                      label: Text(c),
+                      label: Text(L10n.instance.t(AppConfig.ledgerCatKey(c))),
                       selected: selected,
                       onSelected: (_) => setState(() => _category = c),
                       selectedColor: AppTheme.accent.withValues(alpha: 0.14),
@@ -317,7 +318,7 @@ class QuickLedgerSheetState extends State<QuickLedgerSheet> {
                     );
                   }).toList(),
                 ),
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 // 大号金额输入框
                 TextField(
                   controller: _amountCtrl,
@@ -328,12 +329,12 @@ class QuickLedgerSheetState extends State<QuickLedgerSheet> {
                     FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                   ],
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 38, fontWeight: FontWeight.w700),
                   decoration: InputDecoration(
                     hintText: '0.00',
                     prefixText: '¥ ',
-                    prefixStyle: const TextStyle(fontSize: 22),
+                    prefixStyle: TextStyle(fontSize: 22),
                     filled: true,
                     fillColor: AppTheme.bgCard,
                     border: OutlineInputBorder(
@@ -342,7 +343,7 @@ class QuickLedgerSheetState extends State<QuickLedgerSheet> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 // 快捷金额 chips
                 Wrap(
                   spacing: 8,
@@ -350,7 +351,7 @@ class QuickLedgerSheetState extends State<QuickLedgerSheet> {
                   children: _quickAmounts.map((y) {
                     final selected = _amountCtrl.text == y.toString();
                     return ActionChip(
-                      label: Text('$y 元'),
+                      label: Text(L10n.instance.t('home_yuan', args: {'y':'$y'})),
                       onPressed: () => _setAmount(y),
                       backgroundColor:
                           selected ? AppTheme.accent.withValues(alpha: 0.14) : AppTheme.bgCard,
@@ -362,13 +363,13 @@ class QuickLedgerSheetState extends State<QuickLedgerSheet> {
                     );
                   }).toList(),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 // 备注（单行可选）
                 TextField(
                   controller: _noteCtrl,
                   maxLength: 50,
-                  decoration: const InputDecoration(
-                    hintText: '备注（可选）',
+                  decoration: InputDecoration(
+                    hintText: L10n.instance.t('common_note_optional'),
                     counterText: '',
                     isDense: true,
                     filled: true,
@@ -379,7 +380,7 @@ class QuickLedgerSheetState extends State<QuickLedgerSheet> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 // 保存主按钮
                 SizedBox(
                   height: 50,
@@ -391,12 +392,12 @@ class QuickLedgerSheetState extends State<QuickLedgerSheet> {
                           borderRadius: BorderRadius.circular(14)),
                     ),
                     child: _saving
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
                                 strokeWidth: 2, color: Colors.white))
-                        : const Text('保存',
+                        : Text(L10n.instance.t('common_save'),
                             style: TextStyle(
                                 fontSize: 16, fontWeight: FontWeight.w700)),
                   ),

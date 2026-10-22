@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../l10n/l10n.dart';
 
 import 'constants.dart';
 
@@ -299,7 +300,7 @@ class Payment {
 
   // 展示用收款类型名：自定义类型显示自定义名称，否则显示枚举 label。
   String get displayType =>
-      type == PayType.custom ? (typeLabel.trim().isEmpty ? '自定义' : typeLabel.trim()) : type.label;
+      type == PayType.custom ? (typeLabel.trim().isEmpty ? L10n.instance.t('common_custom') : typeLabel.trim()) : type.label;
 
   Map<String, Object?> toMap() => {
         'id': id,
@@ -338,22 +339,22 @@ enum WithdrawMethod {
   String get label {
     switch (this) {
       case WithdrawMethod.wechat:
-        return '微信';
+        return L10n.instance.t('models_wechat');
       case WithdrawMethod.alipay:
-        return '支付宝';
+        return L10n.instance.t('models_alipay');
       case WithdrawMethod.bank:
-        return '银行卡';
+        return L10n.instance.t('i18n_625');
     }
   }
 
   String get noHint {
     switch (this) {
       case WithdrawMethod.wechat:
-        return '收款微信号';
+        return L10n.instance.t('i18n_381');
       case WithdrawMethod.alipay:
-        return '收款支付宝账号';
+        return L10n.instance.t('i18n_383');
       case WithdrawMethod.bank:
-        return '收款银行卡号';
+        return L10n.instance.t('i18n_390');
     }
   }
 }
@@ -367,11 +368,11 @@ enum WithdrawStatus {
   String get label {
     switch (this) {
       case WithdrawStatus.pending:
-        return '待处理';
+        return L10n.instance.t('i18n_311');
       case WithdrawStatus.processing:
-        return '处理中';
+        return L10n.instance.t('i18n_190');
       case WithdrawStatus.done:
-        return '已提现';
+        return L10n.instance.t('i18n_280');
     }
   }
 }
@@ -490,9 +491,9 @@ enum RechargeMethod {
   String get label {
     switch (this) {
       case RechargeMethod.wechat:
-        return '微信';
+        return L10n.instance.t('models_wechat');
       case RechargeMethod.alipay:
-        return '支付宝';
+        return L10n.instance.t('models_alipay');
     }
   }
 }
@@ -505,9 +506,9 @@ enum RechargeStatus {
   String get label {
     switch (this) {
       case RechargeStatus.pending:
-        return '待确认';
+        return L10n.instance.t('admin_pending');
       case RechargeStatus.done:
-        return '已到账';
+        return L10n.instance.t('i18n_264');
     }
   }
 }

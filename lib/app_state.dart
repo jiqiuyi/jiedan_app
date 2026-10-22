@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../l10n/l10n.dart';
 import 'dart:convert';
 import 'dart:math';
 
@@ -319,7 +320,7 @@ class AppState extends ChangeNotifier {
         st,
         module: LogModule.login,
       );
-      return '注册失败，请稍后重试';
+      return L10n.instance.t('i18n_483');
     }
     final user = json['user'];
     if (user is Map<String, dynamic>) {
@@ -363,7 +364,7 @@ class AppState extends ChangeNotifier {
         st,
         module: LogModule.login,
       );
-      return '登录失败，请稍后重试';
+      return L10n.instance.t('i18n_497');
     }
     final user = json['user'];
     if (user is Map<String, dynamic>) {
@@ -439,8 +440,8 @@ class AppState extends ChangeNotifier {
   /// 客户端不硬编码任何码、不做本地判断。返回 null 表示成功，否则为错误提示文案。
   Future<String?> redeemVipCode(String code) async {
     final c = code.trim();
-    if (c.isEmpty) return '请输入兑换码';
-    if (!loggedIn) return '请先登录';
+    if (c.isEmpty) return L10n.instance.t('app_state_enter_redeem');
+    if (!loggedIn) return L10n.instance.t('common_login_first');
     try {
       final json = await ApiClient.instance.redeemCode(c);
       final user = json['user'];
@@ -449,7 +450,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
         return null;
       }
-      return '兑换成功，请稍后重试';
+      return L10n.instance.t('i18n_125');
     } on ApiException catch (e) {
       return e.message;
     }
@@ -618,7 +619,7 @@ class AppState extends ChangeNotifier {
     String wechatQrcode = '',
     String alipayQrcode = '',
   }) async {
-    if (!loggedIn) return '请先登录账号';
+    if (!loggedIn) return L10n.instance.t('i18n_567');
     try {
       await ApiClient.instance.savePayoutAccount(
         method: method,
@@ -642,7 +643,7 @@ class AppState extends ChangeNotifier {
         st,
         module: LogModule.other,
       );
-      return '保存失败，请稍后重试';
+      return L10n.instance.t('i18n_116');
     }
   }
 
@@ -650,7 +651,7 @@ class AppState extends ChangeNotifier {
   /// （服务端写 applyAt 冻结金额 + 账户快照，幂等）。
   /// 成功返回 (count, amount)；失败返回 (error)。
   Future<({int count, double amount, String? error})> applyPayout() async {
-    if (!loggedIn) return (count: 0, amount: 0.0, error: '请先登录账号');
+    if (!loggedIn) return (count: 0, amount: 0.0, error: L10n.instance.t('i18n_567'));
     try {
       final json = await ApiClient.instance.applyPayout();
       try {
@@ -672,7 +673,7 @@ class AppState extends ChangeNotifier {
         st,
         module: LogModule.other,
       );
-      return (count: 0, amount: 0.0, error: '申请失败，请检查网络后重试');
+      return (count: 0, amount: 0.0, error: L10n.instance.t('i18n_493'));
     }
   }
 
@@ -754,7 +755,7 @@ class AppState extends ChangeNotifier {
       userId: uid,
       phone: phone,
       planKey: 'invite_bonus',
-      planName: '邀请送月',
+      planName: L10n.instance.t('i18n_617'),
       amount: 0,
       channel: AppDb.subChannelInvite,
       status: AppDb.subStatusGranted,

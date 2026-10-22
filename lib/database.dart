@@ -1,4 +1,5 @@
 import 'package:sqflite/sqflite.dart';
+import 'l10n/l10n.dart';
 import 'package:path/path.dart' as p;
 import 'package:crypto/crypto.dart';
 import 'dart:async';
@@ -33,19 +34,19 @@ class DbException implements Exception {
 }
 
 class DbCorruptException extends DbException {
-  DbCorruptException() : super('数据库文件损坏或无法打开，请备份数据后重装应用');
+  DbCorruptException() : super(L10n.instance.t('i18n_403'));
 }
 
 class DbConstraintException extends DbException {
-  DbConstraintException() : super('数据唯一性约束冲突，请检查输入内容后重试');
+  DbConstraintException() : super(L10n.instance.t('i18n_395'));
 }
 
 class DbPermissionException extends DbException {
-  DbPermissionException() : super('存储空间不足或无写入权限，请清理空间后重试');
+  DbPermissionException() : super(L10n.instance.t('i18n_212'));
 }
 
 class DbNotFoundException extends DbException {
-  DbNotFoundException() : super('目标记录不存在或已被删除');
+  DbNotFoundException() : super(L10n.instance.t('i18n_499'));
 }
 
 // 密码哈希（固定盐+手机号+明文，sha256）：本地版防明文落盘；上云后换服务端方案。
@@ -103,14 +104,14 @@ class AppDb {
       return await _open();
     } catch (e, st) {
       ErrorReporter.instance.logError('db_open_failed', e, st,
-          context: await _dbDiagContext('首次打开失败'));
+          context: await _dbDiagContext(L10n.instance.t('database_failed_to')));
       try {
         // 给原生 SQLite 释放锁 / 平台通道收敛留时间，三星上偶发一次可恢复。
-        await Future.delayed(const Duration(milliseconds: 800));
+        await Future.delayed(Duration(milliseconds: 800));
         return await _open();
       } catch (e2, st2) {
         ErrorReporter.instance.logError('db_open_failed_retry', e2, st2,
-            context: await _dbDiagContext('重试打开仍失败'));
+            context: await _dbDiagContext(L10n.instance.t('database_retry_failed')));
         final recovered = await _recoverDb(e2);
         if (recovered != null) return recovered;
         rethrow;
@@ -125,7 +126,7 @@ class AppDb {
   Future<Map<String, Object?>> _dbDiagContext(String note) async {
     final ctx = <String, Object?>{'note': note, 'dbVersion': AppConfig.dbVersion};
     try {
-      final dir = await getDatabasesPath().timeout(const Duration(seconds: 8));
+      final dir = await getDatabasesPath().timeout(Duration(seconds: 8));
       ctx['databasesPath'] = dir;
       final dbPath = p.join(dir, AppConfig.dbName);
       ctx['dbPath'] = dbPath;
@@ -157,7 +158,7 @@ class AppDb {
     var backupPath = '';
     final renameResults = <String, String>{};
     try {
-      final dir = await getDatabasesPath().timeout(const Duration(seconds: 8));
+      final dir = await getDatabasesPath().timeout(Duration(seconds: 8));
       final dbPath = p.join(dir, AppConfig.dbName);
       final ts = DateTime.now().millisecondsSinceEpoch;
       backupPath = '$dbPath.corrupt_$ts';
@@ -182,7 +183,7 @@ class AppDb {
         await rebuilt.rawQuery('SELECT 1');
       } catch (ve, vst) {
         ErrorReporter.instance.logError('db_recover_verify_failed', ve, vst,
-            context: await _dbDiagContext('重建后 SELECT 1 验证失败'));
+            context: await _dbDiagContext(L10n.instance.t('database_verify_after_rebuild_failed')));
         rethrow;
       }
       ErrorReporter.instance.logError('db_recover_ok', 'recovered', null,
@@ -196,7 +197,7 @@ class AppDb {
       return rebuilt;
     } catch (e2, st2) {
       ErrorReporter.instance.logError('db_recover_failed', e2, st2,
-          context: await _dbDiagContext('重建兜底失败'));
+          context: await _dbDiagContext(L10n.instance.t('database_fallback_rebuild')));
       return null;
     }
   }
@@ -243,7 +244,7 @@ class AppDb {
         msg.contains('disk I/O')) {
       return DbPermissionException();
     }
-    return DbException('数据库操作失败：$msg');
+    return DbException(L10n.instance.t('database_op_failed', args: {'v0': msg}));
   }
 
   // 统一执行入口：捕获 DatabaseException 并分类抛出中文业务异常。
@@ -454,8 +455,8 @@ class AppDb {
       // 旧版代码误操作破坏。用户如需回退旧版，应先在新版「数据管理」导出备份。
       onDowngrade: (db, oldVersion, newVersion) async {
         throw DbException(
-          '检测到本地数据版本(v$oldVersion)高于当前应用可处理的版本(v$newVersion)，'
-          '为防止数据被破坏已停止打开数据库。请安装不低于原版本的应用（或先还原旧版数据备份）。',
+          L10n.instance.t('i18n_470', args: {'v0':'$oldVersion', 'v1':'$newVersion'}) +
+          L10n.instance.t('i18n_087'),
         );
       },
       ).timeout(const Duration(seconds: 12));
@@ -513,16 +514,16 @@ class AppDb {
       if (oldVersion < 23) await _migrateToV23(db);
       if (oldVersion < 24) await _migrateToV24(db);
       if (oldVersion < 25) await _migrateToV25(db);
-      await _appendMigrationLog(db, '成功 v$oldVersion -> v$newVersion @ $now()');
+      await _appendMigrationLog(db, L10n.instance.t('i18n_333', args: {'v0':'$oldVersion', 'v1':'$newVersion', 'v2':'$now'}));
     } catch (e, st) {
       // 记录失败日志后抛出统一中文异常；平台事务回滚后数据库保持旧版本与全部数据，
       // 上层（AppState.load）可感知并提示用户重试，不会静默损坏数据。
       try {
-        await _appendMigrationLog(db, '失败 v$oldVersion -> v$newVersion @ $now()\n$e\n$st');
+        await _appendMigrationLog(db, L10n.instance.t('i18n_205', args: {'v0':'$oldVersion', 'v1':'$newVersion', 'v2':'$now', 'v3':'$e', 'v4':'$st'}));
       } catch (_) {}
       throw DbException(
-        '数据库从 v$oldVersion 升级到 v$newVersion 失败，已自动回滚，数据未受影响。'
-        '请重启应用重试；若持续失败，请先在「数据管理」中导出备份后卸载重装。原因：$e',
+        L10n.instance.t('i18n_401', args: {'v0':'$oldVersion', 'v1':'$newVersion'}) +
+        L10n.instance.t('i18n_585', args: {'v0':'$e'}),
       );
     }
   }
@@ -1241,12 +1242,12 @@ class AppDb {
   // 用户可后续自定义新增 / 改色 / 删除，本批不重置已存在的同名标签。
   Future<void> _seedTags(Database db) async {
     final seed = <Map<String, Object?>>[
-      {'name': '重要客户', 'color': 0xFFE53935},
-      {'name': '回头客', 'color': 0xFFFB8C00},
-      {'name': '潜在客户', 'color': 0xFF1E88E5},
-      {'name': '已成交', 'color': 0xFF43A047},
-      {'name': '难沟通', 'color': 0xFF8E24AA},
-      {'name': '待跟进', 'color': 0xFF00897B},
+      {'name': L10n.instance.t('constants_tag_vip'), 'color': 0xFFE53935},
+      {'name': L10n.instance.t('constants_tag_returning'), 'color': 0xFFFB8C00},
+      {'name': L10n.instance.t('constants_tag_prospect'), 'color': 0xFF1E88E5},
+      {'name': L10n.instance.t('constants_deal'), 'color': 0xFF43A047},
+      {'name': L10n.instance.t('constants_tag_hard_to_reach'), 'color': 0xFF8E24AA},
+      {'name': L10n.instance.t('constants_tag_follow_up'), 'color': 0xFF00897B},
     ];
     final now = DateTime.now().millisecondsSinceEpoch;
     for (final s in seed) {
@@ -2097,7 +2098,7 @@ class AppDb {
       int startMs, int endMs) async {
     final d = await db;
     return _guard(() => d.rawQuery(
-          'SELECT p.*, COALESCE(pr.title, \'已删除项目\') AS project_title '
+          'SELECT p.*, COALESCE(pr.title, \'\') AS project_title '
           'FROM payments p LEFT JOIN projects pr ON pr.id = p.project_id '
           'WHERE p.paid_at>=? AND p.paid_at<? '
           'ORDER BY p.paid_at DESC',
@@ -2131,12 +2132,12 @@ class AppDb {
   Future<List<Map<String, Object?>>> customerContribution() async {
     final d = await db;
     return _guard(() => d.rawQuery('''
-      SELECT COALESCE(c.name, '未关联客户') AS customer_name,
+      SELECT COALESCE(c.name, '') AS customer_name,
              COALESCE(SUM(p.amount),0) AS total
       FROM payments p
       LEFT JOIN projects pr ON pr.id = p.project_id
       LEFT JOIN customers c ON c.id = pr.customer_id
-      GROUP BY COALESCE(c.name, '未关联客户')
+      GROUP BY COALESCE(c.name, '')
       ORDER BY total DESC
     '''));
   }
@@ -2215,13 +2216,13 @@ class AppDb {
       int startMs, int endMs) async {
     final d = await db;
     return _guard(() => d.rawQuery('''
-      SELECT COALESCE(c.name, '未关联客户') AS customer_name,
+      SELECT COALESCE(c.name, '') AS customer_name,
              COALESCE(SUM(p.amount),0) AS total
       FROM payments p
       LEFT JOIN projects pr ON pr.id = p.project_id
       LEFT JOIN customers c ON c.id = pr.customer_id
       WHERE p.paid_at>=? AND p.paid_at<?
-      GROUP BY COALESCE(c.name, '未关联客户')
+      GROUP BY COALESCE(c.name, '')
       ORDER BY total DESC
     ''', [startMs, endMs]));
   }
@@ -2247,8 +2248,8 @@ class AppDb {
     final d = await db;
     return _guard(() => d.rawQuery('''
       SELECT pr.id AS project_id,
-             COALESCE(pr.title, '已删除项目') AS project_title,
-             COALESCE(c.name, '未关联客户') AS customer_name,
+             COALESCE(pr.title, '') AS project_title,
+             COALESCE(c.name, '') AS customer_name,
              COALESCE(pr.amount_total,0) AS amount_total,
              COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.project_id = pr.id),0) AS paid_total,
              COALESCE((SELECT SUM(pc.amount) FROM pending_collections pc WHERE pc.project_id = pr.id AND pc.status = 0),0) AS pending_total
@@ -2266,8 +2267,8 @@ class AppDb {
     final d = await db;
     final sb = StringBuffer(
       'SELECT p.*, '
-      "COALESCE(pr.title, '已删除项目') AS project_title, "
-      "COALESCE(c.name, '未关联客户') AS customer_name, "
+      "COALESCE(pr.title, '') AS project_title, "
+      "COALESCE(c.name, '') AS customer_name, "
       "COALESCE(q.title, '') AS quote_title "
       'FROM payments p '
       'LEFT JOIN projects pr ON pr.id = p.project_id '
@@ -2288,7 +2289,7 @@ class AppDb {
     final d = await db;
     return _guard(() => d.rawQuery(
           'SELECT p.*, '
-          "COALESCE(pr.title, '已删除项目') AS project_title "
+          "COALESCE(pr.title, '') AS project_title "
           'FROM payments p LEFT JOIN projects pr ON pr.id = p.project_id '
           'WHERE p.quote_id=? ORDER BY p.paid_at DESC',
           [quoteId],
@@ -2959,10 +2960,10 @@ class TableIntegrity {
   bool get ok => exists && missingColumns.isEmpty && extraColumns.isEmpty;
 
   String get describe {
-    if (!exists) return '表缺失';
-    if (missingColumns.isNotEmpty) return '缺列: ${missingColumns.join(', ')}';
-    if (extraColumns.isNotEmpty) return '多余列: ${extraColumns.join(', ')}';
-    return '完整';
+    if (!exists) return L10n.instance.t('database_table_missing');
+    if (missingColumns.isNotEmpty) return L10n.instance.t('database_missing_columns', args: {'v0': missingColumns.join(', ')});
+    if (extraColumns.isNotEmpty) return L10n.instance.t('database_extra_columns', args: {'v0': extraColumns.join(', ')});
+    return L10n.instance.t('database_table_ok');
   }
 }
 

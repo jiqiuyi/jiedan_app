@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import 'package:intl/intl.dart';
 
 import '../api_client.dart';
@@ -14,7 +15,7 @@ import '../widgets/app_ui.dart';
 /// v1.15.0：弃用邮箱上报方式，改为实时在线提交到服务器（需登录，token 鉴权），
 /// 成功后立即可在「我的反馈」中看到；后端按 uid 记录提交人。
 class FeedbackPage extends StatefulWidget {
-  const FeedbackPage({super.key});
+const   FeedbackPage({super.key});
 
   @override
   State<FeedbackPage> createState() => _FeedbackPageState();
@@ -37,7 +38,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
     final content = _contentCtrl.text.trim();
     if (content.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先填写反馈内容')),
+        SnackBar(content: Text(L10n.instance.t('feedback_content_required'))),
       );
       return;
     }
@@ -45,15 +46,15 @@ class _FeedbackPageState extends State<FeedbackPage> {
       final go = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('需要先登录'),
-          content: const Text('在线反馈需要登录账号后才能提交（便于我们跟踪与回复）。是否前往登录？'),
+          title: Text(L10n.instance.t('common_login_required')),
+          content: Text(L10n.instance.t('feedback_login_required_desc')),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('取消')),
+                child: Text(L10n.instance.t('common_cancel'))),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('去登录'),
+              child: Text(L10n.instance.t('common_go_login')),
             ),
           ],
         ),
@@ -61,7 +62,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
       if (go == true && mounted) {
         await Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const LoginPage()),
+          MaterialPageRoute(builder: (_) => LoginPage()),
         );
       }
       return;
@@ -73,7 +74,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
     try {
       // v1.26.0：提交前按上报开关决定是否附带最小化设备信息（4 项非敏感）；
       // 开关关闭或读取失败时为空串，后端按缺失处理，不影响提交成功。
-      var payload = const DeviceInfoPayload();
+      var payload = DeviceInfoPayload();
       if (await DeviceInfoReporter.instance.reportingEnabled()) {
         payload = await DeviceInfoReporter.instance.collect();
       }
@@ -107,7 +108,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
     final ok = err == null;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('提交失败，已暂存到本地：$err 下拉「我的反馈」可重试同步')),
+        SnackBar(content: Text(L10n.instance.t('feedback_submit_failed_local', args: {'err':err}))),
       );
       return;
     }
@@ -115,9 +116,9 @@ class _FeedbackPageState extends State<FeedbackPage> {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('反馈已收到'),
+        title: Text(L10n.instance.t('feedback_received')),
         content: Text(
-          '你的反馈（#$feedbackId）已实时提交到服务器，我们已收到，会尽快查看并回复。',
+          L10n.instance.t('i18n_113', args: {'v0': feedbackId}),
         ),
         actions: [
           FilledButton(
@@ -125,7 +126,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
               Navigator.pop(ctx);
               Navigator.pop(context);
             },
-            child: const Text('完成'),
+            child: Text(L10n.instance.t('common_done')),
           ),
         ],
       ),
@@ -136,14 +137,14 @@ class _FeedbackPageState extends State<FeedbackPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('意见反馈'),
+        title: Text(L10n.instance.t('settings_func_feedback')),
         actions: [
           IconButton(
-            icon: const Icon(Icons.inbox_outlined),
-            tooltip: '我的反馈',
+            icon: Icon(Icons.inbox_outlined),
+            tooltip: L10n.instance.t('feedback_my'),
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const MyFeedbackPage()),
+              MaterialPageRoute(builder: (_) => MyFeedbackPage()),
             ),
           ),
         ],
@@ -152,8 +153,8 @@ class _FeedbackPageState extends State<FeedbackPage> {
         padding: const EdgeInsets.all(16),
         children: [
           // 类型选择
-          const Text('反馈类型', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
+          Text(L10n.instance.t('feedback_type'), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          SizedBox(height: 8),
           Wrap(
             spacing: 8,
             children: [
@@ -165,18 +166,18 @@ class _FeedbackPageState extends State<FeedbackPage> {
                 ),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           // 内容
-          const Text('反馈内容', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
+          Text(L10n.instance.t('feedback_content'), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          SizedBox(height: 8),
           TextField(
             controller: _contentCtrl,
             maxLines: 6,
             maxLength: 500,
             decoration: InputDecoration(
               hintText: _type == FeedbackType.bug
-                  ? '请描述遇到的问题：在哪个页面、做了什么操作、出现什么现象'
-                  : '请描述你的建议：希望新增什么功能、如何改进体验',
+                  ? L10n.instance.t('i18n_574')
+                  : L10n.instance.t('i18n_573'),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
@@ -184,14 +185,14 @@ class _FeedbackPageState extends State<FeedbackPage> {
               fillColor: Colors.white,
             ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           // 联系方式
-          const Text('联系方式（选填）', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
+          Text(L10n.instance.t('feedback_contact'), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          SizedBox(height: 8),
           TextField(
             controller: _contactCtrl,
             decoration: InputDecoration(
-              hintText: '手机号 / 微信 / 邮箱，方便开发者回复你',
+              hintText: L10n.instance.t('feedback_page_phone_wechat'),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
@@ -199,18 +200,18 @@ class _FeedbackPageState extends State<FeedbackPage> {
               fillColor: Colors.white,
             ),
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
           SizedBox(
             height: 48,
             child: FilledButton(
               onPressed: _submitting ? null : _submit,
-              child: Text(_submitting ? '提交中…' : '提交反馈'),
+              child: Text(_submitting ? L10n.instance.t('common_submitting') : L10n.instance.t('feedback_submit')),
             ),
           ),
-          const SizedBox(height: 12),
-          const Center(
+          SizedBox(height: 12),
+          Center(
             child: Text(
-              '在线提交后开发者实时收到 · 数据仅用于处理你的反馈',
+              L10n.instance.t('i18n_189'),
               style: TextStyle(color: AppTheme.textSub, fontSize: 12),
             ),
           ),
@@ -224,7 +225,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
 /// 拉取最新回复状态；离线时展示本地数据并标注「未同步 / 离线」。
 /// v1.16.0：新增作者回复展示与服务器合并。
 class MyFeedbackPage extends StatefulWidget {
-  const MyFeedbackPage({super.key});
+const   MyFeedbackPage({super.key});
 
   @override
   State<MyFeedbackPage> createState() => _MyFeedbackPageState();
@@ -299,15 +300,15 @@ class _MyFeedbackPageState extends State<MyFeedbackPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('我的反馈'),
+        title: Text(L10n.instance.t('feedback_my')),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: '同步服务器回复',
+            icon: Icon(Icons.refresh),
+            tooltip: L10n.instance.t('feedback_sync_replies'),
             onPressed: () async {
               if (!AppState.instance.loggedIn) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('云同步回复需登录后使用')),
+                  SnackBar(content: Text(L10n.instance.t('feedback_sync_login_tip'))),
                 );
                 return;
               }
@@ -320,16 +321,16 @@ class _MyFeedbackPageState extends State<MyFeedbackPage> {
         onRefresh: _syncFromServer,
         child: _list.isEmpty
             ? ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: const [
+                physics: AlwaysScrollableScrollPhysics(),
+                children: [
                   AppEmpty(
                     icon: Icons.feedback_outlined,
-                    title: '还没有提交过反馈，下拉可刷新',
+                    title: L10n.instance.t('feedback_empty'),
                   ),
                 ],
               )
             : ListView.builder(
-                physics: const AlwaysScrollableScrollPhysics(),
+                physics: AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.only(top: 8, bottom: 24),
                 itemCount: _list.length + (_syncError != null ? 1 : 0),
                 itemBuilder: (context, i) {
@@ -337,7 +338,7 @@ class _MyFeedbackPageState extends State<MyFeedbackPage> {
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
                       child: Text(
-                        '当前为本地数据（离线），下拉可重新同步作者回复',
+                        L10n.instance.t('i18n_306'),
                         style: const TextStyle(
                             fontSize: 12, color: AppTheme.warn),
                       ),
@@ -354,7 +355,7 @@ class _MyFeedbackPageState extends State<MyFeedbackPage> {
 
 /// 单条反馈卡片：类型 / 时间 / 内容 / 联系方式 / 作者回复 / 未同步标注。
 class _FeedbackCard extends StatelessWidget {
-  const _FeedbackCard({required this.m, required this.fmt});
+const   _FeedbackCard({required this.m, required this.fmt});
   final Map<String, Object?> m;
   final DateFormat fmt;
 
@@ -397,8 +398,8 @@ class _FeedbackCard extends StatelessWidget {
                       color: AppTheme.warn.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(AppRadius.xs),
                     ),
-                    child: const Text(
-                      '未同步',
+                    child: Text(
+                      L10n.instance.t('i18n_437'),
                       style: TextStyle(
                         fontSize: 12,
                         color: AppTheme.warn,
@@ -414,14 +415,14 @@ class _FeedbackCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               (m['content'] as String?) ?? '',
               style: const TextStyle(fontSize: 14, height: 1.5),
             ),
             if (contact.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text('联系：$contact',
+              SizedBox(height: 6),
+              Text(L10n.instance.t('feedback_contact_prefix2', args: {'contact':contact}),
                   style: const TextStyle(fontSize: 12, color: AppTheme.textSub)),
             ],
             // 作者回复（v1.16.0）：视觉区分，绿色标签 + 回复时间 + 内容
@@ -444,8 +445,8 @@ class _FeedbackCard extends StatelessWidget {
                         const Icon(Icons.mark_email_read_outlined,
                             size: 15, color: AppTheme.success),
                         const SizedBox(width: 4),
-                        const Text(
-                          '作者回复',
+                        Text(
+                          L10n.instance.t('i18n_112'),
                           style: TextStyle(
                             fontSize: 12,
                             color: AppTheme.success,

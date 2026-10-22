@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 class SlidableActionContent extends StatelessWidget {
   final IconData icon;
   final String label;
-  const SlidableActionContent({super.key, required this.icon, required this.label});
+const SlidableActionContent({super.key, required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {

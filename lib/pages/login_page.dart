@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 
 import '../app_state.dart';
 import '../constants.dart';
@@ -9,7 +10,7 @@ import 'privacy_policy_page.dart';
 /// 登录 / 注册页
 /// MVP 阶段为本地账号体系：账号仅保存在本机 SQLite，无云端。
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+const   LoginPage({super.key});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -61,9 +62,8 @@ class _LoginPageState extends State<LoginPage> {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('检测到邀请人'),
-        content: Text('检测到邀请码 $code，注册后将自动绑定为你的邀请人，'
-            '绑定后不可修改。是否绑定？'),
+        title: Text(L10n.instance.t('login_inviter_detected')),
+        content: Text(L10n.instance.t('login_invite_code_desc', args: {'code':code})),
         actions: [
           TextButton(
             onPressed: () {
@@ -73,14 +73,14 @@ class _LoginPageState extends State<LoginPage> {
                 _detectedInvite = false;
               });
             },
-            child: const Text('不绑定'),
+            child: Text(L10n.instance.t('login_skip_bind')),
           ),
           FilledButton(
             onPressed: () {
               Navigator.pop(ctx);
               setState(() => _inviteCtrl.text = code);
             },
-            child: const Text('确认绑定'),
+            child: Text(L10n.instance.t('login_confirm_bind')),
           ),
         ],
       ),
@@ -100,17 +100,17 @@ class _LoginPageState extends State<LoginPage> {
   String? _validate() {
     final phone = _phoneCtrl.text.trim();
     if (!RegExp(r'^1\d{10}$').hasMatch(phone)) {
-      return '请输入 11 位手机号';
+      return L10n.instance.t('login_page_enter_an');
     }
     if (_pwdCtrl.text.length < 6) {
-      return '密码至少 6 位';
+      return L10n.instance.t('i18n_236');
     }
     if (!_agree) {
-      return '请先阅读并同意《用户协议》与《隐私政策》';
+      return L10n.instance.t('i18n_568');
     }
     if (_isRegister) {
-      if (_pwdCtrl.text.length > 20) return '密码最多 20 位';
-      if (_pwdCtrl.text != _confirmCtrl.text) return '两次输入的密码不一致';
+      if (_pwdCtrl.text.length > 20) return L10n.instance.t('i18n_235');
+      if (_pwdCtrl.text != _confirmCtrl.text) return L10n.instance.t('i18n_083');
     }
     return null;
   }
@@ -152,7 +152,7 @@ class _LoginPageState extends State<LoginPage> {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = '操作异常，请重试；若反复出现请查看「设置-关于-错误日志」';
+          _error = L10n.instance.t('i18n_374');
         });
       }
       return;
@@ -187,11 +187,11 @@ class _LoginPageState extends State<LoginPage> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
+              constraints: BoxConstraints(maxWidth: 420),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SizedBox(height: 20),
+                  SizedBox(height: 20),
                   Center(
                     child: Container(
                       width: 68,
@@ -204,27 +204,27 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         borderRadius: BorderRadius.circular(AppRadius.sheet),
                       ),
-                      child: const Icon(Icons.work_outline,
+                      child: Icon(Icons.work_outline,
                           color: Colors.white, size: 36),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
+                  SizedBox(height: 16),
+                  Text(
                     AppConfig.appName,
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
                   ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    '自由职业者的接单记账工具箱',
+                  SizedBox(height: 6),
+                  Text(
+                    L10n.instance.t('i18n_547'),
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 13, color: AppTheme.textSub),
                   ),
-                  const SizedBox(height: 28),
+                  SizedBox(height: 28),
                   SegmentedButton<bool>(
-                    segments: const [
-                      ButtonSegment(value: false, label: Text('登录'), icon: Icon(Icons.login)),
-                      ButtonSegment(value: true, label: Text('注册'), icon: Icon(Icons.person_add_alt_1)),
+                    segments: [
+                      ButtonSegment(value: false, label: Text(L10n.instance.t('common_login')), icon: Icon(Icons.login)),
+                      ButtonSegment(value: true, label: Text(L10n.instance.t('common_signup')), icon: Icon(Icons.person_add_alt_1)),
                     ],
                     selected: {_isRegister},
                     onSelectionChanged: (s) => setState(() {
@@ -242,39 +242,39 @@ class _LoginPageState extends State<LoginPage> {
                       selectedBackgroundColor: AppTheme.primary.withValues(alpha: 0.12),
                       selectedForegroundColor: AppTheme.primary,
                       foregroundColor: AppTheme.textSub,
-                      textStyle: const TextStyle(fontWeight: FontWeight.w600),
-                      side: const BorderSide(color: Color(0xFFE4E7EF)),
+                      textStyle: TextStyle(fontWeight: FontWeight.w600),
+                      side: BorderSide(color: Color(0xFFE4E7EF)),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(AppRadius.md),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  SizedBox(height: 24),
                   if (_isRegister) ...[
                     TextField(
                       controller: _nameCtrl,
                       textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: '昵称（选填）',
+                      decoration: InputDecoration(
+                        labelText: L10n.instance.t('i18n_419'),
                         prefixIcon: Icon(Icons.badge_outlined),
-                        hintText: '怎么称呼你',
+                        hintText: L10n.instance.t('login_nickname_title'),
                       ),
                     ),
-                    const SizedBox(height: 14),
+                    SizedBox(height: 14),
                   ],
                   TextField(
                     controller: _phoneCtrl,
                     keyboardType: TextInputType.phone,
                     maxLength: 11,
                     textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(
-                      labelText: '手机号',
+                    decoration: InputDecoration(
+                      labelText: L10n.instance.t('i18n_343'),
                       counterText: '',
                       prefixIcon: Icon(Icons.phone_android),
-                      hintText: '请输入 11 位手机号',
+                      hintText: L10n.instance.t('login_phone_hint'),
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   TextField(
                     controller: _pwdCtrl,
                     obscureText: _obscurePwd,
@@ -282,10 +282,10 @@ class _LoginPageState extends State<LoginPage> {
                     textInputAction: TextInputAction.done,
                     onSubmitted: (_) => _submit(),
                     decoration: InputDecoration(
-                      labelText: '密码',
+                      labelText: L10n.instance.t('i18n_234'),
                       counterText: '',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      hintText: '至少 6 位',
+                      prefixIcon: Icon(Icons.lock_outline),
+                      hintText: L10n.instance.t('login_pwd_hint'),
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscurePwd ? Icons.visibility_off : Icons.visibility,
@@ -298,15 +298,15 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                   if (_isRegister) ...[
-                    const SizedBox(height: 14),
+                    SizedBox(height: 14),
                     TextField(
                       controller: _confirmCtrl,
                       obscureText: _obscureConfirm,
                       textInputAction: TextInputAction.done,
                       onSubmitted: (_) => _submit(),
                       decoration: InputDecoration(
-                        labelText: '确认密码',
-                        prefixIcon: const Icon(Icons.lock_outline),
+                        labelText: L10n.instance.t('i18n_510'),
+                        prefixIcon: Icon(Icons.lock_outline),
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscureConfirm
@@ -322,22 +322,22 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ],
                   if (_isRegister) ...[
-                    const SizedBox(height: 14),
+                    SizedBox(height: 14),
                     TextField(
                       controller: _inviteCtrl,
                       textInputAction: TextInputAction.done,
                       onSubmitted: (_) => _submit(),
                       decoration: InputDecoration(
-                        labelText: '邀请码（选填）',
-                        prefixIcon: const Icon(Icons.redeem_outlined),
-                        hintText: '填写好友邀请码，自动绑定推广关系',
+                        labelText: L10n.instance.t('i18n_615'),
+                        prefixIcon: Icon(Icons.redeem_outlined),
+                        hintText: L10n.instance.t('login_invite_hint'),
                         helperText: _detectedInvite
-                            ? '已自动填入邀请链接中的邀请码，可修改或清空'
+                            ? L10n.instance.t('i18n_286')
                             : null,
                       ),
                     ),
                   ],
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   Row(
                     children: [
                       Checkbox(
@@ -352,8 +352,8 @@ class _LoginPageState extends State<LoginPage> {
                             MaterialPageRoute(
                                 builder: (_) => const PrivacyPolicyPage()),
                           ),
-                          child: const Text(
-                            '我已阅读并同意《用户协议》与《隐私政策》',
+                          child: Text(
+                            L10n.instance.t('i18n_337'),
                             style: TextStyle(
                                 fontSize: 12, color: AppTheme.textSub),
                           ),
@@ -362,7 +362,7 @@ class _LoginPageState extends State<LoginPage> {
                     ],
                   ),
                   if (_error != null) ...[
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 10),
@@ -372,9 +372,9 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.error_outline,
+                          Icon(Icons.error_outline,
                               size: 18, color: AppTheme.danger),
-                          const SizedBox(width: 8),
+                          SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               _error!,
@@ -386,25 +386,25 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 24),
+                  SizedBox(height: 24),
                   SizedBox(
                     height: 48,
                     child: FilledButton(
                       onPressed: _loading ? null : _submit,
                       child: _loading
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 22,
                               height: 22,
                               child: CircularProgressIndicator(
                                   strokeWidth: 2.5, color: Colors.white),
                             )
-                          : Text(_isRegister ? '注册并登录' : '登录'),
+                          : Text(_isRegister ? L10n.instance.t('login_signup_login') : L10n.instance.t('common_login')),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Center(
+                  Center(
                     child: Text(
-                      '账号云端同步 · 业务数据仅存本机',
+                      L10n.instance.t('i18n_587'),
                       style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                     ),
                   ),

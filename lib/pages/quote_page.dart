@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:image_picker/image_picker.dart';
@@ -30,8 +31,7 @@ class QuotePage extends StatefulWidget {
   /// 从项目详情进入时预选关联项目
   final int? initialProjectId;
   final String? initialTitle;
-
-  const QuotePage({super.key, this.initialProjectId, this.initialTitle});
+const QuotePage({super.key, this.initialProjectId, this.initialTitle});
 
   @override
   State<QuotePage> createState() => _QuotePageState();
@@ -58,7 +58,7 @@ class _QuotePageState extends State<QuotePage>
 
   // ================= 详细报价状态（保留原有能力） =================
   // v1.43.3：明细行不再预填任何实值，默认给一行空白明细（仅灰色占位提示）
-  final _lines = <QuoteLine>[const QuoteLine(itemName: '')];
+  final _lines = <QuoteLine>[QuoteLine(itemName: '')];
   double _taxRate = AppConfig.defaultTaxRate;
   final _fmt = NumberFormat('#,##0.00');
   final _clientCtrl = TextEditingController();
@@ -141,12 +141,12 @@ class _QuotePageState extends State<QuotePage>
       setState(() => _imagePath = dest);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('参考图已添加（仅保存在本机，不上传）')),
+        SnackBar(content: Text(L10n.instance.t('quote_ref_added'))),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('图片保存失败，请重试')),
+        SnackBar(content: Text(L10n.instance.t('quote_ref_save_failed'))),
       );
     }
   }
@@ -171,9 +171,9 @@ class _QuotePageState extends State<QuotePage>
           child: Image.file(
             File(path),
             fit: BoxFit.contain,
-            errorBuilder: (_, _, _) => const Padding(
+            errorBuilder: (_, _, _) => Padding(
               padding: EdgeInsets.all(32),
-              child: Text('图片已失效，可重新选择',
+              child: Text(L10n.instance.t('quote_page_image_expired'),
                   style: TextStyle(color: Colors.white)),
             ),
           ),
@@ -187,12 +187,12 @@ class _QuotePageState extends State<QuotePage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('参考图（可选）',
+        Text(L10n.instance.t('quote_page_reference_image'),
             style: TextStyle(fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 4),
-        const Text('插入本地参考图，仅保存在本机不上传，会随报价详情一起展示',
+        SizedBox(height: 4),
+        Text(L10n.instance.t('quote_ref_desc'),
             style: TextStyle(fontSize: 11, color: AppTheme.textSub)),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         if (_imagePath.isNotEmpty)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -211,24 +211,24 @@ class _QuotePageState extends State<QuotePage>
                       height: 120,
                       color: AppTheme.bgCard,
                       alignment: Alignment.center,
-                      child: const Icon(Icons.broken_image_outlined, color: AppTheme.textSub),
+                      child: Icon(Icons.broken_image_outlined, color: AppTheme.textSub),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   TextButton.icon(
                     onPressed: _viewQuoteImage,
-                    icon: const Icon(Icons.zoom_in, size: 18),
-                    label: const Text('查看大图'),
+                    icon: Icon(Icons.zoom_in, size: 18),
+                    label: Text(L10n.instance.t('quote_view_full')),
                   ),
                   TextButton.icon(
                     onPressed: _removeQuoteImage,
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    label: const Text('移除'),
+                    icon: Icon(Icons.delete_outline, size: 18),
+                    label: Text(L10n.instance.t('common_remove')),
                   ),
                 ],
               ),
@@ -237,8 +237,8 @@ class _QuotePageState extends State<QuotePage>
         else
           OutlinedButton.icon(
             onPressed: _pickQuoteImage,
-            icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
-            label: const Text('选择参考图'),
+            icon: Icon(Icons.add_photo_alternate_outlined, size: 18),
+            label: Text(L10n.instance.t('quote_pick_ref_image')),
           ),
       ],
     );
@@ -264,11 +264,11 @@ class _QuotePageState extends State<QuotePage>
     final amount = double.tryParse(_simpleAmountCtrl.text.trim()) ?? 0;
     final note = _simpleNoteCtrl.text.trim();
     final b = StringBuffer()
-      ..writeln('【报价】')
-      ..writeln('客户：$objectName')
-      ..writeln('报价金额：¥${_fmt.format(amount)}');
+      ..writeln(L10n.instance.t('i18n_054'))
+      ..writeln(L10n.instance.t('i18n_231', args: {'v0': objectName}))
+      ..writeln(L10n.instance.t('i18n_351', args: {'v0': _fmt.format(amount)}));
     if (note.isNotEmpty) {
-      b.writeln('备注：$note');
+      b.writeln(L10n.instance.t('i18n_201', args: {'v0': note}));
     }
     return b.toString();
   }
@@ -277,7 +277,7 @@ class _QuotePageState extends State<QuotePage>
     await Clipboard.setData(ClipboardData(text: buildSimpleQuoteText()));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('报价单已复制，去微信/邮件里粘贴给客户吧')),
+      SnackBar(content: Text(L10n.instance.t('quote_copied_tip'))),
     );
   }
 
@@ -286,14 +286,14 @@ class _QuotePageState extends State<QuotePage>
     final objectName = _simpleObjectName;
     if (objectName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写报价对象（客户名称或选择关联项目）')),
+        SnackBar(content: Text(L10n.instance.t('quote_target_required'))),
       );
       return;
     }
     final amount = double.tryParse(_simpleAmountCtrl.text.trim()) ?? 0;
     if (amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写报价金额')),
+        SnackBar(content: Text(L10n.instance.t('quote_amount_required'))),
       );
       return;
     }
@@ -305,7 +305,7 @@ class _QuotePageState extends State<QuotePage>
       customerId: _simpleCustomerId,
       title: objectName,
       taxRate: _simpleTaxRate * 100, // 存百分数，兼容历史简单报价默认 0
-      lines: const [],
+      lines: [],
       total: Money.parseYuanToFen(amount.toStringAsFixed(2)),
       createdAt: _simpleCreatedAt ?? now,
       type: 'simple',
@@ -320,7 +320,7 @@ class _QuotePageState extends State<QuotePage>
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_simpleQuoteId == null ? '报价单已保存到历史' : '报价单已更新')),
+      SnackBar(content: Text(_simpleQuoteId == null ? L10n.instance.t('quote_saved') : L10n.instance.t('quote_updated'))),
     );
     // 保存成功后重置为初始新建状态
     setState(() {
@@ -340,24 +340,24 @@ class _QuotePageState extends State<QuotePage>
   // ================= 详细报价：文本生成 / 复制（保留原逻辑） =================
   String buildQuoteText() {
     final b = StringBuffer()
-      ..writeln('【报价单】')
-      ..writeln('客户：${_clientCtrl.text.trim().isEmpty ? '________' : _clientCtrl.text.trim()}');
+      ..writeln(L10n.instance.t('i18n_055'))
+      ..writeln(L10n.instance.t('quote_client_line', args: {'v0': _clientCtrl.text.trim().isEmpty ? '________' : _clientCtrl.text.trim()}));
     b.writeln('------------------');
     for (int i = 0; i < _lines.length; i++) {
       final l = _lines[i];
       b.writeln('${i + 1}. ${l.itemName}');
       if (l.hours > 0) {
-        b.writeln('   工时 ${l.hours}h × ${_fmt.format(l.hourRate / 100)}元/h = ${_fmt.format(l.laborCost / 100)}元');
+        b.writeln(L10n.instance.t('i18n_001', args: {'v0':l.hours.toString(), 'v1':_fmt.format(l.hourRate / 100), 'v2':_fmt.format(l.laborCost / 100)}));
       }
       if (l.materialFee > 0) {
-        b.writeln('   物料 ${_fmt.format(l.materialFee / 100)}元');
+        b.writeln(L10n.instance.t('i18n_002', args: {'v0': _fmt.format(l.materialFee / 100)}));
       }
     }
     b.writeln('------------------');
-    b.writeln('小计：${_fmt.format(_subtotal / 100)} 元');
-    b.writeln('税费（${(_taxRate * 100).toStringAsFixed(0)}%）：${_fmt.format(_tax / 100)} 元');
-    b.writeln('合计：${_fmt.format(_total / 100)} 元');
-    b.writeln('请确认无误后回复，感谢合作！');
+    b.writeln(L10n.instance.t('i18n_246', args: {'v0': _fmt.format(_subtotal / 100)}));
+    b.writeln(L10n.instance.t('i18n_513', args: {'v0': (_taxRate * 100).toStringAsFixed(0), 'v1': _fmt.format(_tax / 100)}));
+    b.writeln(L10n.instance.t('i18n_166', args: {'v0': _fmt.format(_total / 100)}));
+    b.writeln(L10n.instance.t('i18n_581'));
     return b.toString();
   }
 
@@ -365,7 +365,7 @@ class _QuotePageState extends State<QuotePage>
     await Clipboard.setData(ClipboardData(text: buildQuoteText()));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('报价单已复制，去微信/邮件里粘贴给客户吧')),
+      SnackBar(content: Text(L10n.instance.t('quote_copied_tip'))),
     );
   }
 
@@ -374,7 +374,7 @@ class _QuotePageState extends State<QuotePage>
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写报价单标题（如客户 / 项目名）')),
+        SnackBar(content: Text(L10n.instance.t('quote_title_required'))),
       );
       return;
     }
@@ -400,7 +400,7 @@ class _QuotePageState extends State<QuotePage>
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_quoteId == null ? '报价单已保存到历史' : '报价单已更新')),
+      SnackBar(content: Text(_quoteId == null ? L10n.instance.t('quote_saved') : L10n.instance.t('quote_updated'))),
     );
     // 保存成功后重置为初始新建状态，方便直接开始填下一份报价
     setState(() {
@@ -416,7 +416,7 @@ class _QuotePageState extends State<QuotePage>
       _imagePath = '';
       _lines
         ..clear()
-        ..add(const QuoteLine(itemName: '')); // v1.43.3：重置为一行空白明细，不预填实值
+        ..add(QuoteLine(itemName: '')); // v1.43.3：重置为一行空白明细，不预填实值
     });
   }
 
@@ -439,7 +439,7 @@ class _QuotePageState extends State<QuotePage>
         ..add(QuoteLine(itemName: q.title, hours: 1, hourRate: q.total));
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已转为详细报价，可继续调整明细')),
+      SnackBar(content: Text(L10n.instance.t('quote_to_detailed_done'))),
     );
   }
 
@@ -471,26 +471,26 @@ class _QuotePageState extends State<QuotePage>
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.receipt_long_outlined,
+              leading: Icon(Icons.receipt_long_outlined,
                   color: AppTheme.primary),
-              title: Text('已收合计  ¥${fmt.format(total / 100)}',
-                  style: const TextStyle(
+              title: Text(L10n.instance.t('i18n_281', args: {'v0': fmt.format(total / 100)}),
+                  style: TextStyle(
                       fontSize: 15, fontWeight: FontWeight.w700)),
-              subtitle: Text('报价：${q.title}',
+              subtitle: Text(L10n.instance.t('quote_page_quote', args: {'q.title': q.title}),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
-            const AppCardDivider(),
+            AppCardDivider(),
             Flexible(
               child: flows.isEmpty
-                  ? const AppEmpty(
+                  ? AppEmpty(
                       icon: Icons.receipt_long_outlined,
-                      title: '该报价单暂无关联收款流水',
+                      title: L10n.instance.t('quote_no_payments'),
                     )
                   : ListView.separated(
                       shrinkWrap: true,
                       itemCount: flows.length,
                       separatorBuilder: (_, _) =>
-                          const AppCardDivider(),
+                          AppCardDivider(),
                       itemBuilder: (_, i) {
                         final f = flows[i];
                         final amt =
@@ -503,7 +503,7 @@ class _QuotePageState extends State<QuotePage>
                             ? fl
                             : (t >= 0 && t < PayType.values.length
                                 ? PayType.values[t].label
-                                : '收款');
+                                : L10n.instance.t('quote_page_collect'));
                         final paidAt = DateTime.fromMillisecondsSinceEpoch(
                             ((f['paid_at'] as num?)?.toInt() ?? 0));
                         final note =
@@ -518,7 +518,7 @@ class _QuotePageState extends State<QuotePage>
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis),
                           trailing: Text(
-                              reconciled ? '已对账' : '未对账',
+                              reconciled ? L10n.instance.t('quote_page_reconciled') : L10n.instance.t('quote_page_unreconciled'),
                               style: TextStyle(
                                   fontSize: 11,
                                   color: reconciled
@@ -583,20 +583,20 @@ class _QuotePageState extends State<QuotePage>
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
-          title: const Text('确认成交 · 选择客户'),
+          title: Text(L10n.instance.t('quote_close_deal_choose')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('将「$quoteTitle」转为正式项目，需指定所属客户：',
-                  style: const TextStyle(fontSize: 13, color: AppTheme.textSub)),
-              const SizedBox(height: 12),
+              Text(L10n.instance.t('quote_to_project_desc', args: {'quoteTitle':quoteTitle}),
+                  style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
+              SizedBox(height: 12),
               if (customers.isNotEmpty) ...[
                 DropdownButtonFormField<int>(
                   initialValue: selected,
                   isExpanded: true,
-                  decoration: const InputDecoration(
-                      isDense: true, labelText: '已有客户'),
+                  decoration: InputDecoration(
+                      isDense: true, labelText: L10n.instance.t('i18n_284')),
                   items: customers
                       .map((c) => DropdownMenuItem<int>(
                           value: c.id!, child: Text(c.name)))
@@ -606,18 +606,18 @@ class _QuotePageState extends State<QuotePage>
                     nameCtrl.clear();
                   }),
                 ),
-                const SizedBox(height: 12),
-                const AppCardDivider(),
-                const Text('或新建客户：',
+                SizedBox(height: 12),
+                AppCardDivider(),
+                Text(L10n.instance.t('quote_or_new_customer'),
                     style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
-                const SizedBox(height: 6),
+                SizedBox(height: 6),
               ],
               TextField(
                 controller: nameCtrl,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   isDense: true,
                   border: OutlineInputBorder(),
-                  hintText: '新客户名称',
+                  hintText: L10n.instance.t('quote_new_customer_name'),
                 ),
                 onChanged: (v) => setState(() {
                   if (v.trim().isNotEmpty) selected = null;
@@ -626,7 +626,7 @@ class _QuotePageState extends State<QuotePage>
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('取消')),
+            TextButton(onPressed: () => Navigator.pop(ctx, null), child: Text(L10n.instance.t('common_cancel'))),
             FilledButton(
               onPressed: () {
                 final newName = nameCtrl.text.trim();
@@ -644,7 +644,7 @@ class _QuotePageState extends State<QuotePage>
                   Navigator.pop(ctx, selected);
                 }
               },
-              child: const Text('确认成交'),
+              child: Text(L10n.instance.t('quote_close_deal')),
             ),
           ],
         ),
@@ -681,11 +681,11 @@ class _QuotePageState extends State<QuotePage>
       if (!ctx.mounted) return;
       Navigator.pop(ctx);
       messenger.showSnackBar(
-        const SnackBar(content: Text('网页报价单已生成，选择应用即可发送给客户')),
+        SnackBar(content: Text(L10n.instance.t('quote_web_generated'))),
       );
     } catch (e) {
       if (!ctx.mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text('分享网页报价单失败：$e')));
+      messenger.showSnackBar(SnackBar(content: Text(L10n.instance.t('quote_web_share_failed', args: {'e':'$e'}))));
     }
   }
 
@@ -700,7 +700,7 @@ class _QuotePageState extends State<QuotePage>
       ErrorReporter.instance.logError('quote_open_history', e, st);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('报价历史加载失败，请稍后重试')),
+          SnackBar(content: Text(L10n.instance.t('quote_history_load_failed'))),
         );
       }
       return;
@@ -708,7 +708,7 @@ class _QuotePageState extends State<QuotePage>
     if (!mounted) return;
     if (quotes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('还没有保存过报价单')),
+        SnackBar(content: Text(L10n.instance.t('quote_history_empty'))),
       );
       return;
     }
@@ -725,9 +725,9 @@ class _QuotePageState extends State<QuotePage>
               top: Radius.circular(AppRadius.sheet)),
           child: Column(
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(14),
-              child: Text('报价历史',
+              child: Text(L10n.instance.t('quote_history'),
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             ),
             Expanded(
@@ -742,7 +742,7 @@ class _QuotePageState extends State<QuotePage>
                     child: Slidable(
                       key: ValueKey('quote_${q.id}'),
                     endActionPane: ActionPane(
-                      motion: const ScrollMotion(),
+                      motion: ScrollMotion(),
                       // v1.46.12：操作区收窄，确保全部按钮完整落在白色弹层内
                       extentRatio: 0.7,
                       children: [
@@ -753,8 +753,8 @@ class _QuotePageState extends State<QuotePage>
                           // 首项左圆角（验收口径：首左末右、中间直角）
                           borderRadius: const BorderRadius.horizontal(
                               left: Radius.circular(AppRadius.md)),
-                          child: const SlidableActionContent(
-                              icon: Icons.public, label: '网页分享'),
+                          child: SlidableActionContent(
+                              icon: Icons.public, label: L10n.instance.t('quote_web_share')),
                         ),
                         CustomSlidableAction(
                           onPressed: (_) {
@@ -762,7 +762,7 @@ class _QuotePageState extends State<QuotePage>
                             showDialog<void>(
                               context: ctx,
                               builder: (dctx) => AlertDialog(
-                                title: const Text('报价单详情'),
+                                title: Text(L10n.instance.t('quote_detail')),
                                 content: SingleChildScrollView(
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
@@ -771,16 +771,16 @@ class _QuotePageState extends State<QuotePage>
                                     children: [
                                       ConstrainedBox(
                                         constraints:
-                                            const BoxConstraints(maxHeight: 320),
+                                            BoxConstraints(maxHeight: 320),
                                         child: SelectableText(_quoteTextFor(q)),
                                       ),
                                       if (q.imagePath.isNotEmpty) ...[
-                                        const SizedBox(height: 16),
-                                        const Text('参考图',
+                                        SizedBox(height: 16),
+                                        Text(L10n.instance.t('quote_reference_image'),
                                             style: TextStyle(
                                                 fontSize: 12,
                                                 color: AppTheme.textSub)),
-                                        const SizedBox(height: 8),
+                                        SizedBox(height: 8),
                                         GestureDetector(
                                           onTap: () =>
                                               _viewImagePath(q.imagePath),
@@ -793,7 +793,7 @@ class _QuotePageState extends State<QuotePage>
                                               width: double.infinity,
                                               fit: BoxFit.cover,
                                               errorBuilder: (_, _, _) =>
-                                                  const Text('图片已失效',
+                                                  Text(L10n.instance.t('quote_image_expired'),
                                                       style: TextStyle(
                                                           color: AppTheme
                                                               .textSub)),
@@ -808,15 +808,15 @@ class _QuotePageState extends State<QuotePage>
                                   TextButton(
                                       onPressed: () =>
                                           Navigator.pop(dctx),
-                                      child: const Text('关闭')),
+                                      child: Text(L10n.instance.t('common_close'))),
                                 ],
                               ),
                             );
                           },
                           backgroundColor: Colors.blueGrey,
                           foregroundColor: Colors.white,
-                          child: const SlidableActionContent(
-                              icon: Icons.visibility_outlined, label: '查看'),
+                          child: SlidableActionContent(
+                              icon: Icons.visibility_outlined, label: L10n.instance.t('common_view')),
                         ),
                         CustomSlidableAction(
                           onPressed: (_) async {
@@ -827,13 +827,13 @@ class _QuotePageState extends State<QuotePage>
                             if (!ctx.mounted) return;
                             Navigator.pop(ctx);
                             messenger.showSnackBar(
-                              const SnackBar(content: Text('报价单文本已复制')),
+                              SnackBar(content: Text(L10n.instance.t('quote_page_quote_text'))),
                             );
                           },
                           backgroundColor: AppTheme.accent,
                           foregroundColor: Colors.white,
-                          child: const SlidableActionContent(
-                              icon: Icons.content_copy, label: '复制'),
+                          child: SlidableActionContent(
+                              icon: Icons.content_copy, label: L10n.instance.t('common_copy')),
                         ),
                         CustomSlidableAction(
                           onPressed: (_) {
@@ -843,8 +843,8 @@ class _QuotePageState extends State<QuotePage>
                           },
                           backgroundColor: AppTheme.primary,
                           foregroundColor: Colors.white,
-                          child: const SlidableActionContent(
-                              icon: Icons.edit_outlined, label: '编辑'),
+                          child: SlidableActionContent(
+                              icon: Icons.edit_outlined, label: L10n.instance.t('common_edit')),
                         ),
                         CustomSlidableAction(
                           onPressed: (_) async {
@@ -857,40 +857,40 @@ class _QuotePageState extends State<QuotePage>
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     ListTile(
-                                      leading: const Icon(
+                                      leading: Icon(
                                           Icons.account_balance_wallet_outlined,
                                           color: AppTheme.accent),
-                                      title: const Text('查看已收流水'),
+                                      title: Text(L10n.instance.t('quote_view_payments')),
                                       onTap: () =>
                                           Navigator.pop(sctx, 'pay_flows'),
                                     ),
                                     ListTile(
-                                      leading: const Icon(Icons.trending_up,
+                                      leading: Icon(Icons.trending_up,
                                           color: AppTheme.accent),
-                                      title: const Text('转为待收款'),
+                                      title: Text(L10n.instance.t('quote_mark_pending')),
                                       onTap: () =>
                                           Navigator.pop(sctx, 'to_pending'),
                                     ),
                                     ListTile(
-                                      leading: const Icon(Icons.assignment_outlined,
+                                      leading: Icon(Icons.assignment_outlined,
                                           color: AppTheme.primary),
-                                      title: const Text('确认成交转正式项目'),
+                                      title: Text(L10n.instance.t('quote_close_deal_btn')),
                                       onTap: () =>
                                           Navigator.pop(sctx, 'to_project'),
                                     ),
                                     if (q.isSimple)
                                       ListTile(
-                                        leading: const Icon(Icons.unfold_more,
+                                        leading: Icon(Icons.unfold_more,
                                             color: AppTheme.accent),
-                                        title: const Text('转为详细报价'),
+                                        title: Text(L10n.instance.t('quote_to_detailed')),
                                         onTap: () =>
                                             Navigator.pop(sctx, 'to_full'),
                                       ),
                                     ListTile(
-                                      leading: const Icon(
+                                      leading: Icon(
                                           Icons.bookmarks_outlined,
                                           color: AppTheme.primary),
-                                      title: const Text('另存为报价模板'),
+                                      title: Text(L10n.instance.t('quote_save_template_btn')),
                                       onTap: () => Navigator.pop(
                                           sctx, 'save_template'),
                                     ),
@@ -907,14 +907,14 @@ class _QuotePageState extends State<QuotePage>
                               await _quoteToPendingCollection(q);
                               if (!ctx.mounted) return;
                               Navigator.pop(ctx);
-                              messenger.showSnackBar(const SnackBar(
-                                  content: Text('已转为待收款，可在看板查看待收尾款')));
+                              messenger.showSnackBar(SnackBar(
+                                  content: Text(L10n.instance.t('quote_mark_pending_done'))));
                             } else if (action == 'to_project') {
                               final projectId = await _quoteToProject(q);
                               if (projectId == null || !ctx.mounted) return;
                               Navigator.pop(ctx);
-                              messenger.showSnackBar(const SnackBar(
-                                  content: Text('已确认成交并创建正式项目')));
+                              messenger.showSnackBar(SnackBar(
+                                  content: Text(L10n.instance.t('quote_close_done'))));
                             } else if (action == 'to_full') {
                               _convertToFull(q);
                               Navigator.pop(ctx);
@@ -928,8 +928,8 @@ class _QuotePageState extends State<QuotePage>
                           },
                           backgroundColor: Colors.orange,
                           foregroundColor: Colors.white,
-                          child: const SlidableActionContent(
-                              icon: Icons.swap_horiz, label: '流转'),
+                          child: SlidableActionContent(
+                              icon: Icons.swap_horiz, label: L10n.instance.t('quote_flow')),
                         ),
                         CustomSlidableAction(
                           onPressed: (_) async {
@@ -938,15 +938,15 @@ class _QuotePageState extends State<QuotePage>
                             final ok = await showDialog<bool>(
                               context: ctx,
                               builder: (dctx) => AlertDialog(
-                                title: const Text('删除报价单'),
-                                content: Text('确定删除「${q.title}」吗？\n\n删除后该报价单将从历史与所有统计中移除，不可恢复。'),
+                                title: Text(L10n.instance.t('quote_delete')),
+                                content: Text(L10n.instance.t('i18n_501', args: {'v0': q.title})),
                                 actions: [
                                   TextButton(
                                       onPressed: () =>
                                           Navigator.pop(dctx, false),
-                                      child: const Text('取消')),
+                                      child: Text(L10n.instance.t('common_cancel'))),
                                   AppButton(
-                                    label: '删除',
+                                    label: L10n.instance.t('common_delete'),
                                     kind: AppButtonKind.danger,
                                     size: AppButtonSize.medium,
                                     expand: false,
@@ -960,7 +960,7 @@ class _QuotePageState extends State<QuotePage>
                             await AppDb.instance.deleteQuote(q.id!);
                             if (!mounted) return;
                             messenger.showSnackBar(
-                              const SnackBar(content: Text('已删除报价单')),
+                              SnackBar(content: Text(L10n.instance.t('quote_deleted'))),
                             );
                             _openHistory();
                           },
@@ -968,8 +968,8 @@ class _QuotePageState extends State<QuotePage>
                           foregroundColor: Colors.white,
                           borderRadius: const BorderRadius.horizontal(
                               right: Radius.circular(AppRadius.md)),
-                          child: const SlidableActionContent(
-                              icon: Icons.delete_outline, label: '删除'),
+                          child: SlidableActionContent(
+                              icon: Icons.delete_outline, label: L10n.instance.t('common_delete')),
                         ),
                       ],
                     ),
@@ -999,7 +999,7 @@ class _QuotePageState extends State<QuotePage>
                                       borderRadius: BorderRadius.circular(AppRadius.xs),
                                     ),
                                     child: Text(
-                                      q.isSimple ? '简单报价' : '详细报价',
+                                      q.isSimple ? L10n.instance.t('quote_simple') : L10n.instance.t('quote_detailed'),
                                       style: TextStyle(
                                         fontSize: 11,
                                         color: q.isSimple
@@ -1018,7 +1018,7 @@ class _QuotePageState extends State<QuotePage>
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
+                              SizedBox(height: 8),
                               Text(
                                 '¥${_fmt.format(q.total / 100)}',
                                 style: const TextStyle(
@@ -1026,7 +1026,7 @@ class _QuotePageState extends State<QuotePage>
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
-                              const SizedBox(height: 2),
+                              SizedBox(height: 2),
                               Text(
                                 DateFormat('yyyy-MM-dd HH:mm').format(
                                     DateTime.fromMillisecondsSinceEpoch(
@@ -1109,7 +1109,7 @@ class _QuotePageState extends State<QuotePage>
           children: [
             Icon(_quoteStatusIcon(q.status),
                 size: 12, color: _quoteStatusColor(q.status)),
-            const SizedBox(width: 3),
+            SizedBox(width: 3),
             Text(
               q.status.label,
               style: TextStyle(
@@ -1133,9 +1133,9 @@ class _QuotePageState extends State<QuotePage>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(14),
-              child: AppSheetHeader(title: '报价状态'),
+              child: AppSheetHeader(title: L10n.instance.t('quote_status')),
             ),
             for (final s in QuoteStatus.values)
               ListTile(
@@ -1149,10 +1149,10 @@ class _QuotePageState extends State<QuotePage>
                   ),
                 ),
                 trailing:
-                    s == current ? const Icon(Icons.check) : null,
+                    s == current ? Icon(Icons.check) : null,
                 onTap: () => Navigator.pop(sctx, s),
               ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
           ],
         ),
       ),
@@ -1163,26 +1163,26 @@ class _QuotePageState extends State<QuotePage>
 
   /// 把历史报价另存为模板（解绑客户/项目，仅保留明细/单价/税率/备注等）
   Future<void> _saveAsTemplate(Quote q) async {
-    final ctrl = TextEditingController(text: '${q.title}（模板）');
+    final ctrl = TextEditingController(text: L10n.instance.t('quote_page_template', args: {'q.title': q.title}));
     final ok = await showDialog<bool>(
       context: context,
       builder: (dctx) => AlertDialog(
-        title: const Text('另存为报价模板'),
+        title: Text(L10n.instance.t('quote_save_template_btn')),
         content: TextField(
           controller: ctrl,
           autofocus: true,
-          decoration: const InputDecoration(
-            labelText: '模板名称',
-            hintText: '填写模板名称，之后可一键套用',
+          decoration: InputDecoration(
+            labelText: L10n.instance.t('i18n_471'),
+            hintText: L10n.instance.t('quote_template_name_hint'),
           ),
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dctx, false),
-              child: const Text('取消')),
+              child: Text(L10n.instance.t('common_cancel'))),
           FilledButton(
             onPressed: () => Navigator.pop(dctx, true),
-            child: const Text('保存模板'),
+            child: Text(L10n.instance.t('quote_save_template')),
           ),
         ],
       ),
@@ -1207,7 +1207,7 @@ class _QuotePageState extends State<QuotePage>
     await AppDb.instance.insertQuote(t);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已保存为报价模板，可在报价页右上角「模板」中套用')),
+      SnackBar(content: Text(L10n.instance.t('quote_template_saved'))),
     );
   }
 
@@ -1221,7 +1221,7 @@ class _QuotePageState extends State<QuotePage>
       ErrorReporter.instance.logError('quote_open_template', e, st);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('模板加载失败，请稍后重试')),
+          SnackBar(content: Text(L10n.instance.t('quote_template_load_failed'))),
         );
       }
       return;
@@ -1229,7 +1229,7 @@ class _QuotePageState extends State<QuotePage>
     if (!mounted) return;
     if (templates.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('还没有模板，可在报价历史中把报价「另存为模板」')),
+        SnackBar(content: Text(L10n.instance.t('quote_template_empty'))),
       );
       return;
     }
@@ -1242,14 +1242,14 @@ class _QuotePageState extends State<QuotePage>
         maxChildSize: 0.92,
         builder: (ctx, scrollCtrl) => Column(
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(14),
-              child: Text('报价模板',
+              child: Text(L10n.instance.t('quote_templates'),
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             ),
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text('选择模板后自动填入，可修改后保存',
+              child: Text(L10n.instance.t('quote_template_desc'),
                   style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
             ),
             Expanded(
@@ -1277,7 +1277,7 @@ class _QuotePageState extends State<QuotePage>
                             borderRadius: BorderRadius.circular(AppRadius.xs),
                           ),
                           child: Text(
-                            t.isSimple ? '简单' : '详细',
+                            t.isSimple ? L10n.instance.t('i18n_521') : L10n.instance.t('i18n_565'),
                             style: TextStyle(
                               fontSize: 11,
                               color: t.isSimple
@@ -1291,25 +1291,25 @@ class _QuotePageState extends State<QuotePage>
                             maxLines: 1, overflow: TextOverflow.ellipsis),
                         subtitle: Text('¥${_fmt.format(t.total / 100)}'),
                         trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline,
+                          icon: Icon(Icons.delete_outline,
                               color: AppTheme.danger),
-                          tooltip: '删除模板',
+                          tooltip: L10n.instance.t('quote_delete_template'),
                           onPressed: () async {
                             final messenger =
                                 ScaffoldMessenger.of(ctx);
                             final ok = await showDialog<bool>(
                               context: ctx,
                               builder: (dctx) => AlertDialog(
-                                title: const Text('删除模板'),
+                                title: Text(L10n.instance.t('quote_delete_template')),
                                 content: Text(
-                                    '确定删除模板「${t.title}」吗？删除后不可恢复。'),
+                                    L10n.instance.t('i18n_504', args: {'v0': t.title})),
                                 actions: [
                                   TextButton(
                                       onPressed: () =>
                                           Navigator.pop(dctx, false),
-                                      child: const Text('取消')),
+                                      child: Text(L10n.instance.t('common_cancel'))),
                                   AppButton(
-                                    label: '删除',
+                                    label: L10n.instance.t('common_delete'),
                                     kind: AppButtonKind.danger,
                                     size: AppButtonSize.medium,
                                     expand: false,
@@ -1324,7 +1324,7 @@ class _QuotePageState extends State<QuotePage>
                             if (!ctx.mounted) return;
                             Navigator.pop(ctx);
                             messenger.showSnackBar(
-                                const SnackBar(content: Text('模板已删除')));
+                                SnackBar(content: Text(L10n.instance.t('quote_template_deleted'))));
                             _openTemplateSheet();
                           },
                         ),
@@ -1347,7 +1347,7 @@ class _QuotePageState extends State<QuotePage>
     }
     _lockTabTo(picked.isSimple ? 0 : 1);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已套用模板，可修改后保存为新的报价单')),
+      SnackBar(content: Text(L10n.instance.t('quote_template_applied'))),
     );
   }
 
@@ -1385,7 +1385,7 @@ class _QuotePageState extends State<QuotePage>
       _lines
         ..clear()
         ..addAll(t.lines.isEmpty
-            ? [const QuoteLine(itemName: '')] // v1.43.3：模板无明细时给一行空白明细
+            ? [QuoteLine(itemName: '')] // v1.43.3：模板无明细时给一行空白明细
             : t.lines);
     });
   }
@@ -1394,18 +1394,18 @@ class _QuotePageState extends State<QuotePage>
   String _quoteTextFor(Quote q) {
     if (q.isSimple) {
       final b = StringBuffer()
-        ..writeln('【报价】')
-        ..writeln('客户：${q.title}');
-      b.writeln('报价金额：¥${_fmt.format(q.total / 100)}');
+        ..writeln(L10n.instance.t('i18n_054'))
+        ..writeln(L10n.instance.t('i18n_233', args: {'v0': q.title}));
+      b.writeln(L10n.instance.t('i18n_352', args: {'v0': _fmt.format(q.total / 100)}));
       // v1.46.12：简单报价带出税率（含税一口价的价内税费）
       if (q.taxRate > 0) {
         final rate = q.taxRate / 100;
         final taxFen = (q.total * rate / (1 + rate)).round();
         b.writeln(
-            '税率：${q.taxRate.toStringAsFixed(0)}%（其中税费 ¥${_fmt.format(taxFen / 100)}）');
+            L10n.instance.t('i18n_511', args: {'v0': q.taxRate.toStringAsFixed(0), 'v1': _fmt.format(taxFen / 100)}));
       }
       if (q.note.trim().isNotEmpty) {
-        b.writeln('备注：${q.note.trim()}');
+        b.writeln(L10n.instance.t('i18n_202', args: {'v0': q.note.trim()}));
       }
       return b.toString();
     }
@@ -1413,24 +1413,24 @@ class _QuotePageState extends State<QuotePage>
         0, (s, l) => s + l.laborCost + l.materialFee);
     final tax = sub * (q.taxRate / 100);
     final b = StringBuffer()
-      ..writeln('【报价单】')
-      ..writeln('客户：${q.title}');
+      ..writeln(L10n.instance.t('i18n_055'))
+      ..writeln(L10n.instance.t('i18n_233', args: {'v0': q.title}));
     b.writeln('------------------');
     for (int i = 0; i < q.lines.length; i++) {
       final l = q.lines[i];
       b.writeln('${i + 1}. ${l.itemName}');
       if (l.hours > 0) {
-        b.writeln('   工时 ${l.hours}h × ${_fmt.format(l.hourRate / 100)}元/h = ${_fmt.format(l.laborCost / 100)}元');
+        b.writeln(L10n.instance.t('i18n_001', args: {'v0':l.hours.toString(), 'v1':_fmt.format(l.hourRate / 100), 'v2':_fmt.format(l.laborCost / 100)}));
       }
       if (l.materialFee > 0) {
-        b.writeln('   物料 ${_fmt.format(l.materialFee / 100)}元');
+        b.writeln(L10n.instance.t('i18n_002', args: {'v0': _fmt.format(l.materialFee / 100)}));
       }
     }
     b.writeln('------------------');
-    b.writeln('小计：${_fmt.format(sub / 100)} 元');
-    b.writeln('税费（${q.taxRate.toStringAsFixed(0)}%）：${_fmt.format(tax / 100)} 元');
-    b.writeln('合计：${_fmt.format(q.total / 100)} 元');
-    b.writeln('请确认无误后回复，感谢合作！');
+    b.writeln(L10n.instance.t('i18n_247', args: {'v0': _fmt.format(sub / 100)}));
+    b.writeln(L10n.instance.t('i18n_516', args: {'v0': q.taxRate.toStringAsFixed(0), 'v1': _fmt.format(tax / 100)}));
+    b.writeln(L10n.instance.t('i18n_167', args: {'v0': _fmt.format(q.total / 100)}));
+    b.writeln(L10n.instance.t('i18n_581'));
     return b.toString();
   }
 
@@ -1490,7 +1490,7 @@ class _QuotePageState extends State<QuotePage>
       _lines
         ..clear()
         ..addAll(q.lines.isEmpty
-            ? [const QuoteLine(itemName: '')] // v1.43.3：历史无明细时给一行空白明细
+            ? [QuoteLine(itemName: '')] // v1.43.3：历史无明细时给一行空白明细
             : q.lines);
     });
   }
@@ -1575,27 +1575,27 @@ class _QuotePageState extends State<QuotePage>
                 // —— 上段：报价对象 / 关联项目 / 关联客户档案 ——
                 Column(
                   children: [
-                    const Text('报价对象',
+                    Text(L10n.instance.t('quote_target'),
                         style: TextStyle(
                             fontSize: 13,
                             color: AppTheme.textSub,
                             fontWeight: FontWeight.w500)),
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8),
                     TextField(
                       controller: _simpleNameCtrl,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         isDense: true,
                         border: OutlineInputBorder(),
-                        hintText: '输入客户名称',
+                        hintText: L10n.instance.t('quote_target_hint'),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8),
                     // 关联项目：轻量入口 + 底部弹层选择（v1.12.0 改，替代原丑下拉）
                     InkWell(
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                       onTap: _pickSimpleProject,
                       child: InputDecorator(
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           isDense: true,
                           contentPadding:
                               EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1611,7 +1611,7 @@ class _QuotePageState extends State<QuotePage>
                             Expanded(
                               child: Text(
                                 _simpleProjectId == null
-                                    ? '关联项目（可选）'
+                                    ? L10n.instance.t('quote_link_project_optional')
                                     : _projects
                                             .firstWhere(
                                                 (p) => p.id == _simpleProjectId)
@@ -1638,13 +1638,13 @@ class _QuotePageState extends State<QuotePage>
                         ),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8),
                     // 关联客户档案：轻量入口 + 底部弹层选择
                     InkWell(
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                       onTap: _pickSimpleCustomer,
                       child: InputDecorator(
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           isDense: true,
                           contentPadding:
                               EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1660,7 +1660,7 @@ class _QuotePageState extends State<QuotePage>
                             Expanded(
                               child: Text(
                                 _simpleCustomerId == null
-                                    ? '关联客户档案（可选）'
+                                    ? L10n.instance.t('i18n_132')
                                     : _customers
                                             .firstWhere(
                                                 (c) => c.id == _simpleCustomerId)
@@ -1689,7 +1689,7 @@ class _QuotePageState extends State<QuotePage>
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 // —— 中段：大号报价总额输入框 ——
                 Column(
                   children: [
@@ -1722,21 +1722,21 @@ class _QuotePageState extends State<QuotePage>
                         ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    const Center(
-                      child: Text('报价总额（一口价含税）',
+                    SizedBox(height: 8),
+                    Center(
+                      child: Text(L10n.instance.t('quote_total_label'),
                           style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
                     ),
-                    const SizedBox(height: 6),
+                    SizedBox(height: 6),
                     // 适用税率：v1.24.0 简单报价也可按单设置税率（仅记录并展示，一口价含税不重算总额）
                     Center(
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text('适用税率',
+                          Text(L10n.instance.t('quote_tax_label'),
                               style:
                                   TextStyle(fontSize: 12, color: AppTheme.textSub)),
-                          const SizedBox(width: 8),
+                          SizedBox(width: 8),
                           SizedBox(
                             width: 80,
                             child: TextField(
@@ -1762,16 +1762,16 @@ class _QuotePageState extends State<QuotePage>
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 // —— 下段：备注 / 参考图 ——
                 Column(
                   children: [
-                    const Text('备注（可选）',
+                    Text(L10n.instance.t('common_note_optional'),
                         style: TextStyle(
                             fontSize: 13,
                             color: AppTheme.textSub,
                             fontWeight: FontWeight.w500)),
-                    const SizedBox(height: 6),
+                    SizedBox(height: 6),
                     SizedBox(
                       height: 72,
                       child: TextField(
@@ -1780,13 +1780,13 @@ class _QuotePageState extends State<QuotePage>
                         expands: true,
                         keyboardType: TextInputType.multiline,
                         textAlignVertical: TextAlignVertical.top,
-                        decoration: const InputDecoration(
-                          hintText: '补充说明，如交付时间、付款方式等',
+                        decoration: InputDecoration(
+                          hintText: L10n.instance.t('quote_notes_hint'),
                           border: OutlineInputBorder(),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     _buildQuoteImageSection(),
                   ],
                 ),
@@ -1812,38 +1812,38 @@ class _QuotePageState extends State<QuotePage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('报价单标题',
+                Text(L10n.instance.t('quote_title_label'),
                     style: TextStyle(
                         fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 6),
+                SizedBox(height: 6),
                 TextField(
                   controller: _titleCtrl,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     isDense: true,
                     border: OutlineInputBorder(),
-                    hintText: '如：品牌官网改版报价',
+                    hintText: L10n.instance.t('quote_title_example'),
                   ),
                 ),
-                const SizedBox(height: 12),
-                const Text('客户名称',
+                SizedBox(height: 12),
+                Text(L10n.instance.t('quote_customer_name'),
                     style: TextStyle(
                         fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 6),
+                SizedBox(height: 6),
                 TextField(
                   controller: _clientCtrl,
-                  decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+                  decoration: InputDecoration(isDense: true, border: OutlineInputBorder()),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 DropdownButtonFormField<int?>(
                   initialValue: _detailCustomerId,
                   isExpanded: true,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     isDense: true,
-                    labelText: '关联客户档案（可选）',
+                    labelText: L10n.instance.t('i18n_132'),
                   ),
                   items: [
-                    const DropdownMenuItem<int?>(
-                        value: null, child: Text('不关联')),
+                    DropdownMenuItem<int?>(
+                        value: null, child: Text(L10n.instance.t('quote_no_link'))),
                     ..._customers.map((c) => DropdownMenuItem<int?>(
                         value: c.id, child: Text(c.name))),
                   ],
@@ -1855,39 +1855,39 @@ class _QuotePageState extends State<QuotePage>
                     }
                   }),
                 ),
-                const SizedBox(height: 12),
-                const Text('关联项目（可选）',
+                SizedBox(height: 12),
+                Text(L10n.instance.t('quote_link_project_optional'),
                     style: TextStyle(
                         fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 6),
+                SizedBox(height: 6),
                 DropdownButtonFormField<int?>(
                   initialValue: _projectId,
                   isExpanded: true,
-                  decoration: const InputDecoration(isDense: true),
+                  decoration: InputDecoration(isDense: true),
                   items: [
-                    const DropdownMenuItem<int?>(
-                        value: null, child: Text('不关联项目')),
+                    DropdownMenuItem<int?>(
+                        value: null, child: Text(L10n.instance.t('quote_no_link_project'))),
                     ..._projects.map((pr) => DropdownMenuItem<int?>(
                         value: pr.id, child: Text(pr.title))),
                   ],
                   onChanged: (v) => setState(() => _projectId = v),
                 ),
-                const SizedBox(height: 12),
-                const Text('备注（可选）',
+                SizedBox(height: 12),
+                Text(L10n.instance.t('common_note_optional'),
                     style: TextStyle(
                         fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 6),
+                SizedBox(height: 6),
                 TextField(
                   controller: _detailNoteCtrl,
                   maxLines: 3,
                   minLines: 1,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     isDense: true,
                     border: OutlineInputBorder(),
-                    hintText: '补充说明（随报价单保存到历史）',
+                    hintText: L10n.instance.t('quote_notes_optional'),
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 _buildQuoteImageSection(),
               ],
             ),
@@ -1897,11 +1897,11 @@ class _QuotePageState extends State<QuotePage>
           padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
           child: Row(
             children: [
-              const Expanded(child: Text('费用项目', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+              Expanded(child: Text(L10n.instance.t('quote_line_items'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
               TextButton.icon(
-                onPressed: () => setState(() => _lines.add(const QuoteLine(itemName: ''))),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('加一行'),
+                onPressed: () => setState(() => _lines.add(QuoteLine(itemName: ''))),
+                icon: Icon(Icons.add, size: 18),
+                label: Text(L10n.instance.t('quote_add_line')),
               ),
             ],
           ),
@@ -1919,8 +1919,8 @@ class _QuotePageState extends State<QuotePage>
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                const Text('税率'),
-                const Spacer(),
+                Text(L10n.instance.t('quote_tax')),
+                Spacer(),
                 SizedBox(
                   width: 120,
                   child: TextField(
@@ -1928,7 +1928,7 @@ class _QuotePageState extends State<QuotePage>
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: moneyInputFormatters,
                     textAlign: TextAlign.right,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       suffixText: '%',
                       isDense: true,
                       contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
@@ -1950,10 +1950,10 @@ class _QuotePageState extends State<QuotePage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _row('费用小计', '¥${_fmt.format(_subtotal / 100)}', Colors.white70),
-                _row('税费', '¥${_fmt.format(_tax / 100)}', Colors.white70),
-                const Divider(color: Colors.white24),
-                _row('本次报价合计', '¥${_fmt.format(_total / 100)}', Colors.white, bold: true, big: true),
+                _row(L10n.instance.t('i18n_588'), '¥${_fmt.format(_subtotal / 100)}', Colors.white70),
+                _row(L10n.instance.t('i18n_512'), '¥${_fmt.format(_tax / 100)}', Colors.white70),
+                Divider(color: Colors.white24),
+                _row(L10n.instance.t('quote_pdf_total'), '¥${_fmt.format(_total / 100)}', Colors.white, bold: true, big: true),
               ],
             ),
           ),
@@ -1980,32 +1980,32 @@ class _QuotePageState extends State<QuotePage>
     final saved = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('报价单落款'),
+        title: Text(L10n.instance.t('quote_signature')),
         content: SizedBox(
           width: double.maxFinite,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                '显示在报价单底部，PDF 导出时自动带上。',
+              Text(
+                L10n.instance.t('i18n_420'),
                 style: TextStyle(color: AppTheme.textSub, fontSize: 12),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               TextField(
                 controller: nameCtrl,
-                decoration: const InputDecoration(
-                  labelText: '落款名称',
-                  hintText: '如：李工 / 某某工作室',
+                decoration: InputDecoration(
+                  labelText: L10n.instance.t('i18n_549'),
+                  hintText: L10n.instance.t('quote_signature_example'),
                   border: OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: 10),
               TextField(
                 controller: contactCtrl,
-                decoration: const InputDecoration(
-                  labelText: '联系方式',
-                  hintText: '电话 / 微信 / 邮箱',
+                decoration: InputDecoration(
+                  labelText: L10n.instance.t('i18n_542'),
+                  hintText: L10n.instance.t('quote_signature_contact'),
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -2015,11 +2015,11 @@ class _QuotePageState extends State<QuotePage>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text(L10n.instance.t('common_cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('保存'),
+            child: Text(L10n.instance.t('common_save')),
           ),
         ],
       ),
@@ -2031,7 +2031,7 @@ class _QuotePageState extends State<QuotePage>
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('落款已保存')),
+        SnackBar(content: Text(L10n.instance.t('quote_signature_saved'))),
       );
     }
   }
@@ -2040,14 +2040,14 @@ class _QuotePageState extends State<QuotePage>
     final objectName = _simpleObjectName;
     if (objectName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写报价对象（客户名称或选择关联项目）')),
+        SnackBar(content: Text(L10n.instance.t('quote_target_required'))),
       );
       return;
     }
     final amount = double.tryParse(_simpleAmountCtrl.text.trim()) ?? 0;
     if (amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写报价金额')),
+        SnackBar(content: Text(L10n.instance.t('quote_amount_required'))),
       );
       return;
     }
@@ -2071,13 +2071,13 @@ class _QuotePageState extends State<QuotePage>
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写客户 / 项目名称')),
+        SnackBar(content: Text(L10n.instance.t('quote_target_required2'))),
       );
       return;
     }
     if (_lines.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请至少添加一项报价明细')),
+        SnackBar(content: Text(L10n.instance.t('quote_items_required'))),
       );
       return;
     }
@@ -2114,7 +2114,7 @@ class _QuotePageState extends State<QuotePage>
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Dialog(
+      builder: (_) => Dialog(
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Row(
@@ -2126,7 +2126,7 @@ class _QuotePageState extends State<QuotePage>
                 child: CircularProgressIndicator(strokeWidth: 2.5),
               ),
               SizedBox(width: 16),
-              Text('正在生成报价单 PDF…'),
+              Text(L10n.instance.t('quote_generating_pdf')),
             ],
           ),
         ),
@@ -2137,7 +2137,7 @@ class _QuotePageState extends State<QuotePage>
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('PDF 导出失败：$e')),
+        SnackBar(content: Text(L10n.instance.t('quote_pdf_failed', args: {'e':'$e'}))),
       );
     } finally {
       if (mounted) {
@@ -2162,7 +2162,7 @@ class _QuotePageState extends State<QuotePage>
         iconSize: 22,
         padding: EdgeInsets.zero,
         style: IconButton.styleFrom(
-          minimumSize: const Size(40, 40),
+          minimumSize: Size(40, 40),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           padding: EdgeInsets.zero,
         ),
@@ -2177,7 +2177,7 @@ class _QuotePageState extends State<QuotePage>
       appBar: AppBar(
         // 标题居中：无返回按钮时左侧留出与右侧图标区等宽的空白占位，
         // 使「报价单」始终位于整条 AppBar 的水平中心。
-        title: const Text('报价单'),
+        title: Text(L10n.instance.t('quote_title')),
         centerTitle: true,
         leadingWidth: _kAppBarSideWidth,
         leading: Navigator.of(context).canPop() ? null : const SizedBox.shrink(),
@@ -2186,28 +2186,28 @@ class _QuotePageState extends State<QuotePage>
           labelColor: AppTheme.primary,
           unselectedLabelColor: AppTheme.textSub,
           indicatorColor: AppTheme.primary,
-          tabs: const [
-            Tab(text: '简单报价'),
-            Tab(text: '详细报价'),
+          tabs: [
+            Tab(text: L10n.instance.t('quote_simple')),
+            Tab(text: L10n.instance.t('quote_detailed')),
           ],
         ),
         actions: [
           _appBarIcon(
             icon: Icons.article_outlined,
-            tooltip: '模板',
+            tooltip: L10n.instance.t('common_template'),
             onPressed: _openTemplateSheet,
           ),
           _appBarIcon(
             icon: Icons.draw_outlined,
-            tooltip: '落款',
+            tooltip: L10n.instance.t('common_signature'),
             onPressed: _editSignature,
           ),
           _appBarIcon(
             icon: Icons.history,
-            tooltip: '历史',
+            tooltip: L10n.instance.t('common_history'),
             onPressed: _openHistory,
           ),
-          const SizedBox(width: 4),
+          SizedBox(width: 4),
         ],
       ),
       body: TabBarView(
@@ -2229,7 +2229,7 @@ class _QuotePageState extends State<QuotePage>
                 children: [
                   Expanded(
                     child: AppButton(
-                      label: '生成并复制',
+                      label: L10n.instance.t('quote_generate_copy'),
                       kind: AppButtonKind.primary,
                       size: AppButtonSize.medium,
                       expand: false,
@@ -2237,22 +2237,22 @@ class _QuotePageState extends State<QuotePage>
                           isSimple ? _copySimpleToClipboard : _copyToClipboard,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  SizedBox(width: 10),
                   Expanded(
                     child: AppButton(
                       label: isSimple
-                          ? (_simpleQuoteId == null ? '保存到历史' : '更新保存')
-                          : (_quoteId == null ? '保存到历史' : '更新保存'),
+                          ? (_simpleQuoteId == null ? L10n.instance.t('i18n_115') : L10n.instance.t('i18n_429'))
+                          : (_quoteId == null ? L10n.instance.t('i18n_115') : L10n.instance.t('i18n_429')),
                       kind: AppButtonKind.tonal,
                       size: AppButtonSize.medium,
                       expand: false,
                       onPressed: isSimple ? _saveSimpleQuote : _saveQuote,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  SizedBox(width: 10),
                   Expanded(
                     child: AppButton(
-                      label: '导出PDF',
+                      label: L10n.instance.t('quote_export_pdf'),
                       kind: AppButtonKind.tonal,
                       size: AppButtonSize.medium,
                       expand: false,
@@ -2274,7 +2274,7 @@ class _QuotePageState extends State<QuotePage>
       child: Row(
         children: [
           Text(label, style: TextStyle(color: color, fontSize: big ? 14 : 13)),
-          const Spacer(),
+          Spacer(),
           Text(value,
               style: TextStyle(
                   color: color,
@@ -2291,8 +2291,7 @@ class _LineCard extends StatefulWidget {
   final QuoteLine line;
   final ValueChanged<QuoteLine> onChanged;
   final VoidCallback? onRemove;
-
-  const _LineCard({required this.index, required this.line, required this.onChanged, this.onRemove});
+const _LineCard({required this.index, required this.line, required this.onChanged, this.onRemove});
 
   @override
   State<_LineCard> createState() => _LineCardState();
@@ -2331,20 +2330,20 @@ class _LineCardState extends State<_LineCard> {
 
   Widget _rowLabel(String text) => Text(
         text,
-        style: const TextStyle(fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500),
+        style: TextStyle(fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w500),
       );
 
   InputDecoration _dec() => InputDecoration(
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-        border: const OutlineInputBorder(),
+        border: OutlineInputBorder(),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.sm),
           borderSide: BorderSide(color: AppTheme.textSub.withValues(alpha: 0.35)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadius.sm),
-          borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+          borderSide: BorderSide(color: AppTheme.primary, width: 1.5),
         ),
       );
 
@@ -2370,12 +2369,12 @@ class _LineCardState extends State<_LineCard> {
                   decoration: BoxDecoration(color: AppTheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
                   child: Text('${widget.index + 1}', style: const TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w700, fontSize: 13)),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _rowLabel('项目名称'),
+                      _rowLabel(L10n.instance.t('i18n_631')),
                       const SizedBox(height: 6),
                       TextField(
                         controller: nameCtrl,
@@ -2388,18 +2387,18 @@ class _LineCardState extends State<_LineCard> {
                 if (onRemove != null)
                   IconButton(
                     onPressed: onRemove,
-                    icon: const Icon(Icons.close, size: 18, color: AppTheme.textSub),
+                    icon: Icon(Icons.close, size: 18, color: AppTheme.textSub),
                   ),
               ],
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _rowLabel('工时(h)'),
+                      _rowLabel(L10n.instance.t('i18n_252')),
                       const SizedBox(height: 6),
                       TextField(
                         controller: hoursCtrl,
@@ -2410,12 +2409,12 @@ class _LineCardState extends State<_LineCard> {
                     ],
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _rowLabel('单价(元/h)'),
+                      _rowLabel(L10n.instance.t('i18n_154')),
                       const SizedBox(height: 6),
                       TextField(
                         controller: rateCtrl,
@@ -2427,12 +2426,12 @@ class _LineCardState extends State<_LineCard> {
                     ],
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _rowLabel('物料费(元)'),
+                      _rowLabel(L10n.instance.t('i18n_489')),
                       const SizedBox(height: 6),
                       TextField(
                         controller: matCtrl,
@@ -2458,7 +2457,7 @@ class _ProjectPickerSheet extends StatelessWidget {
   final List<Project> projects;
   final List<Customer> customers;
   final int? selectedId;
-  const _ProjectPickerSheet({
+const _ProjectPickerSheet({
     required this.projects,
     required this.customers,
     required this.selectedId,
@@ -2475,7 +2474,7 @@ class _ProjectPickerSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasProjects = projects.isNotEmpty;
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
       ),
@@ -2489,44 +2488,44 @@ class _ProjectPickerSheet extends StatelessWidget {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFFE4E7EF),
+                color: Color(0xFFE4E7EF),
                 borderRadius: BorderRadius.circular(AppRadius.xxs),
               ),
             ),
           ),
-          const Padding(
+          Padding(
             padding: EdgeInsets.fromLTRB(20, 14, 20, 4),
-            child: Text('关联项目',
+            child: Text(L10n.instance.t('quote_link_project'),
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textMain)),
           ),
-          const Padding(
+          Padding(
             padding: EdgeInsets.fromLTRB(20, 2, 20, 6),
-            child: Text('选中后若未填客户名会自动回填所属客户',
+            child: Text(L10n.instance.t('quote_link_project_hint'),
                 style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
           ),
-          const AppCardDivider(),
+          AppCardDivider(),
           Flexible(
             child: ListView(
               shrinkWrap: true,
               children: [
                 ListTile(
-                  leading: const Icon(Icons.block,
+                  leading: Icon(Icons.block,
                       size: 20, color: AppTheme.textSub),
-                  title: const Text('不关联',
+                  title: Text(L10n.instance.t('quote_no_link'),
                       style: TextStyle(color: AppTheme.textSub)),
                   trailing: selectedId == null
-                      ? const Icon(Icons.check,
+                      ? Icon(Icons.check,
                           size: 18, color: AppTheme.primary)
                       : null,
                   onTap: () => Navigator.pop(context, -1),
                 ),
                 if (!hasProjects)
-                  const AppEmpty(
+                  AppEmpty(
                     icon: Icons.folder_open_outlined,
-                    title: '还没有项目，可在项目页先添加',
+                    title: L10n.instance.t('quote_no_project'),
                   ),
                 ...projects.map((pr) => ListTile(
                       leading: CircleAvatar(
@@ -2570,13 +2569,13 @@ class _ProjectPickerSheet extends StatelessWidget {
 class _CustomerPickerSheet extends StatelessWidget {
   final List<Customer> customers;
   final int? selectedId;
-  const _CustomerPickerSheet({required this.customers, required this.selectedId});
+const _CustomerPickerSheet({required this.customers, required this.selectedId});
 
   @override
   Widget build(BuildContext context) {
     final hasCustomers = customers.isNotEmpty;
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
       ),
@@ -2590,33 +2589,33 @@ class _CustomerPickerSheet extends StatelessWidget {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFFE4E7EF),
+                color: Color(0xFFE4E7EF),
                 borderRadius: BorderRadius.circular(AppRadius.xxs),
               ),
             ),
           ),
-          const Padding(
+          Padding(
             padding: EdgeInsets.fromLTRB(20, 14, 20, 4),
-            child: Text('关联客户档案',
+            child: Text(L10n.instance.t('quote_link_customer'),
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textMain)),
           ),
-          const Padding(
+          Padding(
             padding: EdgeInsets.fromLTRB(20, 2, 20, 6),
-            child: Text('选中后自动回填客户名称',
+            child: Text(L10n.instance.t('quote_link_customer_hint'),
                 style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
           ),
-          const AppCardDivider(),
+          AppCardDivider(),
           Flexible(
             child: ListView(
               shrinkWrap: true,
               children: [
                 ListTile(
-                  leading: const Icon(Icons.block,
+                  leading: Icon(Icons.block,
                       size: 20, color: AppTheme.textSub),
-                  title: const Text('不关联',
+                  title: Text(L10n.instance.t('quote_no_link'),
                       style: TextStyle(color: AppTheme.textSub)),
                   trailing: selectedId == null
                       ? const Icon(Icons.check,
@@ -2625,9 +2624,9 @@ class _CustomerPickerSheet extends StatelessWidget {
                   onTap: () => Navigator.pop(context, -1),
                 ),
                 if (!hasCustomers)
-                  const AppEmpty(
+                  AppEmpty(
                     icon: Icons.people_outline,
-                    title: '还没有客户档案，可在客户页先添加',
+                    title: L10n.instance.t('quote_no_customer'),
                   ),
                 ...customers.map((c) => ListTile(
                       leading: CircleAvatar(

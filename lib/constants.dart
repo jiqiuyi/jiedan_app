@@ -1,13 +1,14 @@
+import '../l10n/l10n.dart';
 // ============================================================
 // 接单管家 - 全局约束参数（硬编码基线）
 // 修改产品策略时，只需改动本文件，勿散落各处。
 // ============================================================
 class AppConfig {
   // ---- 应用基础 ----
-  static const String appName = '接单管家';
-  static const String version = '1.48.2+98';
+  static String get appName => L10n.instance.t('app_name');
+  static const String version = '1.49.0+99';
   // 工信部 ICP 备案号（Android 合规要求：App 内显著位置可查，展示于「我的」页底部）
-  static const String icpCode = '苏ICP备2026065744号-3A';
+  static String get icpCode => L10n.instance.t('app_icp');
 
   // ---- 检查更新 ----
   // 版本清单（静态 JSON 放官网，走 HTTPS）：发布新版时更新该 JSON 并覆盖官网 latest 安装包，
@@ -77,8 +78,32 @@ class AppConfig {
   /// 其余分类默认 project_id=0（纯日常开支，不挂项目）。
   // ignore: constant_identifier_names
   static const List<String> LEDGER_CATEGORIES = [
-    '三餐', '交通', '日用', '居住', '娱乐', '医疗', '人情', '项目支出', '其他',
+    '三餐',
+    '交通',
+    '日用',
+    '居住',
+    '娱乐',
+    '医疗',
+    '人情',
+    '项目支出',
+    '其他',
   ];
+
+  /// 分类名 -> i18n key 映射（存量库中可能存中文名；显示层统一用 key 翻译）。
+  static const Map<String, String> _ledgerCatKeyMap = {
+    '三餐': 'ledger_cat_meals',
+    '交通': 'ledger_cat_transport',
+    '日用': 'ledger_cat_daily',
+    '居住': 'ledger_cat_housing',
+    '娱乐': 'ledger_cat_entertainment',
+    '医疗': 'ledger_cat_medical',
+    '人情': 'ledger_cat_social',
+    '项目支出': 'ledger_cat_project',
+    '其他': 'common_other',
+  };
+
+  /// 分类名转 i18n key：已是 key 直接返回，中文名映射为 key，未知原样返回。
+  static String ledgerCatKey(String name) => _ledgerCatKeyMap[name] ?? name;
 
   // ---- 数据存储方式（v1.14.0）----
   // 存储方式的持久化键（settings 表）
@@ -96,9 +121,9 @@ class AppConfig {
   // 提现账户保存键（settings）：值为 JSON {"method":0,"name":"","no":""}
   static const String withdrawAccountKey = 'withdraw_account';
   // 提现说明：真实通道接入前，提现为"申请登记 + 人工打款"，接入后自动到账
-  static const String withdrawNotice = '提现申请提交后由人工核对打款，到账后状态更新为「已提现」；接入官方收款通道后自动到账。';
+  static final String withdrawNotice = L10n.instance.t('constants_withdraw_notice');
   // 充值说明：真实通道接入前，充值为"出示收款码 + 手动确认到账"，接入后自动到账
-  static const String rechargeNotice = '充值到账后计入钱包余额，可用于后续开通专业版等消费；当前为手动确认模式，付款后请点击「确认到账」完成入账。';
+  static final String rechargeNotice = L10n.instance.t('constants_recharge_notice');
 
   // ---- 推广活动规则（第15批 v1.29.0 过渡期：本地自动核验版，与 README 权益一致）----
   static const int inviteFreeVipFriends = 2; // 推荐好友数达到该值 → 送 1 个月 VIP
@@ -120,13 +145,13 @@ enum ProjectStatus {
   String get label {
     switch (this) {
       case ProjectStatus.accepted:
-        return '接单';
+        return L10n.instance.t('common_order');
       case ProjectStatus.working:
-        return '制作中';
+        return L10n.instance.t('constants_in_progress');
       case ProjectStatus.awaiting:
-        return '待收尾款';
+        return L10n.instance.t('constants_pending_final');
       case ProjectStatus.done:
-        return '完结';
+        return L10n.instance.t('constants_completed');
     }
   }
 }
@@ -141,13 +166,13 @@ enum PayType {
   String get label {
     switch (this) {
       case PayType.deposit:
-        return '定金';
+        return L10n.instance.t('constants_deposit');
       case PayType.balance:
-        return '尾款';
+        return L10n.instance.t('constants_balance');
       case PayType.full:
-        return '全额';
+        return L10n.instance.t('constants_full');
       case PayType.custom:
-        return '自定义';
+        return L10n.instance.t('common_custom');
     }
   }
 }
@@ -161,11 +186,11 @@ enum FeedbackType {
   String get label {
     switch (this) {
       case FeedbackType.bug:
-        return 'Bug 反馈';
+        return L10n.instance.t('constants_bug_feedback');
       case FeedbackType.suggestion:
-        return '更新建议';
+        return L10n.instance.t('constants_update_suggestion');
       case FeedbackType.other:
-        return '其他';
+        return L10n.instance.t('common_other');
     }
   }
 }
@@ -178,9 +203,9 @@ enum PendingStatus {
   String get label {
     switch (this) {
       case PendingStatus.pending:
-        return '待收款';
+        return L10n.instance.t('constants_pending_collection');
       case PendingStatus.done:
-        return '已结清';
+        return L10n.instance.t('constants_settled');
     }
   }
 }
@@ -194,11 +219,11 @@ enum ContractStatus {
   String get label {
     switch (this) {
       case ContractStatus.draft:
-        return '草稿';
+        return L10n.instance.t('constants_draft');
       case ContractStatus.signed:
-        return '已签';
+        return L10n.instance.t('constants_signed');
       case ContractStatus.done:
-        return '完成';
+        return L10n.instance.t('constants_done');
     }
   }
 }
@@ -214,15 +239,15 @@ enum QuoteStatus {
   String get label {
     switch (this) {
       case QuoteStatus.draft:
-        return '草稿';
+        return L10n.instance.t('constants_draft');
       case QuoteStatus.sent:
-        return '已发送';
+        return L10n.instance.t('constants_sent');
       case QuoteStatus.confirmed:
-        return '客户确认';
+        return L10n.instance.t('constants_customer_confirmed');
       case QuoteStatus.deal:
-        return '已成交';
+        return L10n.instance.t('constants_deal');
       case QuoteStatus.voided:
-        return '已作废';
+        return L10n.instance.t('constants_voided');
     }
   }
 }
@@ -260,11 +285,11 @@ enum StorageMode {
   String get label {
     switch (this) {
       case StorageMode.local:
-        return '仅本地';
+        return L10n.instance.t('i18n_102');
       case StorageMode.server:
-        return '仅服务器';
+        return L10n.instance.t('i18n_101');
       case StorageMode.both:
-        return '本地 + 服务器';
+        return L10n.instance.t('i18n_451');
     }
   }
 
@@ -272,11 +297,11 @@ enum StorageMode {
   String get summary {
     switch (this) {
       case StorageMode.local:
-        return '数据只保存在本机，不联网、不上传，最私密';
+        return L10n.instance.t('i18n_394');
       case StorageMode.server:
-        return '数据以云端为准，登录任意设备均可读取';
+        return L10n.instance.t('i18n_393');
       case StorageMode.both:
-        return '本地与云端双向同步，一处修改处处一致';
+        return L10n.instance.t('i18n_452');
     }
   }
 
@@ -284,14 +309,14 @@ enum StorageMode {
   String get detail {
     switch (this) {
       case StorageMode.local:
-        return '客户 / 项目 / 收款 / 报价等全部业务数据仅保存于手机本地（SQLite）。'
-            '应用完全不访问云端业务接口，数据不会离开本机；卸载前请先在「数据管理」中导出备份。';
+        return L10n.instance.t('i18n_225') +
+            L10n.instance.t('i18n_298');
       case StorageMode.server:
-        return '业务数据上传服务器，按账号隔离保存；本地仅保留一份缓存。'
-            '登录任意设备或重新安装后，数据从云端恢复。断开网络时仅能读取最近一次同步的缓存。';
+        return L10n.instance.t('i18n_082') +
+            L10n.instance.t('i18n_494');
       case StorageMode.both:
-        return '每次修改同时写入本地并在后台同步到云端；登录 / 启动时自动从云端拉取合并回本地。'
-            '冲突时以服务器最新数据为准。适合多设备交替使用，既有本地备份又防丢失。';
+        return L10n.instance.t('i18n_480') +
+            L10n.instance.t('i18n_140');
     }
   }
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../l10n/l10n.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -14,7 +15,7 @@ import 'income_history_page.dart';
 import '../widgets/app_ui.dart';
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key});
+const DashboardPage({super.key});
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -114,7 +115,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (!mounted) return;
     if (projects.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('还没有项目，请先到「项目」页新建')),
+        SnackBar(content: Text(L10n.instance.t('dashboard_no_project'))),
       );
       return;
     }
@@ -124,9 +125,9 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(14),
-              child: AppSheetHeader(title: '选择要收款的项目'),
+              child: AppSheetHeader(title: L10n.instance.t('dashboard_choose_project')),
             ),
             Flexible(
               child: ListView(
@@ -165,13 +166,13 @@ class _DashboardPageState extends State<DashboardPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('结清待收尾款'),
-        content: Text('确认已收到「${p.title}」的 ¥${_fmt.format(p.amount / 100)} 吗？'),
+        title: Text(L10n.instance.t('dashboard_settle_pending')),
+        content: Text(L10n.instance.t('dashboard_confirm_received_confirm', args: {'p.title': p.title, '_fmt.format(p.amount / 100)': _fmt.format(p.amount / 100)})),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.instance.t('common_cancel'))),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认结清'),
+            child: Text(L10n.instance.t('dashboard_confirm_settle')),
           ),
         ],
       ),
@@ -186,12 +187,12 @@ class _DashboardPageState extends State<DashboardPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除待收记录'),
-        content: Text('确定删除「${p.title}」的待收记录吗？'),
+        title: Text(L10n.instance.t('dashboard_delete_record')),
+        content: Text(L10n.instance.t('dashboard_delete_pending_confirm', args: {'p.title': p.title})),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.instance.t('common_cancel'))),
           AppButton(
-            label: '删除',
+            label: L10n.instance.t('common_delete'),
             kind: AppButtonKind.danger,
             size: AppButtonSize.medium,
             expand: false,
@@ -208,13 +209,13 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('看板')),
+      appBar: AppBar(title: Text(L10n.instance.t('home_tab_home'))),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.white,
         onPressed: _collectPayment,
-        icon: const Icon(Icons.payments_outlined),
-        label: const Text('收款'),
+        icon: Icon(Icons.payments_outlined),
+        label: Text(L10n.instance.t('common_collect')),
       ),
       body: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
@@ -229,17 +230,17 @@ class _DashboardPageState extends State<DashboardPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   child: Row(
                     children: [
-                      const Icon(Icons.error_outline,
+                      Icon(Icons.error_outline,
                           size: 18, color: AppTheme.danger),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text('数据加载失败，请重试',
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(L10n.instance.t('common_load_failed_retry'),
                             style: TextStyle(
                                 fontSize: 13, color: AppTheme.danger)),
                       ),
                       TextButton(
                         onPressed: () => _refesh(),
-                        child: const Text('重试'),
+                        child: Text(L10n.instance.t('common_retry')),
                       ),
                     ],
                   ),
@@ -270,12 +271,12 @@ class _DashboardPageState extends State<DashboardPage> {
           Row(
             children: [
               _StatCard(
-                label: '进行中项目',
+                label: L10n.instance.t('dashboard_active_projects'),
                 value: '${_projectCount - _doneCount}',
                 color: AppTheme.primary,
               ),
               _StatCard(
-                label: '待收尾款',
+                label: L10n.instance.t('dashboard_pending_final'),
                 value: '¥${_fmt.format(_awaitingAmount / 100)}',
                 color: AppTheme.warn,
               ),
@@ -284,22 +285,22 @@ class _DashboardPageState extends State<DashboardPage> {
           Row(
             children: [
               _StatCard(
-                label: '客户数',
+                label: L10n.instance.t('dashboard_customer_count'),
                 value: '$_customerCount',
                 color: AppTheme.accent,
               ),
               _StatCard(
-                label: '项目总数',
+                label: L10n.instance.t('dashboard_project_total'),
                 value: '$_projectCount',
                 color: AppTheme.textSub,
               ),
             ],
           ),
           if (_pendings.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            const Padding(
+            SizedBox(height: 10),
+            Padding(
               padding: EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-              child: Text('待收尾款', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textMain)),
+              child: Text(L10n.instance.t('dashboard_pending_final'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textMain)),
             ),
             ..._pendings.map((p) => _PendingCard(
                   item: p,
@@ -308,15 +309,15 @@ class _DashboardPageState extends State<DashboardPage> {
                   onDelete: () => _deletePending(p),
                 )),
           ],
-          const SizedBox(height: 10),
-          const Padding(
+          SizedBox(height: 10),
+          Padding(
             padding: EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-            child: Text('最近项目', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textMain)),
+            child: Text(L10n.instance.t('dashboard_recent'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textMain)),
           ),
           if (_recent.isEmpty)
-            const AppEmpty(
+            AppEmpty(
               icon: Icons.folder_open_outlined,
-              title: '还没有项目，去「项目」页建一个吧',
+              title: L10n.instance.t('dashboard_no_project2'),
             )
           else
             ..._recent.map((pr) => _RecentCard(project: pr)),
@@ -332,7 +333,7 @@ class _IncomeCard extends StatelessWidget {
   final int monthProfit; // 本月利润（分）
   final int allCost; // 累计成本（分）
   final NumberFormat fmt;
-  const _IncomeCard({
+const _IncomeCard({
     required this.amount,
     required this.monthCost,
     required this.monthProfit,
@@ -342,12 +343,12 @@ class _IncomeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final month = DateFormat('M月').format(DateTime.now());
+    final month = DateFormat(L10n.instance.t('i18n_039')).format(DateTime.now());
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           colors: [Color(0xFF4A5AF0), Color(0xFF7C5CF0)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -357,22 +358,22 @@ class _IncomeCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('本月收入', style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 13)),
-          const SizedBox(height: 8),
+          Text(L10n.instance.t('dashboard_month_income'), style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 13)),
+          SizedBox(height: 8),
           Text('¥${fmt.format(amount / 100)}',
-              style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 16),
+              style: TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w700)),
+          SizedBox(height: 16),
           Row(
             children: [
-              Expanded(child: _MiniStat(label: '本月成本', value: '¥${fmt.format(monthCost / 100)}')),
-              const SizedBox(width: 8),
-              Expanded(child: _MiniStat(label: '本月利润', value: '¥${fmt.format(monthProfit / 100)}')),
-              const SizedBox(width: 8),
-              Expanded(child: _MiniStat(label: '累计成本', value: '¥${fmt.format(allCost / 100)}')),
+              Expanded(child: _MiniStat(label: L10n.instance.t('dashboard_month_cost'), value: '¥${fmt.format(monthCost / 100)}')),
+              SizedBox(width: 8),
+              Expanded(child: _MiniStat(label: L10n.instance.t('dashboard_month_profit'), value: '¥${fmt.format(monthProfit / 100)}')),
+              SizedBox(width: 8),
+              Expanded(child: _MiniStat(label: L10n.instance.t('dashboard_total_cost'), value: '¥${fmt.format(allCost / 100)}')),
             ],
           ),
-          const SizedBox(height: 14),
-          Text('本月新增款项合计 · $month · 点击查看历史记录',
+          SizedBox(height: 14),
+          Text(L10n.instance.t('dashboard_month_new', args: {'month':month}),
               style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
         ],
       ),
@@ -383,7 +384,7 @@ class _IncomeCard extends StatelessWidget {
 class _MiniStat extends StatelessWidget {
   final String label;
   final String value;
-  const _MiniStat({required this.label, required this.value});
+const _MiniStat({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -397,7 +398,7 @@ class _MiniStat extends StatelessWidget {
         children: [
           Text(label,
               style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 11)),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(value,
@@ -413,7 +414,7 @@ class _StatCard extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
-  const _StatCard({required this.label, required this.value, required this.color});
+const _StatCard({required this.label, required this.value, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -447,14 +448,14 @@ class _StatCard extends StatelessWidget {
 
 class _RecentCard extends StatelessWidget {
   final Project project;
-  const _RecentCard({required this.project});
+const   _RecentCard({required this.project});
 
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat('#,##0.00');
     return Card(
       child: ListTile(
-        title: Text(project.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(project.title, style: TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text('${project.status.label} · ¥${fmt.format(project.amountTotal / 100)}',
             maxLines: 1, overflow: TextOverflow.ellipsis),
         trailing: _StatusBadge(status: project.status),
@@ -465,7 +466,7 @@ class _RecentCard extends StatelessWidget {
 
 class _StatusBadge extends StatelessWidget {
   final ProjectStatus status;
-  const _StatusBadge({required this.status});
+const _StatusBadge({required this.status});
 
   @override
   Widget build(BuildContext context) {
@@ -486,7 +487,7 @@ class _StatusBadge extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 14, color: color),
-          const SizedBox(width: 4),
+          SizedBox(width: 4),
           Text(status.label, style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w600)),
         ],
       ),
@@ -500,7 +501,7 @@ class _PendingCard extends StatelessWidget {
   final NumberFormat fmt;
   final VoidCallback onSettle;
   final VoidCallback onDelete;
-  const _PendingCard({
+const   _PendingCard({
     required this.item,
     required this.fmt,
     required this.onSettle,
@@ -510,28 +511,28 @@ class _PendingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dueText = item.dueDate > 0
-        ? '到期 ${DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(item.dueDate))}'
-        : '未设到期日';
+        ? L10n.instance.t('dashboard_due', args: {'v0': DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(item.dueDate))})
+        : L10n.instance.t('i18n_445');
     return Card(
       child: ListTile(
-        leading: const Icon(Icons.schedule, color: AppTheme.warn),
+        leading: Icon(Icons.schedule, color: AppTheme.warn),
         title: Text(item.title,
             maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(dueText,
-            style: const TextStyle(fontSize: 12, color: AppTheme.textSub)),
+            style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text('¥${fmt.format(item.amount / 100)}',
                 style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.warn)),
             IconButton(
-              tooltip: '标记已收款',
+              tooltip: L10n.instance.t('dashboard_mark_paid'),
               icon: const Icon(Icons.check_circle_outline,
                   size: 20, color: AppTheme.accent),
               onPressed: onSettle,
             ),
             IconButton(
-              tooltip: '删除',
+              tooltip: L10n.instance.t('common_delete'),
               icon: const Icon(Icons.delete_outline,
                   size: 20, color: AppTheme.textSub),
               onPressed: onDelete,
@@ -548,7 +549,7 @@ class _AnnounceCard extends StatelessWidget {
   final String title;
   final String content;
   final VoidCallback onClose;
-  const _AnnounceCard({
+const _AnnounceCard({
     required this.title,
     required this.content,
     required this.onClose,
@@ -559,18 +560,18 @@ class _AnnounceCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: const Color(0xFFEEF2FF),
+      color: Color(0xFFEEF2FF),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(top: 2),
               child: Icon(Icons.campaign_outlined,
                   size: 18, color: AppTheme.primary),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -593,7 +594,7 @@ class _AnnounceCard extends StatelessWidget {
               ),
             ),
             IconButton(
-              tooltip: '关闭',
+              tooltip: L10n.instance.t('common_close'),
               visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.close, size: 16, color: AppTheme.textSub),
               onPressed: onClose,

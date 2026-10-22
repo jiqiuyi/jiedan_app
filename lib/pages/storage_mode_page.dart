@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../l10n/l10n.dart';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -27,7 +28,7 @@ enum LocalSwitchChoice { cancel, keepServer, deleteServer }
 /// - 本地 + 服务器：双写，本地修改后台推云端，登录/启动自动拉取合并，冲突以服务器最新为准。
 /// v1.15.0：从含服务器模式切回仅本地时，弹两档确认（保留服务器数据 / 删除服务器数据，可删可不删，不默认删）。
 class StorageModePage extends StatefulWidget {
-  const StorageModePage({super.key});
+const   StorageModePage({super.key});
 
   @override
   State<StorageModePage> createState() => _StorageModePageState();
@@ -83,11 +84,11 @@ class _StorageModePageState extends State<StorageModePage> {
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message ?? '登录已失效，请重新登录')));
+        .showSnackBar(SnackBar(content: Text(message ?? L10n.instance.t('common_session_expired'))));
     // 独立分支：直接引导重新登录，而非停留在普通网络错误提示。
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const LoginPage()),
+      MaterialPageRoute(builder: (_) => LoginPage()),
     );
   }
 
@@ -109,7 +110,7 @@ class _StorageModePageState extends State<StorageModePage> {
         return StatefulBuilder(
           builder: (ctx, setDlgState) {
             return AlertDialog(
-              title: const Row(
+              title: Row(
                 children: [
                   Icon(
                     Icons.cloud_off_outlined,
@@ -117,7 +118,7 @@ class _StorageModePageState extends State<StorageModePage> {
                     size: 22,
                   ),
                   SizedBox(width: 8),
-                  Expanded(child: Text('切换到「仅本地」？')),
+                  Expanded(child: Text(L10n.instance.t('storage_switch_local_confirm'))),
                 ],
               ),
               content: SingleChildScrollView(
@@ -125,12 +126,12 @@ class _StorageModePageState extends State<StorageModePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
-                      '切换后手机端将不再访问云端业务接口，本地数据保持不变。'
-                      '服务器上此前已同步的数据该如何处理？',
+                    Text(
+                      L10n.instance.t('i18n_142') +
+                      L10n.instance.t('i18n_435'),
                       style: TextStyle(height: 1.5),
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: 16),
                     Container(
                       decoration: BoxDecoration(
                         color: AppTheme.bgCard,
@@ -153,9 +154,9 @@ class _StorageModePageState extends State<StorageModePage> {
                             // 选项一：保留服务器数据（默认选中，安全）。
                             RadioListTile<LocalSwitchChoice>(
                               value: LocalSwitchChoice.keepServer,
-                              title: const Text('仅切回本地，保留服务器数据'),
-                              subtitle: const Text(
-                                '之后切回云端模式时可再同步回来，数据更安全。',
+                              title: Text(L10n.instance.t('storage_switch_local_keep')),
+                              subtitle: Text(
+                                L10n.instance.t('i18n_088'),
                                 style: TextStyle(fontSize: 12),
                               ),
                               secondary: const Icon(Icons.archive_outlined),
@@ -166,7 +167,7 @@ class _StorageModePageState extends State<StorageModePage> {
                               value: LocalSwitchChoice.deleteServer,
                               enabled: isLoggedIn,
                               title: Text(
-                                '删除服务器数据',
+                                L10n.instance.t('i18n_145'),
                                 style: TextStyle(
                                   color: isLoggedIn
                                       ? AppTheme.danger
@@ -175,8 +176,8 @@ class _StorageModePageState extends State<StorageModePage> {
                               ),
                               subtitle: Text(
                                 isLoggedIn
-                                    ? '切回本地，并清除本账号在服务器上的全部同步数据（仅影响本账号），删除前建议先到「数据管理」导出一份备份。'
-                                    : '当前未登录，无法删除服务器数据',
+                                    ? L10n.instance.t('i18n_141')
+                                    : L10n.instance.t('i18n_309'),
                                 style: const TextStyle(
                                   fontSize: 12,
                                   height: 1.5,
@@ -199,10 +200,10 @@ class _StorageModePageState extends State<StorageModePage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, LocalSwitchChoice.cancel),
-                  child: const Text('取消'),
+                  child: Text(L10n.instance.t('common_cancel')),
                 ),
                 AppButton(
-                  label: keepServer ? '确认切换' : '确认删除并切换',
+                  label: keepServer ? L10n.instance.t('common_confirm_switch') : L10n.instance.t('storage_confirm_delete_switch'),
                   kind: keepServer
                       ? AppButtonKind.primary
                       : AppButtonKind.danger,
@@ -232,13 +233,13 @@ class _StorageModePageState extends State<StorageModePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              rows > 0 ? '已切换仅本地，并删除服务器上的 $rows 条同步数据。' : '已切换仅本地，并清除服务器同步数据。',
+              rows > 0 ? L10n.instance.t('i18n_257', args: {'v0':'$rows'}) : L10n.instance.t('i18n_258'),
             ),
           ),
         );
       } on TokenInvalidException {
         // token 失效独立分支：删除服务器数据失败，引导重新登录。
-        await _handleAuthExpired('切换已完成，但删除服务器数据需重新登录：请重新登录后再操作');
+        await _handleAuthExpired(L10n.instance.t('i18n_143'));
         setState(() => _selected = SyncService.instance.mode);
         return;
       } catch (e, st) {
@@ -250,7 +251,7 @@ class _StorageModePageState extends State<StorageModePage> {
         );
         if (!mounted) return;
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('已切换仅本地，但删除服务器数据失败：$e')));
+            .showSnackBar(SnackBar(content: Text(L10n.instance.t('storage_switch_local_fail', args: {'e':'$e'}))));
       }
       setState(() => _selected = SyncService.instance.mode);
       return;
@@ -261,7 +262,7 @@ class _StorageModePageState extends State<StorageModePage> {
     if (mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('$msg 服务器数据已保留，之后切回云端模式可再同步回来。')));
+      ).showSnackBar(SnackBar(content: Text(L10n.instance.t('storage_server_data_kept', args: {'msg':msg}))));
     }
   }
 
@@ -277,10 +278,10 @@ class _StorageModePageState extends State<StorageModePage> {
     final isLoggedIn = AppState.instance.loggedIn;
     if (m.involvesServer && !isLoggedIn) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('云端存储需要先登录账号')));
+          .showSnackBar(SnackBar(content: Text(L10n.instance.t('storage_cloud_login'))));
       await Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const LoginPage()),
+        MaterialPageRoute(builder: (_) => LoginPage()),
       );
       return;
     }
@@ -289,7 +290,7 @@ class _StorageModePageState extends State<StorageModePage> {
       builder: (ctx) {
         final includesServer = m.involvesServer;
         return AlertDialog(
-          title: Text('切换到「${m.label}」？'),
+          title: Text(L10n.instance.t('storage_switch_mode', args: {'m.label': m.label})),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -299,16 +300,16 @@ class _StorageModePageState extends State<StorageModePage> {
                 Row(
                   children: [
                     Icon(_modeIcon(m), color: AppTheme.primary, size: 20),
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         m.summary,
-                        style: const TextStyle(fontSize: 14, height: 1.5),
+                        style: TextStyle(fontSize: 14, height: 1.5),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 // 数据说明卡片。
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -320,7 +321,7 @@ class _StorageModePageState extends State<StorageModePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
                           Icon(
                             Icons.article_outlined,
@@ -329,7 +330,7 @@ class _StorageModePageState extends State<StorageModePage> {
                           ),
                           SizedBox(width: 6),
                           Text(
-                            '数据说明',
+                            L10n.instance.t('i18n_405'),
                             style: TextStyle(
                               fontSize: 12,
                               color: AppTheme.textSub,
@@ -337,10 +338,10 @@ class _StorageModePageState extends State<StorageModePage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 6),
+                      SizedBox(height: 6),
                       Text(
                         m.detail,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.textSub,
                           height: 1.6,
                           fontSize: 13,
@@ -350,7 +351,7 @@ class _StorageModePageState extends State<StorageModePage> {
                   ),
                 ),
                 if (includesServer) ...[
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   // 云端模式专属提示。
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -361,7 +362,7 @@ class _StorageModePageState extends State<StorageModePage> {
                         color: AppTheme.warn.withValues(alpha: 0.3),
                       ),
                     ),
-                    child: const Row(
+                    child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Icon(
@@ -372,9 +373,9 @@ class _StorageModePageState extends State<StorageModePage> {
                         SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            '开启云端后，本地存量数据会一次性全量上传并与云端合并，'
-                            '冲突以服务器最新为准。建议先到「数据管理」导出一份备份，'
-                            '保管好自己的账号密码。',
+                            L10n.instance.t('i18n_299') +
+                            L10n.instance.t('i18n_139') +
+                            L10n.instance.t('i18n_117'),
                             style: TextStyle(
                               color: AppTheme.textMain,
                               height: 1.6,
@@ -392,11 +393,11 @@ class _StorageModePageState extends State<StorageModePage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
+              child: Text(L10n.instance.t('common_cancel')),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确认切换'),
+              child: Text(L10n.instance.t('common_confirm_switch')),
             ),
           ],
         );
@@ -408,7 +409,7 @@ class _StorageModePageState extends State<StorageModePage> {
       msg = await SyncService.instance.setMode(m);
     } on TokenInvalidException {
       // token 失效独立分支：切换联动同步失败，引导重新登录。
-      await _handleAuthExpired('切换未完成：登录已失效，请重新登录');
+      await _handleAuthExpired(L10n.instance.t('i18n_144'));
       if (mounted) setState(() => _selected = SyncService.instance.mode);
       return;
     }
@@ -429,20 +430,20 @@ class _StorageModePageState extends State<StorageModePage> {
     if (_backupBusy) return;
     setState(() {
       _backupBusy = true;
-      _backupHint = '正在导出备份数据…';
+      _backupHint = L10n.instance.t('i18n_474');
     });
     try {
       final path = await BackupUtil.instance.exportAll();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('备份文件已生成：$path'),
-          duration: const Duration(seconds: 3),
+          content: Text(L10n.instance.t('storage_mode_page_backup_created', args: {'path':path})),
+          duration: Duration(seconds: 3),
         ),
       );
       await Share.shareXFiles([
         XFile(path, mimeType: 'application/json'),
-      ], text: '接单管家 数据备份文件，请妥善保存，重装后可导入恢复。');
+      ], text: L10n.instance.t('storage_backup_desc'));
     } catch (e, st) {
       ErrorReporter.instance.logError(
         'backup_export_failed',
@@ -452,7 +453,7 @@ class _StorageModePageState extends State<StorageModePage> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('导出备份失败：$e')));
+            .showSnackBar(SnackBar(content: Text(L10n.instance.t('storage_mode_page_backup_export', args: {'e':'$e'}))));
       }
     } finally {
       if (mounted) {
@@ -471,7 +472,7 @@ class _StorageModePageState extends State<StorageModePage> {
     final first = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
             Icon(
               Icons.warning_amber_outlined,
@@ -479,22 +480,22 @@ class _StorageModePageState extends State<StorageModePage> {
               size: 22,
             ),
             SizedBox(width: 8),
-            Expanded(child: Text('从备份恢复数据？')),
+            Expanded(child: Text(L10n.instance.t('storage_restore_confirm'))),
           ],
         ),
-        content: const Text(
-          '恢复会用备份文件覆盖本地现有的报价单、客户、项目、收款记录、'
-          '待收款、里程碑、合同等全部数据，覆盖后不可撤销。\n\n'
-          '为避免误操作丢失数据，建议先执行一次「导出全部备份JSON」。',
+        content: Text(
+          L10n.instance.t('i18n_325') +
+          L10n.instance.t('i18n_319') +
+          L10n.instance.t('i18n_085'),
           style: TextStyle(height: 1.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text(L10n.instance.t('common_cancel')),
           ),
           AppButton(
-            label: '继续，选择备份文件',
+            label: L10n.instance.t('storage_restore_choose'),
             kind: AppButtonKind.danger,
             size: AppButtonSize.medium,
             expand: false,
@@ -509,14 +510,14 @@ class _StorageModePageState extends State<StorageModePage> {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json'],
-      dialogTitle: '选择接单管家备份文件',
+      dialogTitle: L10n.instance.t('i18n_612'),
     );
     if (result == null || result.files.isEmpty) return;
     final path = result.files.single.path;
     if (path == null || !File(path).existsSync()) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('无法读取所选备份文件')));
+            .showSnackBar(SnackBar(content: Text(L10n.instance.t('storage_restore_unreadable'))));
       }
       return;
     }
@@ -526,18 +527,18 @@ class _StorageModePageState extends State<StorageModePage> {
     final second = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('确认覆盖恢复？'),
-        content: const Text(
-          '将清空本地现有的报价单、客户、项目、收款记录、'
-          '待收款、里程碑、合同等全部数据，并替换为所选备份文件内容。确认继续？',
+        title: Text(L10n.instance.t('storage_restore_overwrite')),
+        content: Text(
+          L10n.instance.t('i18n_243') +
+          L10n.instance.t('i18n_318'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text(L10n.instance.t('common_cancel')),
           ),
           AppButton(
-            label: '确认恢复',
+            label: L10n.instance.t('storage_restore_confirm_btn'),
             kind: AppButtonKind.danger,
             size: AppButtonSize.medium,
             expand: false,
@@ -550,7 +551,7 @@ class _StorageModePageState extends State<StorageModePage> {
 
     setState(() {
       _backupBusy = true;
-      _backupHint = '正在从备份恢复数据，请稍候…';
+      _backupHint = L10n.instance.t('i18n_472');
     });
     try {
       final counts = await BackupUtil.instance.restoreFromFile(path);
@@ -558,29 +559,29 @@ class _StorageModePageState extends State<StorageModePage> {
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('恢复成功'),
+          title: Text(L10n.instance.t('storage_restore_ok')),
           content: Text(
-            '已恢复：客户 ${counts['customers'] ?? 0} 条、'
-            '项目 ${counts['projects'] ?? 0} 条、'
-            '报价 ${counts['quotes'] ?? 0} 条、'
-            '收款 ${counts['payments'] ?? 0} 条、'
-            '待收 ${counts['pending_collections'] ?? 0} 条、'
-            '里程碑 ${counts['milestones'] ?? 0} 条、'
-            '合同 ${counts['contracts'] ?? 0} 条。\n\n'
-            '本次恢复仅写入本地数据，不会自动上传或删除服务器数据。'
-            '若您开启了云端同步，请手动触发一次「立即同步」。',
-            style: const TextStyle(height: 1.6),
+            L10n.instance.t('sm_restored_customers', args: {'v0':'${counts['customers'] ?? 0}'}) +
+            L10n.instance.t('sm_restored_projects', args: {'v0':'${counts['projects'] ?? 0}'}) +
+            L10n.instance.t('sm_restored_quotes', args: {'v0':'${counts['quotes'] ?? 0}'}) +
+            L10n.instance.t('sm_restored_payments', args: {'v0':'${counts['payments'] ?? 0}'}) +
+            L10n.instance.t('sm_restored_pending', args: {'v0':'${counts['pending_collections'] ?? 0}'}) +
+            L10n.instance.t('sm_restored_milestones', args: {'v0':'${counts['milestones'] ?? 0}'}) +
+            L10n.instance.t('sm_restored_contracts', args: {'v0':'${counts['contracts'] ?? 0}'}) +
+            L10n.instance.t('i18n_456') +
+            L10n.instance.t('i18n_548'),
+            style: TextStyle(height: 1.6),
           ),
           actions: [
             FilledButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('好的'),
+              child: Text(L10n.instance.t('common_ok')),
             ),
           ],
         ),
       );
     } on FormatException catch (e) {
-      _toast('恢复失败：${e.message}');
+      _toast(L10n.instance.t('i18n_327', args: {'v0': e.message}));
     } catch (e, st) {
       ErrorReporter.instance.logError(
         'backup_import_failed',
@@ -588,7 +589,7 @@ class _StorageModePageState extends State<StorageModePage> {
         st,
         module: LogModule.db,
       );
-      _toast('恢复失败：$e');
+      _toast(L10n.instance.t('i18n_326', args: {'v0':'$e'}));
     } finally {
       if (mounted) {
         setState(() {
@@ -602,7 +603,7 @@ class _StorageModePageState extends State<StorageModePage> {
   void _toast(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
+      SnackBar(content: Text(msg), duration: Duration(seconds: 3)),
     );
   }
 
@@ -621,16 +622,16 @@ class _StorageModePageState extends State<StorageModePage> {
 
   String _syncStatusText() {
     if (_serverMode && !AppState.instance.loggedIn) {
-      return '当前未登录，登录后即可同步云端数据';
+      return L10n.instance.t('i18n_310');
     }
-    if (_syncing) return '正在同步…';
-    if (_syncError != null) return '上次同步失败：$_syncError（可点击“立即同步”重试）';
+    if (_syncing) return L10n.instance.t('i18n_473');
+    if (_syncError != null) return L10n.instance.t('i18n_070', args: {'v0':'$_syncError'});
     if (_lastSyncAt != null) {
       final dt = DateTime.fromMillisecondsSinceEpoch(_lastSyncAt!);
-      return '上次同步：${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} '
-          '${dt.month}月${dt.day}日';
+      return L10n.instance.t('sm_last_sync', args: {'v0': dt.hour.toString().padLeft(2, '0'), 'v1': dt.minute.toString().padLeft(2, '0')}) +
+          L10n.instance.t('i18n_020', args: {'v0':'${dt.month}', 'v1':'${dt.day}'});
     }
-    return '尚未开始同步';
+    return L10n.instance.t('i18n_248');
   }
 
   bool get _serverMode =>
@@ -649,14 +650,14 @@ class _StorageModePageState extends State<StorageModePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(16, 14, 16, 6),
-              child: AppSheetHeader(title: '同步冲突处理策略'),
+              child: AppSheetHeader(title: L10n.instance.t('storage_conflict_policy')),
             ),
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                '云端与本地对同一条数据都有了修改时该怎么处理：',
+                L10n.instance.t('i18n_091'),
                 style: TextStyle(fontSize: 12, color: AppTheme.textSub),
               ),
             ),
@@ -671,7 +672,7 @@ class _StorageModePageState extends State<StorageModePage> {
                 title: Text(p.label),
                 subtitle: Text(
                   p.desc,
-                  style: const TextStyle(fontSize: 12, color: AppTheme.textSub),
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                 ),
                 onTap: () => Navigator.pop(ctx, p),
               ),
@@ -681,14 +682,14 @@ class _StorageModePageState extends State<StorageModePage> {
     );
     if (picked == null || picked == cur) return;
     sync.conflictPolicy = picked;
-    _toast('已切换冲突处理策略：${picked.label}');
+    _toast(L10n.instance.t('i18n_259', args: {'v0': picked.label}));
     setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('数据存储方式')),
+      appBar: AppBar(title: Text(L10n.instance.t('storage_mode_title'))),
       body: ListenableBuilder(
         listenable: AppState.instance,
         builder: (context, _) {
@@ -703,12 +704,12 @@ class _StorageModePageState extends State<StorageModePage> {
                     padding: const EdgeInsets.all(14),
                     child: Row(
                       children: [
-                        const SizedBox(
+                        SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                        const SizedBox(width: 12),
+                        SizedBox(width: 12),
                         Expanded(
                           child: Text(
                             _backupHint,
@@ -719,16 +720,16 @@ class _StorageModePageState extends State<StorageModePage> {
                     ),
                   ),
                 ),
-              const Text(
-                '选择业务数据的存放位置：仅本地 / 仅服务器 / 本地+服务器，'
-                '三种模式均不收费，可随时切换。',
+              Text(
+                L10n.instance.t('i18n_604') +
+                L10n.instance.t('i18n_060'),
                 style: TextStyle(
                   color: AppTheme.textSub,
                   height: 1.5,
                   fontSize: 13,
                 ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               for (final m in StorageMode.values)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -769,8 +770,8 @@ class _StorageModePageState extends State<StorageModePage> {
                                   ),
                                 ),
                                 if (m == StorageMode.local)
-                                  const Text(
-                                    '隐私优先',
+                                  Text(
+                                    L10n.instance.t('i18n_629'),
                                     style: TextStyle(
                                       color: AppTheme.success,
                                       fontSize: 12,
@@ -809,7 +810,7 @@ class _StorageModePageState extends State<StorageModePage> {
                   ),
                 ),
               if (_serverMode) ...[
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 // 云端模式下的同步状态与「立即同步」操作区。
                 Container(
                   padding: const EdgeInsets.all(12),
@@ -822,7 +823,7 @@ class _StorageModePageState extends State<StorageModePage> {
                       Row(
                         children: [
                           if (_syncing)
-                            const SizedBox(
+                            SizedBox(
                               width: 16,
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
@@ -837,7 +838,7 @@ class _StorageModePageState extends State<StorageModePage> {
                                   : AppTheme.success,
                               size: 20,
                             ),
-                          const SizedBox(width: 10),
+                          SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               _syncStatusText(),
@@ -849,18 +850,18 @@ class _StorageModePageState extends State<StorageModePage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
                           onPressed: _syncing ? null : _syncNow,
-                          icon: const Icon(Icons.sync, size: 18),
-                          label: const Text('立即同步'),
+                          icon: Icon(Icons.sync, size: 18),
+                          label: Text(L10n.instance.t('storage_sync_now')),
                         ),
                       ),
                       // 待处理冲突提示（askMe 策略收集到冲突时）。
                       if (SyncService.instance.hasPendingConflicts) ...[
-                        const SizedBox(height: 10),
+                        SizedBox(height: 10),
                         Material(
                           color: AppTheme.danger.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(AppRadius.sm),
@@ -879,7 +880,7 @@ class _StorageModePageState extends State<StorageModePage> {
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
-                                      '${SyncService.instance.pendingConflicts.length} 条数据存在同步冲突，需要您决定采用哪一版',
+                                      L10n.instance.t('i18n_015', args: {'v0':'${SyncService.instance.pendingConflicts.length}'}),
                                       style: const TextStyle(
                                         fontSize: 13,
                                         color: AppTheme.danger,
@@ -899,7 +900,7 @@ class _StorageModePageState extends State<StorageModePage> {
                         ),
                       ],
                       // 同步冲突处理策略（v1.20.0）。
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       InkWell(
                         borderRadius: BorderRadius.circular(AppRadius.sm),
                         onTap: _showConflictPolicyDialog,
@@ -916,8 +917,8 @@ class _StorageModePageState extends State<StorageModePage> {
                                 color: AppTheme.textSub,
                               ),
                               const SizedBox(width: 8),
-                              const Text(
-                                '同步冲突处理：',
+                              Text(
+                                L10n.instance.t('i18n_169'),
                                 style: TextStyle(
                                   fontSize: 13,
                                   color: AppTheme.textSub,
@@ -948,36 +949,36 @@ class _StorageModePageState extends State<StorageModePage> {
                   ),
                 ),
               ],
-              const SizedBox(height: 20),
+              SizedBox(height: 20),
               // ---- 本地数据备份 / 恢复（JSON 全量备份，纯本地操作）----
-              const Text(
-                '数据备份',
+              Text(
+                L10n.instance.t('i18n_396'),
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textSub,
                 ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Card(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppRadius.lg),
                 ),
                 child: ListTile(
-                  leading: const Icon(
+                  leading: Icon(
                     Icons.upload_file_outlined,
                     color: AppTheme.primary,
                   ),
-                  title: const Text('导出全部备份JSON'),
-                  subtitle: const Text('将报价、客户、项目、收款等全部数据导出为备份文件保存'),
-                  trailing: const Icon(
+                  title: Text(L10n.instance.t('storage_export_json')),
+                  subtitle: Text(L10n.instance.t('storage_export_desc')),
+                  trailing: Icon(
                     Icons.chevron_right,
                     color: AppTheme.textSub,
                   ),
                   onTap: _onExportBackup,
                 ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Card(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppRadius.lg),
@@ -986,15 +987,15 @@ class _StorageModePageState extends State<StorageModePage> {
                   ),
                 ),
                 child: ListTile(
-                  leading: const Icon(
+                  leading: Icon(
                     Icons.settings_backup_restore,
                     color: AppTheme.danger,
                   ),
                   title: Text(
-                    '从JSON备份恢复数据',
+                    L10n.instance.t('i18n_108'),
                     style: TextStyle(color: AppTheme.danger),
                   ),
-                  subtitle: const Text('用备份文件覆盖恢复（会覆盖现有数据，请谨慎操作）'),
+                  subtitle: Text(L10n.instance.t('storage_restore_overwrite_desc')),
                   trailing: const Icon(
                     Icons.chevron_right,
                     color: AppTheme.danger,
@@ -1003,8 +1004,8 @@ class _StorageModePageState extends State<StorageModePage> {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                '备份恢复仅在本机进行，不会自动上传或删除服务器数据。',
+              Text(
+                L10n.instance.t('i18n_191'),
                 style: TextStyle(fontSize: 12, color: AppTheme.textSub),
               ),
             ],

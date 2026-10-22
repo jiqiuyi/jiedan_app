@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../l10n/l10n.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -17,7 +18,7 @@ import '../widgets/app_ui.dart';
 class PaywallPage extends StatefulWidget {
   final String title;
   final String desc;
-  const PaywallPage({super.key, required this.title, required this.desc});
+const   PaywallPage({super.key, required this.title, required this.desc});
 
   @override
   State<PaywallPage> createState() => _PaywallPageState();
@@ -33,35 +34,35 @@ class _PaywallPageState extends State<PaywallPage> {
   /// 订阅档位（按展示顺序）
   List<_Plan> get _plans => [
         if (!_firstMonthUsed)
-          const _Plan(
-            name: '首月特惠',
+          _Plan(
+            name: L10n.instance.t('i18n_637'),
             price: '¥${AppConfig.firstMonthPrice}',
-            desc: '仅限首次开通，每人一次',
+            desc: L10n.instance.t('i18n_104'),
             months: 1,
             planKey: 'firstMonth',
             isFirstMonth: true,
             highlight: true,
           ),
-        const _Plan(
-          name: '月付',
-          price: '¥${AppConfig.monthlyPrice}/月',
-          desc: '按月订阅，随时可续',
+        _Plan(
+          name: L10n.instance.t('i18n_433'),
+          price: L10n.instance.t('i18n_050', args: {'v0':'${AppConfig.monthlyPrice}'}),
+          desc: L10n.instance.t('i18n_359'),
           months: 1,
           planKey: 'month',
         ),
-        const _Plan(
-          name: '年付',
-          price: '¥${AppConfig.yearlyPrice}/年',
-          desc: '相当于每月不到 ¥6',
+        _Plan(
+          name: L10n.instance.t('i18n_292'),
+          price: L10n.instance.t('i18n_051', args: {'v0':'${AppConfig.yearlyPrice}'}),
+          desc: L10n.instance.t('i18n_500'),
           months: 12,
           planKey: 'year',
         ),
         // 永久档暂时隐藏（代码保留，恢复展示把 _showForever 改为 true）
         if (_showForever)
-          const _Plan(
-            name: '永久',
+          _Plan(
+            name: L10n.instance.t('i18n_481'),
             price: '¥${AppConfig.foreverPrice}',
-            desc: '一次买断，永久使用',
+            desc: L10n.instance.t('i18n_058'),
             months: -1,
             planKey: 'forever',
             lifetime: true,
@@ -122,7 +123,7 @@ class _PaywallPageState extends State<PaywallPage> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('下单失败，请稍后重试')),
+        SnackBar(content: Text(L10n.instance.t('paywall_order_failed'))),
       );
     } finally {
       if (mounted) setState(() => _paying = false);
@@ -142,7 +143,7 @@ class _PaywallPageState extends State<PaywallPage> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text('选择支付方式',
+                    child: Text(L10n.instance.t('paywall_choose_method'),
                         style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w700)),
                   ),
@@ -152,22 +153,22 @@ class _PaywallPageState extends State<PaywallPage> {
                 ],
               ),
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: 4),
             ListTile(
-              leading: const Icon(Icons.chat_bubble,
+              leading: Icon(Icons.chat_bubble,
                   color: Color(0xFF07C160)),
-              title: const Text('微信支付'),
-              subtitle: const Text('扫码支付，付款后自动开通'),
+              title: Text(L10n.instance.t('paywall_wechat')),
+              subtitle: Text(L10n.instance.t('paywall_scan_tip')),
               onTap: () => Navigator.pop(ctx, 'wx'),
             ),
             ListTile(
-              leading: const Icon(Icons.account_balance_wallet,
+              leading: Icon(Icons.account_balance_wallet,
                   color: Color(0xFF1677FF)),
-              title: const Text('支付宝'),
-              subtitle: const Text('扫码支付，付款后自动开通'),
+              title: Text(L10n.instance.t('common_alipay')),
+              subtitle: Text(L10n.instance.t('paywall_scan_tip')),
               onTap: () => Navigator.pop(ctx, 'alipay'),
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: 6),
           ],
         ),
       ),
@@ -180,15 +181,15 @@ class _PaywallPageState extends State<PaywallPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('需要先登录'),
-        content: const Text('购买订阅前请先登录账号，订阅将绑定到该账号上。'),
+        title: Text(L10n.instance.t('common_login_required')),
+        content: Text(L10n.instance.t('paywall_login_desc')),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('暂不登录')),
+              child: Text(L10n.instance.t('paywall_skip_login'))),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('去登录'),
+            child: Text(L10n.instance.t('common_go_login')),
           ),
         ],
       ),
@@ -197,7 +198,7 @@ class _PaywallPageState extends State<PaywallPage> {
     if (ok != true) return false;
     final logged = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const LoginPage()),
+      MaterialPageRoute(builder: (_) => LoginPage()),
     );
     if (logged != true || !mounted) return false;
     await _loadFirstMonthState();
@@ -237,7 +238,7 @@ class _PaywallPageState extends State<PaywallPage> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('下单失败，请稍后重试')),
+        SnackBar(content: Text(L10n.instance.t('paywall_order_failed'))),
       );
     } finally {
       if (mounted) setState(() => _paying = false);
@@ -251,18 +252,18 @@ class _PaywallPageState extends State<PaywallPage> {
     final result = await showDialog<String?>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('兑换码开通'),
+        title: Text(L10n.instance.t('paywall_redeem_title')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('输入兑换码即可开通专业版，由系统后台核销。'),
-            const SizedBox(height: 12),
+            Text(L10n.instance.t('paywall_redeem_desc')),
+            SizedBox(height: 12),
             TextField(
               controller: controller,
               autofocus: true,
-              decoration: const InputDecoration(
-                hintText: '请输入兑换码',
+              decoration: InputDecoration(
+                hintText: L10n.instance.t('paywall_redeem_hint'),
                 border: OutlineInputBorder(),
               ),
             ),
@@ -271,10 +272,10 @@ class _PaywallPageState extends State<PaywallPage> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消')),
+              child: Text(L10n.instance.t('common_cancel'))),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('兑换'),
+            child: Text(L10n.instance.t('paywall_redeem')),
           ),
         ],
       ),
@@ -282,7 +283,7 @@ class _PaywallPageState extends State<PaywallPage> {
     if (result == null || result.isEmpty || !mounted) return;
     final err = await AppState.instance.redeemVipCode(result);
     if (!mounted) return;
-    messenger.showSnackBar(SnackBar(content: Text(err ?? '兑换成功，已开通专业版')));
+    messenger.showSnackBar(SnackBar(content: Text(err ?? L10n.instance.t('paywall_redeem_ok'))));
   }
 
   // 6h 退款入口：先查退款资格（开通 6h 内、每账号 1 次），再提交退款。
@@ -299,7 +300,7 @@ class _PaywallPageState extends State<PaywallPage> {
       return;
     } catch (_) {
       if (mounted) setState(() => _paying = false);
-      messenger.showSnackBar(const SnackBar(content: Text('查询失败，请稍后重试')));
+      messenger.showSnackBar(SnackBar(content: Text(L10n.instance.t('paywall_query_failed'))));
       return;
     }
     if (!mounted) return;
@@ -311,18 +312,18 @@ class _PaywallPageState extends State<PaywallPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('申请退款'),
+        title: Text(L10n.instance.t('paywall_refund')),
         content: Text(can
-            ? '退款将原路退回，退款成功后专业版权益立即收回，且该账号不再支持退款。确认申请退款？'
-            : '当前暂不可退款：$reason'),
+            ? L10n.instance.t('i18n_601')
+            : L10n.instance.t('i18n_308', args: {'v0': reason})),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('关闭')),
+              child: Text(L10n.instance.t('common_close'))),
           if (can)
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确认退款'),
+              child: Text(L10n.instance.t('paywall_confirm_refund')),
             ),
         ],
       ),
@@ -334,7 +335,7 @@ class _PaywallPageState extends State<PaywallPage> {
       final r = await ApiClient.instance.jianpayRefund(orderNo);
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(
-          content: Text((r['message'] ?? '退款已提交').toString())));
+          content: Text((r['message'] ?? L10n.instance.t('paywall_refund_done')).toString())));
       try {
         await AppState.instance.refreshCloud();
       } catch (_) {
@@ -344,7 +345,7 @@ class _PaywallPageState extends State<PaywallPage> {
       if (mounted) messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
       if (mounted) {
-        messenger.showSnackBar(const SnackBar(content: Text('退款申请失败，请稍后重试')));
+        messenger.showSnackBar(SnackBar(content: Text(L10n.instance.t('paywall_refund_failed'))));
       }
     } finally {
       if (mounted) setState(() => _paying = false);
@@ -354,7 +355,7 @@ class _PaywallPageState extends State<PaywallPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('升级专业版')),
+      appBar: AppBar(title: Text(L10n.instance.t('paywall_upgrade_pro'))),
       body: ListenableBuilder(
         listenable: AppState.instance,
         builder: (context, _) {
@@ -364,19 +365,19 @@ class _PaywallPageState extends State<PaywallPage> {
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [
-              const SizedBox(height: 16),
-              const Icon(Icons.workspace_premium, size: 64,
+              SizedBox(height: 16),
+              Icon(Icons.workspace_premium, size: 64,
                   color: AppTheme.primary),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               Text(widget.title,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 18, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(widget.desc,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppTheme.textSub)),
-              const SizedBox(height: 24),
+                  style: TextStyle(color: AppTheme.textSub)),
+              SizedBox(height: 24),
               ...List.generate(plans.length, (i) {
                 final p = plans[i];
                 return Padding(
@@ -388,13 +389,13 @@ class _PaywallPageState extends State<PaywallPage> {
                   ),
                 );
               }),
-              const SizedBox(height: 20),
+              SizedBox(height: 20),
               FilledButton(
                 onPressed: (isPro || _paying) ? null : _startBuy,
                 child: isPro
-                    ? const Text('已是专业版')
+                    ? Text(L10n.instance.t('paywall_already_pro'))
                     : (_paying
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
@@ -402,20 +403,20 @@ class _PaywallPageState extends State<PaywallPage> {
                           )
                         : Text(plans[_selected].buyText)),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               // 两行说明小字：起点对齐（同一左边缘），整体在页面内水平居中
-              const Center(
+              Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '付款成功后由系统自动开通，无需等待人工确认。',
+                      L10n.instance.t('i18n_111'),
                       style: TextStyle(color: AppTheme.textSub, fontSize: 12),
                     ),
                     SizedBox(height: 6),
                     Text(
-                      '兑换码由系统后台核销开通，请从可靠渠道获取',
+                      L10n.instance.t('i18n_126'),
                       style: TextStyle(color: AppTheme.textSub, fontSize: 12),
                     ),
                   ],
@@ -424,18 +425,18 @@ class _PaywallPageState extends State<PaywallPage> {
               Center(
                 child: TextButton.icon(
                   onPressed: _showRedeemDialog,
-                  icon: const Icon(Icons.confirmation_number_outlined,
+                  icon: Icon(Icons.confirmation_number_outlined,
                       size: 18),
-                  label: const Text('兑换码开通'),
+                  label: Text(L10n.instance.t('paywall_redeem_title')),
                 ),
               ),
               if (isPro)
                 Center(
                   child: TextButton.icon(
                     onPressed: _paying ? null : _showRefundDialog,
-                    icon: const Icon(Icons.assignment_return_outlined,
+                    icon: Icon(Icons.assignment_return_outlined,
                         size: 18),
-                    label: const Text('6 小时内可申请退款'),
+                    label: Text(L10n.instance.t('paywall_refund_window')),
                   ),
                 ),
             ],
@@ -457,7 +458,7 @@ class _Plan {
   final bool lifetime; // 是否永久买断
   final bool highlight; // 是否高亮推荐
 
-  const _Plan({
+  _Plan({
     required this.name,
     required this.price,
     required this.desc,
@@ -468,14 +469,14 @@ class _Plan {
     this.highlight = false,
   });
 
-  String get buyText => isFirstMonth ? '¥${AppConfig.firstMonthPrice} 开通首月' : '立即解锁';
+  String get buyText => isFirstMonth ? L10n.instance.t('i18n_049', args: {'v0':'${AppConfig.firstMonthPrice}'}) : L10n.instance.t('i18n_517');
 
   String get successText {
-    if (isFirstMonth) return '已开通专业版（首月特惠 · 30天）';
-    if (lifetime) return '已开通专业版（永久买断）';
-    if (months >= 24) return '已开通专业版（两年 · 730天）';
-    if (months >= 12) return '已开通专业版（年付 · 365天）';
-    return '已开通专业版（月付 · 30天）';
+    if (isFirstMonth) return L10n.instance.t('i18n_274');
+    if (lifetime) return L10n.instance.t('i18n_273');
+    if (months >= 24) return L10n.instance.t('i18n_270');
+    if (months >= 12) return L10n.instance.t('i18n_271');
+    return L10n.instance.t('i18n_272');
   }
 }
 
@@ -483,7 +484,7 @@ class _PlanCard extends StatelessWidget {
   final _Plan plan;
   final bool selected;
   final VoidCallback onTap;
-  const _PlanCard({
+const _PlanCard({
     required this.plan,
     required this.selected,
     required this.onTap,
@@ -495,7 +496,7 @@ class _PlanCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+        duration: Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: selected
@@ -531,7 +532,7 @@ class _PlanCard extends StatelessWidget {
                   ? (isHighlight ? Colors.white : AppTheme.primary)
                   : AppTheme.textSub,
             ),
-            const SizedBox(width: 14),
+            SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -558,7 +559,7 @@ class _PlanCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(AppRadius.xs),
                           ),
                           child: Text(
-                            '限时',
+                            L10n.instance.t('i18n_628'),
                             style: TextStyle(
                               fontSize: 10,
                               color: selected
@@ -582,7 +583,7 @@ class _PlanCard extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Text(plan.price,
                 style: TextStyle(
                   fontSize: 18,
@@ -606,8 +607,7 @@ class _ZpayPayDialog extends StatefulWidget {
   final double amount;
   final String payUrl;
   final String qrUrl;
-
-  const _ZpayPayDialog({
+const _ZpayPayDialog({
     required this.planName,
     required this.amount,
     required this.payUrl,
@@ -627,7 +627,7 @@ class _ZpayPayDialogState extends State<_ZpayPayDialog> {
   void initState() {
     super.initState();
     // 轮询后端订阅状态（最多 10 次 × 3s），检测到开通后自动关闭
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) async {
+    _timer = Timer.periodic(Duration(seconds: 3), (_) async {
       if (_ticks >= 10) {
         _timer?.cancel();
         return;
@@ -660,13 +660,13 @@ class _ZpayPayDialogState extends State<_ZpayPayDialog> {
           mode: LaunchMode.externalApplication);
       if (!ok && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('无法拉起支付页面，请手动复制链接或扫码')),
+          SnackBar(content: Text(L10n.instance.t('paywall_cannot_open'))),
         );
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('无法拉起支付页面')),
+          SnackBar(content: Text(L10n.instance.t('paywall_page_could_not'))),
         );
       }
     }
@@ -687,7 +687,7 @@ class _ZpayPayDialogState extends State<_ZpayPayDialog> {
       Navigator.of(context).pop(true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('尚未检测到开通，可稍后再次刷新')),
+        SnackBar(content: Text(L10n.instance.t('paywall_not_active'))),
       );
     }
   }
@@ -697,20 +697,20 @@ class _ZpayPayDialogState extends State<_ZpayPayDialog> {
     final hasQr = widget.qrUrl.isNotEmpty;
     final hasUrl = widget.payUrl.isNotEmpty;
     return AlertDialog(
-      title: Text('在线支付 · ${widget.planName}'),
+      title: Text(L10n.instance.t('paywall_online_title', args: {'widget.planName': widget.planName})),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('应付金额：¥${widget.amount.toStringAsFixed(2)}'),
-            const SizedBox(height: 12),
+            Text(L10n.instance.t('paywall_amount_line', args: {'widget.amount.toStringAsFixed(2)': widget.amount.toStringAsFixed(2)})),
+            SizedBox(height: 12),
             if (!hasUrl && !hasQr)
-              const Text('支付渠道暂未开通，请稍后再试或使用兑换码。',
+              Text(L10n.instance.t('paywall_channel_not_ready'),
                   style: TextStyle(color: AppTheme.warn)),
             if (hasUrl) ...[
-              const Text('点击下方按钮打开支付页面完成付款。'),
-              const SizedBox(height: 8),
+              Text(L10n.instance.t('paywall_open_tip')),
+              SizedBox(height: 8),
             ],
             if (hasQr)
               Center(
@@ -730,16 +730,16 @@ class _ZpayPayDialogState extends State<_ZpayPayDialog> {
         if (hasUrl)
           FilledButton.icon(
             onPressed: _openPayPage,
-            icon: const Icon(Icons.open_in_browser, size: 18),
-            label: const Text('打开支付页面'),
+            icon: Icon(Icons.open_in_browser, size: 18),
+            label: Text(L10n.instance.t('paywall_open_page')),
           ),
         TextButton(
           onPressed: _checking ? null : _manualRefresh,
-          child: Text(_checking ? '刷新中…' : '已完成支付'),
+          child: Text(_checking ? L10n.instance.t('common_refreshing') : L10n.instance.t('paywall_paid')),
         ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('关闭'),
+          child: Text(L10n.instance.t('common_close')),
         ),
       ],
     );
@@ -756,8 +756,7 @@ class _JianpayPayDialog extends StatefulWidget {
   final String payMethod; // wx / alipay
   final String payUrl;
   final String qrUrl;
-
-  const _JianpayPayDialog({
+const _JianpayPayDialog({
     required this.planName,
     required this.amount,
     required this.orderNo,
@@ -778,13 +777,13 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
 
   bool get _isWx => widget.payMethod == 'wx';
 
-  String get _methodName => _isWx ? '微信' : '支付宝';
+  String get _methodName => _isWx ? L10n.instance.t('paywall_page_wechat') : L10n.instance.t('paywall_page_alipay');
 
   @override
   void initState() {
     super.initState();
     // 轮询后端查单补偿（最多 10 次 × 3s），确认支付成功后自动关闭
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) async {
+    _timer = Timer.periodic(Duration(seconds: 3), (_) async {
       if (_ticks >= 10) {
         _timer?.cancel();
         return;
@@ -840,7 +839,7 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
       Navigator.of(context).pop(true);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('尚未检测到付款成功，请稍后再次刷新')),
+        SnackBar(content: Text(L10n.instance.t('paywall_not_paid'))),
       );
     }
   }
@@ -859,7 +858,7 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
 
   void _hintOpenManually() {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('未能自动打开$_methodName，请手动打开$_methodName扫一扫')),
+      SnackBar(content: Text(L10n.instance.t('paywall_open_method_fail', args: {'_methodName':_methodName}))),
     );
   }
 
@@ -869,7 +868,7 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
     setState(() => _saving = true);
     try {
       final resp = await http.get(Uri.parse(widget.qrUrl));
-      if (resp.statusCode != 200) throw Exception('下载失败');
+      if (resp.statusCode != 200) throw Exception(L10n.instance.t('i18n_074'));
       final dir = await getTemporaryDirectory();
       final f = File('${dir.path}/pay_qr_${widget.orderNo}.png');
       await f.writeAsBytes(resp.bodyBytes);
@@ -880,13 +879,13 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
       await Gal.putImage(f.path);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('二维码已保存到相册')),
+          SnackBar(content: Text(L10n.instance.t('paywall_qr_saved'))),
         );
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('二维码保存失败，可直接截图保存')),
+          SnackBar(content: Text(L10n.instance.t('paywall_qr_save_fail'))),
         );
       }
     } finally {
@@ -902,13 +901,13 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
           mode: LaunchMode.externalApplication);
       if (!ok && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('无法拉起支付页面，请改用扫码支付')),
+          SnackBar(content: Text(L10n.instance.t('paywall_cannot_open_scan'))),
         );
       }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('无法拉起支付页面')),
+          SnackBar(content: Text(L10n.instance.t('paywall_page_could_not_2'))),
         );
       }
     }
@@ -919,21 +918,21 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
     final hasQr = widget.qrUrl.isNotEmpty;
     final h5 = !_isWx; // 支付宝小微走 H5 直接拉起，微信走扫码
     return AlertDialog(
-      title: Text(h5 ? '支付宝支付 · ${widget.planName}' : '扫码支付 · ${widget.planName}'),
+      title: Text(h5 ? L10n.instance.t('paywall_alipay_title', args: {'widget.planName': widget.planName}) : L10n.instance.t('paywall_scan_title', args: {'widget.planName': widget.planName})),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('应付金额：¥${widget.amount.toStringAsFixed(2)}'),
-            const SizedBox(height: 6),
+            Text(L10n.instance.t('paywall_amount_line', args: {'widget.amount.toStringAsFixed(2)': widget.amount.toStringAsFixed(2)})),
+            SizedBox(height: 6),
             Text(
               h5
-                  ? '正在跳转支付宝完成付款，付款成功后返回本页面将自动开通。'
-                  : '请用$_methodName扫一扫下方二维码完成付款，付款成功后自动开通。',
+                  ? L10n.instance.t('i18n_476')
+                  : L10n.instance.t('i18n_579', args: {'v0': _methodName}),
               style: const TextStyle(fontSize: 12, color: AppTheme.textSub),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             if (!h5)
               if (hasQr)
                 Center(
@@ -947,12 +946,12 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
                   ),
                 )
               else
-                const Text('二维码获取失败，可点下方按钮继续付款或稍后重试。',
+                Text(L10n.instance.t('paywall_qr_fetch_fail'),
                     style: TextStyle(color: AppTheme.warn)),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Center(
               child: Text(
-                _ticks >= 10 ? '未检测到付款结果，可点「我已支付，刷新」重试' : '正在等待付款结果…（$_ticks/10）',
+                _ticks >= 10 ? L10n.instance.t('i18n_439') : L10n.instance.t('i18n_475', args: {'v0':'$_ticks'}),
                 style: const TextStyle(fontSize: 12, color: AppTheme.textSub),
               ),
             ),
@@ -967,7 +966,7 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
           children: [
             Expanded(
               child: AppButton(
-                label: h5 ? '打开支付宝' : '打开$_methodName',
+                label: h5 ? L10n.instance.t('paywall_open_alipay') : L10n.instance.t('paywall_open_method', args: {'_methodName':_methodName}),
                 kind: AppButtonKind.primary,
                 size: AppButtonSize.small,
                 expand: false,
@@ -975,10 +974,10 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
               ),
             ),
             if (hasQr) ...[
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Expanded(
                 child: AppButton(
-                  label: _saving ? '保存中…' : '保存二维码',
+                  label: _saving ? L10n.instance.t('paywall_page_saving') : L10n.instance.t('paywall_save_qr'),
                   kind: AppButtonKind.secondary,
                   size: AppButtonSize.small,
                   expand: false,
@@ -986,10 +985,10 @@ class _JianpayPayDialogState extends State<_JianpayPayDialog> {
                 ),
               ),
             ],
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Expanded(
               child: AppButton(
-                label: _checking ? '刷新中…' : '我已支付，刷新',
+                label: _checking ? L10n.instance.t('common_refreshing') : L10n.instance.t('paywall_refresh'),
                 kind: AppButtonKind.secondary,
                 size: AppButtonSize.small,
                 expand: false,

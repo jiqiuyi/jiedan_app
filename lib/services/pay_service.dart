@@ -1,3 +1,4 @@
+import '../../l10n/l10n.dart';
 // ============================================================
 // 收款 / 提现通道统一入口（真实支付接入点预留）
 // ============================================================
@@ -85,19 +86,19 @@ abstract class WithdrawChannel {
 /// 业务方先展示收款码，用户在微信/支付宝付款后，在 App 内手动登记到账。
 class QrCodePayChannel implements PayChannel {
   @override
-  String get name => '个人收款码（手动确认）';
+  String get name => L10n.instance.t('i18n_084');
 
   @override
   Future<PaymentResult> createPayment(PaymentRequest req) async {
     // 真实接入点①：这里改为拉起微信 APP 支付 / 支付宝 APP 支付，
     // 或调用服务商（ZPAY / 易支付等）下单接口换取支付参数。
-    return const PaymentResult(true, '请出示收款码收款，到账后手动确认登记');
+    return PaymentResult(true, L10n.instance.t('i18n_569'));
   }
 
   @override
   Future<PaymentResult> query(PaymentRequest req) async {
     // 真实接入点②：微信/支付宝查单接口，或服务商查单接口。
-    return const PaymentResult(false, '手动确认模式下无需查询，到账后手动登记即可');
+    return PaymentResult(false, L10n.instance.t('i18n_342'));
   }
 }
 
@@ -105,13 +106,13 @@ class QrCodePayChannel implements PayChannel {
 /// 打款完成后由人工/后台将记录标记为「已提现」。
 class ManualWithdrawChannel implements WithdrawChannel {
   @override
-  String get name => '人工打款';
+  String get name => L10n.instance.t('i18n_099');
 
   @override
   Future<WithdrawResult> withdraw(WithdrawRequest req) async {
     // 真实接入点③：这里改为调用微信商家转账 / 支付宝转账 / 银行代付 API，
     // 打款成功后返回 ok，并自动更新提现记录状态为 done。
-    return const WithdrawResult(true, '提现申请已提交，待人工核对打款');
+    return WithdrawResult(true, L10n.instance.t('i18n_369'));
   }
 }
 
@@ -128,12 +129,12 @@ abstract class RechargeChannel {
 /// 用户向平台收款码付款后，在 App 内手动确认，余额入账。
 class QrCodeRechargeChannel implements RechargeChannel {
   @override
-  String get name => '个人收款码（手动确认）';
+  String get name => L10n.instance.t('i18n_084');
 
   @override
   Future<PaymentResult> createRecharge(PaymentRequest req) async {
     // 真实接入点④：这里改为拉起微信/支付宝 APP 支付，或服务商下单接口。
-    return const PaymentResult(true, '请向收款码付款，到账后手动确认入账');
+    return PaymentResult(true, L10n.instance.t('i18n_570'));
   }
 }
 

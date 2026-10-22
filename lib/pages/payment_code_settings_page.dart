@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../l10n/l10n.dart';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -13,7 +14,7 @@ import '../widgets/app_ui.dart';
 /// 收款设置：配置微信 / 支付宝个人收款码图片。
 /// 配置后可在项目收款时一键"出示收款码"给客户扫码。
 class PaymentCodeSettingsPage extends StatefulWidget {
-  const PaymentCodeSettingsPage({super.key});
+const   PaymentCodeSettingsPage({super.key});
 
   @override
   State<PaymentCodeSettingsPage> createState() =>
@@ -67,7 +68,7 @@ class _PaymentCodeSettingsPageState extends State<PaymentCodeSettingsPage> {
     await _load();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(isWx ? '微信收款码已更新' : '支付宝收款码已更新')),
+      SnackBar(content: Text(isWx ? L10n.instance.t('payment_code_wechat_updated') : L10n.instance.t('payment_code_alipay_updated'))),
     );
   }
 
@@ -85,38 +86,38 @@ class _PaymentCodeSettingsPageState extends State<PaymentCodeSettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('收款设置')),
+      appBar: AppBar(title: Text(L10n.instance.t('payment_code_settings_title'))),
       body: _loading
-          ? const AppLoading()
+          ? AppLoading()
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
                 _QrCard(
-                  title: '微信收款码',
-                  subtitle: '客户扫码后用微信付款',
+                  title: L10n.instance.t('payment_code_wechat'),
+                  subtitle: L10n.instance.t('payment_code_settings_page_customers_scan'),
                   icon: Icons.wechat,
-                  iconColor: const Color(0xFF07C160),
+                  iconColor: Color(0xFF07C160),
                   path: _wxPath,
                   onPick: () => _pickAndSave(isWx: true),
                   onClear: () => _clear(isWx: true),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 _QrCard(
-                  title: '支付宝收款码',
-                  subtitle: '客户扫码后用支付宝付款',
+                  title: L10n.instance.t('payment_code_alipay'),
+                  subtitle: L10n.instance.t('payment_code_settings_page_customers_scan_2'),
                   icon: Icons.account_balance_wallet_outlined,
-                  iconColor: const Color(0xFF1677FF),
+                  iconColor: Color(0xFF1677FF),
                   path: _aliPath,
                   onPick: () => _pickAndSave(isWx: false),
                   onClear: () => _clear(isWx: false),
                 ),
-                const SizedBox(height: 24),
-                const Text(
-                  '使用说明：\n'
-                  '1. 先在微信/支付宝 App 里打开「收款码」，截图保存到相册；\n'
-                  '2. 点上方卡片从相册选择该截图；\n'
-                  '3. 收款时在项目页点「出示收款码」，客户扫码付款即可；\n'
-                  '4. 到账后回来点「登记收款」入账。',
+                SizedBox(height: 24),
+                Text(
+                  L10n.instance.t('i18n_114') +
+                  L10n.instance.t('i18n_029') +
+                  L10n.instance.t('i18n_032') +
+                  L10n.instance.t('i18n_033') +
+                  L10n.instance.t('i18n_036'),
                   style: TextStyle(fontSize: 13, color: AppTheme.textSub),
                 ),
               ],
@@ -133,8 +134,8 @@ class _QrCard extends StatelessWidget {
   final String? path;
   final VoidCallback onPick;
   final VoidCallback onClear;
-
-  const _QrCard({
+const 
+  _QrCard({
     required this.title,
     required this.subtitle,
     required this.icon,
@@ -154,11 +155,11 @@ class _QrCard extends StatelessWidget {
           ListTile(
             leading: Icon(icon, color: iconColor, size: 32),
             title: Text(title,
-                style: const TextStyle(fontWeight: FontWeight.w700)),
+                style: TextStyle(fontWeight: FontWeight.w700)),
             subtitle: Text(subtitle),
             trailing: TextButton(
               onPressed: onPick,
-              child: Text(hasImage ? '更换' : '去设置'),
+              child: Text(hasImage ? L10n.instance.t('common_change') : L10n.instance.t('payment_code_go_settings')),
             ),
           ),
           if (hasImage)
@@ -169,10 +170,10 @@ class _QrCard extends StatelessWidget {
                   height: 220,
                   width: double.infinity,
                   fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => const SizedBox(
+                  errorBuilder: (_, _, _) => SizedBox(
                     height: 100,
                     child: Center(
-                      child: Text('图片加载失败',
+                      child: Text(L10n.instance.t('common_image_load_failed'),
                           style: TextStyle(color: AppTheme.textSub)),
                     ),
                   ),
@@ -182,8 +183,8 @@ class _QrCard extends StatelessWidget {
                   top: 8,
                   child: IconButton.filledTonal(
                     onPressed: onClear,
-                    tooltip: '移除收款码',
-                    icon: const Icon(Icons.close, size: 18),
+                    tooltip: L10n.instance.t('payment_code_remove'),
+                    icon: Icon(Icons.close, size: 18),
                   ),
                 ),
               ],
@@ -194,13 +195,13 @@ class _QrCard extends StatelessWidget {
               child: Container(
                 height: 100,
                 alignment: Alignment.center,
-                child: const Column(
+                child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.add_photo_alternate_outlined,
                         color: AppTheme.textSub),
                     SizedBox(height: 6),
-                    Text('从相册选择收款码截图',
+                    Text(L10n.instance.t('payment_code_pick'),
                         style: TextStyle(
                             fontSize: 13, color: AppTheme.textSub)),
                   ],

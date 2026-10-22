@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import 'package:intl/intl.dart';
 
 import '../database.dart';
@@ -18,7 +19,7 @@ import '../widgets/app_ui.dart';
 class ProjectDetailPage extends StatefulWidget {
   final Project project;
   final String customerName;
-  const ProjectDetailPage({super.key, required this.project, required this.customerName});
+const   ProjectDetailPage({super.key, required this.project, required this.customerName});
 
   @override
   State<ProjectDetailPage> createState() => _ProjectDetailPageState();
@@ -64,7 +65,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     if (!mounted) return;
     if (costTags.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('暂无成本标签，请先到「我的-标签维护」添加成本标签')),
+        SnackBar(content: Text(L10n.instance.t('common_no_cost_tag'))),
       );
       return;
     }
@@ -74,32 +75,32 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) => AlertDialog(
-          title: const Text('添加成本'),
+          title: Text(L10n.instance.t('project_add_cost')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
                 initialValue: selected,
-                decoration: const InputDecoration(labelText: '成本名称'),
+                decoration: InputDecoration(labelText: L10n.instance.t('i18n_334')),
                 items: costTags.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
                 onChanged: (v) => setDlg(() => selected = v ?? selected),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               TextField(
                 controller: amountCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: moneyInputFormatters,
-                decoration: const InputDecoration(labelText: '金额（元）', hintText: '0.00'),
+                decoration: InputDecoration(labelText: L10n.instance.t('i18n_621'), hintText: '0.00'),
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.instance.t('common_cancel'))),
             FilledButton(
               onPressed: () => Money.parseYuanToFen(amountCtrl.text.trim()) <= 0
                   ? null
                   : Navigator.pop(ctx, true),
-              child: const Text('保存'),
+              child: Text(L10n.instance.t('common_save')),
             ),
           ],
         ),
@@ -123,12 +124,12 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除成本'),
-        content: Text('确定删除成本「${c.name}」¥${_fmt.format(c.amount / 100)} 吗？'),
+        title: Text(L10n.instance.t('project_delete_cost')),
+        content: Text(L10n.instance.t('project_delete_cost_confirm', args: {'c.name': c.name, '_fmt.format(c.amount / 100)': _fmt.format(c.amount / 100)})),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.instance.t('common_cancel'))),
           AppButton(
-            label: '删除',
+            label: L10n.instance.t('common_delete'),
             kind: AppButtonKind.danger,
             size: AppButtonSize.medium,
             expand: false,
@@ -180,13 +181,13 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除收款记录'),
+        title: Text(L10n.instance.t('project_delete_payment')),
         content: Text(
-            '确定删除这笔 ¥${_fmt.format(p.amount / 100)} 的收款记录吗？\n删除后项目已收金额会相应减少。'),
+            L10n.instance.t('i18n_505', args: {'v0': _fmt.format(p.amount / 100)})),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.instance.t('common_cancel'))),
           AppButton(
-            label: '删除',
+            label: L10n.instance.t('common_delete'),
             kind: AppButtonKind.danger,
             size: AppButtonSize.medium,
             expand: false,
@@ -217,12 +218,12 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除项目'),
-        content: const Text('将删除该项目及其全部收款记录，不可恢复。确定吗？'),
+        title: Text(L10n.instance.t('project_delete')),
+        content: Text(L10n.instance.t('project_delete_confirm2')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.instance.t('common_cancel'))),
           AppButton(
-            label: '删除',
+            label: L10n.instance.t('common_delete'),
             kind: AppButtonKind.danger,
             size: AppButtonSize.medium,
             expand: false,
@@ -248,13 +249,13 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
       context: context,
       builder: (dctx) => StatefulBuilder(
         builder: (dctx, setDlg) => AlertDialog(
-          title: const Text('项目进度'),
+          title: Text(L10n.instance.t('project_detail_page_project_progress')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('进度（%）', style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
-              const SizedBox(height: 6),
+              Text(L10n.instance.t('project_detail_page_progress'), style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
+              SizedBox(height: 6),
               Row(
                 children: [
                   Expanded(
@@ -278,7 +279,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                       controller: progressCtrl,
                       keyboardType: TextInputType.number,
                       textAlign: TextAlign.center,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         isDense: true,
                         suffixText: '%',
                         contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -291,11 +292,11 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               Row(
                 children: [
-                  const Text('交付时间', style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
-                  const Spacer(),
+                  Text(L10n.instance.t('project_delivery_date'), style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
+                  Spacer(),
                   TextButton.icon(
                     onPressed: () async {
                       final now = DateTime.now();
@@ -307,37 +308,37 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                         initialDate: initial,
                         firstDate: DateTime(now.year - 1, 1, 1),
                         lastDate: DateTime(now.year + 5, 12, 31),
-                        helpText: '选择交付时间',
+                        helpText: L10n.instance.t('i18n_605'),
                       );
                       if (picked != null) setDlg(() => deliverDate = picked.millisecondsSinceEpoch);
                     },
-                    icon: const Icon(Icons.event_outlined, size: 18),
+                    icon: Icon(Icons.event_outlined, size: 18),
                     label: Text(
-                      deliverDate > 0 ? fmt.format(DateTime.fromMillisecondsSinceEpoch(deliverDate)) : '未设置',
+                      deliverDate > 0 ? fmt.format(DateTime.fromMillisecondsSinceEpoch(deliverDate)) : L10n.instance.t('i18n_446'),
                     ),
                   ),
                   if (deliverDate > 0)
                     IconButton(
                       visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.close, size: 16, color: AppTheme.textSub),
+                      icon: Icon(Icons.close, size: 16, color: AppTheme.textSub),
                       onPressed: () => setDlg(() => deliverDate = 0),
                     ),
                 ],
               ),
-              const SizedBox(height: 4),
-              const Text('列表会展示进度条；交付时间临近或超期时将标记提醒。',
+              SizedBox(height: 4),
+              Text(L10n.instance.t('project_detail_page_the_list'),
                   style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dctx, false), child: const Text('取消')),
+            TextButton(onPressed: () => Navigator.pop(dctx, false), child: Text(L10n.instance.t('common_cancel'))),
             FilledButton(
               onPressed: () {
                 final n = int.tryParse(progressCtrl.text.trim());
                 if (n != null) progress = n.clamp(0, 100);
                 Navigator.pop(dctx, true);
               },
-              child: const Text('保存'),
+              child: Text(L10n.instance.t('common_save')),
             ),
           ],
         ),
@@ -355,7 +356,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     if (!mounted) return;
     setState(() => _project = updated);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('项目进度已更新')),
+      SnackBar(content: Text(L10n.instance.t('project_detail_page_progress_updated'))),
     );
   }
 
@@ -379,27 +380,27 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) => AlertDialog(
-          title: Text(existing == null ? '添加阶段' : '编辑阶段'),
+          title: Text(existing == null ? L10n.instance.t('project_add_milestone') : L10n.instance.t('project_edit_milestone')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: nameCtrl,
                 autofocus: true,
-                decoration: const InputDecoration(labelText: '阶段名称', hintText: '如：设计稿 / 首款 / 尾款'),
+                decoration: InputDecoration(labelText: L10n.instance.t('project_detail_stage_label'), hintText: L10n.instance.t('project_detail_page_e_g')),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               TextField(
                 controller: amountCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: moneyInputFormatters,
-                decoration: const InputDecoration(labelText: '阶段金额（元）'),
+                decoration: InputDecoration(labelText: L10n.instance.t('i18n_627')),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Row(
                 children: [
-                  const Text('到期日期', style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
-                  const Spacer(),
+                  Text(L10n.instance.t('project_due_date'), style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
+                  Spacer(),
                   TextButton.icon(
                     onPressed: () async {
                       final now = DateTime.now();
@@ -411,19 +412,19 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                         initialDate: initial,
                         firstDate: DateTime(now.year - 1, 1, 1),
                         lastDate: DateTime(now.year + 5, 12, 31),
-                        helpText: '选择到期日期',
+                        helpText: L10n.instance.t('i18n_606'),
                       );
                       if (picked != null) setDlg(() => dueDate = picked.millisecondsSinceEpoch);
                     },
-                    icon: const Icon(Icons.event_outlined, size: 18),
+                    icon: Icon(Icons.event_outlined, size: 18),
                     label: Text(
-                      dueDate > 0 ? fmt.format(DateTime.fromMillisecondsSinceEpoch(dueDate)) : '未设置',
+                      dueDate > 0 ? fmt.format(DateTime.fromMillisecondsSinceEpoch(dueDate)) : L10n.instance.t('i18n_446'),
                     ),
                   ),
                   if (dueDate > 0)
                     IconButton(
                       visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.close, size: 16, color: AppTheme.textSub),
+                      icon: Icon(Icons.close, size: 16, color: AppTheme.textSub),
                       onPressed: () => setDlg(() => dueDate = 0),
                     ),
                 ],
@@ -431,7 +432,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.instance.t('common_cancel'))),
             FilledButton(
               onPressed: () {
                 final name = nameCtrl.text.trim();
@@ -451,7 +452,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                       existing.copyWith(name: name, amount: amount.round(), dueDate: dueDate)).then((_) => _load());
                 }
               },
-              child: const Text('保存'),
+              child: Text(L10n.instance.t('common_save')),
             ),
           ],
         ),
@@ -470,12 +471,12 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除阶段'),
-        content: Text('确定删除阶段「${ms.name}」吗？\n\n删除后该阶段进度标记将一并清除，不可恢复。'),
+        title: Text(L10n.instance.t('project_delete_milestone')),
+        content: Text(L10n.instance.t('i18n_506', args: {'v0': ms.name})),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.instance.t('common_cancel'))),
           AppButton(
-            label: '删除',
+            label: L10n.instance.t('common_delete'),
             kind: AppButtonKind.danger,
             size: AppButtonSize.medium,
             expand: false,
@@ -495,10 +496,10 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime(now.year, now.month, now.day).add(const Duration(days: 7)),
+      initialDate: DateTime(now.year, now.month, now.day).add(Duration(days: 7)),
       firstDate: DateTime(now.year, now.month, now.day),
       lastDate: DateTime(now.year + 3, 12, 31),
-      helpText: '选择待收金额到期日',
+      helpText: L10n.instance.t('i18n_611'),
     );
     if (picked == null || !mounted) return;
     final when = DateTime(picked.year, picked.month, picked.day, 9, 0);
@@ -520,7 +521,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     if (!mounted) return;
     setState(() => _project = updated);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已设置催款提醒：${DateFormat('yyyy-MM-dd').format(when)} 09:00')),
+      SnackBar(content: Text(L10n.instance.t('project_detail_page_reminder_set', args: {'date': DateFormat('yyyy-MM-dd').format(when)}))),
     );
   }
 
@@ -535,7 +536,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     if (!mounted) return;
     setState(() => _project = updated);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已取消催款提醒')),
+      SnackBar(content: Text(L10n.instance.t('project_reminder_cancelled'))),
     );
   }
 
@@ -552,13 +553,13 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
       children: [
         Row(
           children: [
-            const Text('进度', style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
-            const Spacer(),
+            Text(L10n.instance.t('common_progress'), style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
+            Spacer(),
             Text('${_project.progress}%',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.primary)),
           ],
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: 6),
         LinearProgressIndicator(
           value: (_project.progress / 100).clamp(0.0, 1.0),
           minHeight: 6,
@@ -566,24 +567,24 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
           color: AppTheme.primary,
           borderRadius: BorderRadius.circular(AppRadius.xxs),
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: 10),
         Row(
           children: [
-            const Icon(Icons.event_outlined, size: 16, color: AppTheme.textSub),
-            const SizedBox(width: 6),
+            Icon(Icons.event_outlined, size: 16, color: AppTheme.textSub),
+            SizedBox(width: 6),
             Text(
               hasDeliver
-                  ? '交付时间：${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(_project.deliverDate))}${isOverdue ? '（已超期）' : (isNear ? '（临近）' : '')}'
-                  : '未设置交付时间',
+                  ? '${L10n.instance.t('pd_deliver_time')} ${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(_project.deliverDate))}${isOverdue ? L10n.instance.t('pd_overdue') : (isNear ? L10n.instance.t('pd_near') : '')}'
+                  : L10n.instance.t('i18n_447'),
               style: TextStyle(fontSize: 13, color: deliverColor),
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: 10),
         OutlinedButton.icon(
           onPressed: _editProgress,
-          icon: const Icon(Icons.tune, size: 18),
-          label: const Text('编辑进度 / 交付'),
+          icon: Icon(Icons.tune, size: 18),
+          label: Text(L10n.instance.t('project_edit_progress')),
         ),
       ],
     );
@@ -591,11 +592,11 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
 
   Widget _buildMilestoneBody() {
     if (_milestones.isEmpty) {
-      return const Row(
+      return Row(
         children: [
           Icon(Icons.flag_outlined, size: 18, color: AppTheme.textSub),
           SizedBox(width: 8),
-          Expanded(child: Text('尚未添加阶段，点右上角「添加阶段」拆解收款节点', style: TextStyle(color: AppTheme.textSub, fontSize: 13))),
+          Expanded(child: Text(L10n.instance.t('project_no_milestones'), style: TextStyle(color: AppTheme.textSub, fontSize: 13))),
         ],
       );
     }
@@ -607,13 +608,13 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
       children: [
         Row(
           children: [
-            Text('阶段进度', style: const TextStyle(fontSize: 13, color: AppTheme.textSub)),
-            const Spacer(),
+            Text(L10n.instance.t('project_milestone_progress'), style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
+            Spacer(),
             Text('${(progress * 100).toStringAsFixed(0)}%',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.primary)),
           ],
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: 6),
         LinearProgressIndicator(
           value: progress.clamp(0.0, 1.0),
           minHeight: 6,
@@ -621,10 +622,10 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
           color: AppTheme.primary,
           borderRadius: BorderRadius.circular(AppRadius.xxs),
         ),
-        const SizedBox(height: 4),
-        Text('已完成 ${doneAmount / 100} 元 / 共 ${totalAmount / 100} 元',
-            style: const TextStyle(fontSize: 12, color: AppTheme.textSub)),
-        const SizedBox(height: 8),
+        SizedBox(height: 4),
+        Text(L10n.instance.t('project_milestone_amount_line', args: {'doneAmount / 100': '${doneAmount / 100}', 'totalAmount / 100': '${totalAmount / 100}'}),
+            style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
+        SizedBox(height: 8),
         ..._milestones.map((m) => CheckboxListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
@@ -636,17 +637,17 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                     decoration: m.done ? TextDecoration.lineThrough : null,
                     color: m.done ? AppTheme.textSub : null,
                   )),
-              subtitle: Text('¥${_fmt.format(m.amount / 100)}${m.dueDate > 0 ? ' · 到期 ${DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(m.dueDate))}' : ''}',
-                  style: const TextStyle(fontSize: 12)),
+              subtitle: Text('¥${_fmt.format(m.amount / 100)}${m.dueDate > 0 ? L10n.instance.t('pd_due_suffix', args: {'v0': DateFormat('MM-dd').format(DateTime.fromMillisecondsSinceEpoch(m.dueDate))}) : ''}',
+                  style: TextStyle(fontSize: 12)),
               secondary: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.edit_outlined, size: 18, color: AppTheme.textSub),
+                    icon: Icon(Icons.edit_outlined, size: 18, color: AppTheme.textSub),
                     onPressed: () => _editMilestone(m),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.textSub),
+                    icon: Icon(Icons.delete_outline, size: 18, color: AppTheme.textSub),
                     onPressed: () => _deleteMilestone(m),
                   ),
                 ],
@@ -664,29 +665,29 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('待收金额 ¥${_fmt.format(remaining / 100)}',
-            style: const TextStyle(fontSize: 13, color: AppTheme.warn)),
-        const SizedBox(height: 4),
+        Text(L10n.instance.t('i18n_321', args: {'v0': _fmt.format(remaining / 100)}),
+            style: TextStyle(fontSize: 13, color: AppTheme.warn)),
+        SizedBox(height: 4),
         Text(
           hasReminder
-              ? '到期日：${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(_project.dueDate))}（09:00 本地通知提醒）'
-              : '设置到期日后，将在此时间点发送本地催款通知（数据仅存本机）',
-          style: const TextStyle(fontSize: 13, color: AppTheme.textSub),
+              ? '${L10n.instance.t('pd_due_date')} ${DateFormat('yyyy-MM-dd').format(DateTime.fromMillisecondsSinceEpoch(_project.dueDate))}${L10n.instance.t('pd_local_notify_note')}'
+              : L10n.instance.t('i18n_562'),
+          style: TextStyle(fontSize: 13, color: AppTheme.textSub),
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: 10),
         Row(
           children: [
             OutlinedButton.icon(
               onPressed: _setReminder,
-              icon: const Icon(Icons.event, size: 18),
-              label: Text(hasReminder ? '修改到期日' : '设置到期日'),
+              icon: Icon(Icons.event, size: 18),
+              label: Text(hasReminder ? L10n.instance.t('project_change_due') : L10n.instance.t('project_set_due')),
             ),
             if (hasReminder) ...[
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               TextButton.icon(
                 onPressed: _cancelReminder,
-                icon: const Icon(Icons.notifications_off_outlined, size: 18),
-                label: const Text('取消提醒'),
+                icon: Icon(Icons.notifications_off_outlined, size: 18),
+                label: Text(L10n.instance.t('project_cancel_reminder')),
               ),
             ],
           ],
@@ -708,8 +709,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
         title: Text(_project.title),
         actions: [
           IconButton(
-            tooltip: '报价单',
-            icon: const Icon(Icons.receipt_long_outlined),
+            tooltip: L10n.instance.t('quote_title'),
+            icon: Icon(Icons.receipt_long_outlined),
             onPressed: () {
               Navigator.push(
                 context,
@@ -725,7 +726,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
         ],
       ),
       body: _loading
-          ? const AppLoading()
+          ? AppLoading()
           : ListView(
               padding: const EdgeInsets.only(top: 8, bottom: 32),
               children: [
@@ -742,15 +743,15 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(_project.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                                  const SizedBox(height: 6),
-                                  Text('客户：${widget.customerName}', style: const TextStyle(color: AppTheme.textSub)),
+                                  SizedBox(height: 6),
+                                  Text(L10n.instance.t('project_detail_page_customer', args: {'widget.customerName': widget.customerName}), style: const TextStyle(color: AppTheme.textSub)),
                                 ],
                               ),
                             ),
                             _StatusBadge(status: _project.status),
                           ],
                         ),
-                        const SizedBox(height: 16),
+                        SizedBox(height: 16),
                         LinearProgressIndicator(
                           value: progress.clamp(0.0, 1.0),
                           minHeight: 6,
@@ -758,34 +759,34 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                           color: AppTheme.accent,
                           borderRadius: BorderRadius.circular(AppRadius.xxs),
                         ),
-                        const SizedBox(height: 14),
+                        SizedBox(height: 14),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
-                            _Amount(col: AppTheme.textSub, label: '约定总额', value: '¥${_fmt.format(_project.amountTotal / 100)}'),
-                            _Amount(col: AppTheme.accent, label: '已收', value: '¥${_fmt.format(_paidTotal / 100)}'),
-                            _Amount(col: AppTheme.warn, label: '待收', value: '¥${_fmt.format(remaining / 100)}'),
+                            _Amount(col: AppTheme.textSub, label: L10n.instance.t('project_agreed_total'), value: '¥${_fmt.format(_project.amountTotal / 100)}'),
+                            _Amount(col: AppTheme.accent, label: L10n.instance.t('project_received'), value: '¥${_fmt.format(_paidTotal / 100)}'),
+                            _Amount(col: AppTheme.warn, label: L10n.instance.t('project_pending'), value: '¥${_fmt.format(remaining / 100)}'),
                           ],
                         ),
-                        const SizedBox(height: 14),
+                        SizedBox(height: 14),
                         FilledButton.icon(
                           onPressed: _advanceStatus,
-                          icon: const Icon(Icons.arrow_forward),
-                          label: Text('进入「${_nextLabel()}」'),
+                          icon: Icon(Icons.arrow_forward),
+                          label: Text(L10n.instance.t('project_go_next', args: {'_nextLabel()': _nextLabel()})),
                         ),
                       ],
                     ),
                   ),
                 ),
                 if (_project.note.isNotEmpty) ...[
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.fromLTRB(18, 10, 18, 4),
-                    child: Text('项目备注', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    child: Text(L10n.instance.t('project_notes'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   ),
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
-                      child: Text(_project.note, style: const TextStyle(fontSize: 14, height: 1.5)),
+                      child: Text(_project.note, style: TextStyle(fontSize: 14, height: 1.5)),
                     ),
                   ),
                 ],
@@ -793,11 +794,11 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                   padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
                   child: Row(
                     children: [
-                      const Expanded(child: Text('里程碑 / 阶段', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+                      Expanded(child: Text(L10n.instance.t('project_milestones'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
                       TextButton.icon(
                         onPressed: _addMilestone,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('添加阶段'),
+                        icon: Icon(Icons.add, size: 18),
+                        label: Text(L10n.instance.t('project_add_milestone')),
                       ),
                     ],
                   ),
@@ -812,8 +813,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                   padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
                   child: Row(
                     children: [
-                      const Expanded(child: Text('项目进度 / 交付', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
-                      const Icon(Icons.flag_outlined, size: 18, color: AppTheme.textSub),
+                      Expanded(child: Text(L10n.instance.t('project_progress_delivery'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+                      Icon(Icons.flag_outlined, size: 18, color: AppTheme.textSub),
                     ],
                   ),
                 ),
@@ -827,8 +828,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                   padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
                   child: Row(
                     children: [
-                      const Expanded(child: Text('催款提醒', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
-                      const Icon(Icons.notifications_outlined, size: 18, color: AppTheme.textSub),
+                      Expanded(child: Text(L10n.instance.t('project_reminder'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+                      Icon(Icons.notifications_outlined, size: 18, color: AppTheme.textSub),
                     ],
                   ),
                 ),
@@ -842,20 +843,20 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                   padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
                   child: Row(
                     children: [
-                      const Expanded(child: Text('收款记录', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+                      Expanded(child: Text(L10n.instance.t('project_payment_records'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
                       TextButton.icon(
                         onPressed: _collectPayment,
-                        icon: const Icon(Icons.payments_outlined, size: 18),
-                        label: const Text('收款'),
+                        icon: Icon(Icons.payments_outlined, size: 18),
+                        label: Text(L10n.instance.t('common_collect')),
                       ),
-                      TextButton.icon(onPressed: _addPayment, icon: const Icon(Icons.add, size: 18), label: const Text('登记收款')),
+                      TextButton.icon(onPressed: _addPayment, icon: Icon(Icons.add, size: 18), label: Text(L10n.instance.t('project_record_payment'))),
                     ],
                   ),
                 ),
                 if (_payments.isEmpty)
-                  const AppEmpty(
+                  AppEmpty(
                     icon: Icons.receipt_long_outlined,
-                    title: '还没有收款记录',
+                    title: L10n.instance.t('project_detail_page_no_payment'),
                   )
                 else
                   ..._payments.map((p) => Card(
@@ -869,33 +870,33 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                           ),
                         ),
                       )),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: ContractSection(projectId: _project.id!),
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
                   child: Row(
                     children: [
-                      const Expanded(child: Text('项目成本', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
-                      Text('合计 ¥${_fmt.format(_costTotal / 100)}',
-                          style: const TextStyle(fontSize: 13, color: AppTheme.warn, fontWeight: FontWeight.w700)),
+                      Expanded(child: Text(L10n.instance.t('project_costs'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+                      Text(L10n.instance.t('i18n_165', args: {'v0': _fmt.format(_costTotal / 100)}),
+                          style: TextStyle(fontSize: 13, color: AppTheme.warn, fontWeight: FontWeight.w700)),
                       TextButton.icon(
                         onPressed: _addCost,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('添加成本'),
+                        icon: Icon(Icons.add, size: 18),
+                        label: Text(L10n.instance.t('project_add_cost')),
                       ),
                     ],
                   ),
                 ),
                 if (_costs.isEmpty)
-                  const AppEmpty(
+                  AppEmpty(
                     icon: Icons.account_balance_outlined,
-                    title: '还没有成本记录',
+                    title: L10n.instance.t('project_detail_page_no_cost'),
                   )
                 else
                   ..._costs.map((c) => Card(
@@ -909,16 +910,16 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
                           ),
                         ),
                       )),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: AttachmentSection(ownerType: 'project', ownerId: _project.id!),
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 AppButton(
-                  label: '删除项目',
+                  label: L10n.instance.t('project_delete'),
                   icon: Icons.delete_outline,
                   kind: AppButtonKind.dangerOutline,
                   size: AppButtonSize.medium,
@@ -933,13 +934,13 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
   String _nextLabel() {
     switch (_project.status) {
       case ProjectStatus.accepted:
-        return '制作中';
+        return L10n.instance.t('constants_in_progress');
       case ProjectStatus.working:
-        return '待收尾款';
+        return L10n.instance.t('project_detail_page_pending_final');
       case ProjectStatus.awaiting:
-        return '完结';
+        return L10n.instance.t('constants_completed');
       case ProjectStatus.done:
-        return '待收尾款（重新开启）';
+        return L10n.instance.t('i18n_317');
     }
   }
 }
@@ -948,7 +949,7 @@ class _Amount extends StatelessWidget {
   final Color col;
   final String label;
   final String value;
-  const _Amount({required this.col, required this.label, required this.value});
+const _Amount({required this.col, required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -967,7 +968,7 @@ class _Amount extends StatelessWidget {
 
 class _StatusBadge extends StatelessWidget {
   final ProjectStatus status;
-  const _StatusBadge({required this.status});
+const _StatusBadge({required this.status});
 
   @override
   Widget build(BuildContext context) {

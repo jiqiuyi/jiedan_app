@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
@@ -18,7 +19,7 @@ import '../widgets/app_ui.dart';
 /// - 好友真实付款开通 VIP → 返现 50%
 /// - 每 2 位有效好友 → 免费送 VIP 1 个月（过渡期本地发放，正式版切云端）
 class InvitePage extends StatefulWidget {
-  const InvitePage({super.key});
+const   InvitePage({super.key});
 
   @override
   State<InvitePage> createState() => _InvitePageState();
@@ -30,7 +31,7 @@ class _InvitePageState extends State<InvitePage> {
   String _inviteLink = '';
   bool _applying = false;
   List<Invitee> _list = [];
-  InviteStats _stats = const InviteStats(
+  InviteStats _stats = InviteStats(
       friendCount: 0, paidCount: 0, totalRebate: 0);
   bool _loading = true;
 
@@ -62,7 +63,7 @@ class _InvitePageState extends State<InvitePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              '恭喜！已推荐 ${AppConfig.inviteFreeVipFriends} 位好友，免费获赠 VIP ${AppConfig.inviteRewardMonths.toStringAsFixed(0)} 个月'),
+              L10n.instance.t('i18n_330', args: {'v0':AppConfig.inviteFreeVipFriends.toString(), 'v1':AppConfig.inviteRewardMonths.toStringAsFixed(0)})),
         ),
       );
     }
@@ -72,25 +73,25 @@ class _InvitePageState extends State<InvitePage> {
     await Clipboard.setData(ClipboardData(text: _inviteCode));
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('邀请码已复制')));
+        .showSnackBar(SnackBar(content: Text(L10n.instance.t('invite_code_copied'))));
   }
 
   Future<void> _copyLink() async {
     await Clipboard.setData(ClipboardData(text: _inviteLink));
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('专属邀请链接已复制')));
+        .showSnackBar(SnackBar(content: Text(L10n.instance.t('invite_link_copied'))));
   }
 
   Future<void> _share() async {
     try {
       await Share.share(
-        '我在用「接单管家」管报价、客户和项目，注册时填邀请码 $_inviteCode 即可：\n$_inviteLink',
+        L10n.instance.t('i18n_336', args: {'v0': _inviteCode, 'v1': _inviteLink}),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('分享失败，可复制链接后手动发送')));
+          SnackBar(content: Text(L10n.instance.t('invite_share_failed'))));
     }
   }
 
@@ -103,20 +104,20 @@ class _InvitePageState extends State<InvitePage> {
     final wx = p['hasWechatQrcode'] == true;
     final ali = p['hasAlipayQrcode'] == true;
     if (method.isEmpty && name.isEmpty && account.isEmpty && !wx && !ali) {
-      return '尚未设置，设置后才能申请打款';
+      return L10n.instance.t('i18n_249');
     }
     final label = method == 'alipay'
-        ? '支付宝'
-        : (method == 'wechat' ? '微信' : '未选方式');
+        ? L10n.instance.t('invite_page_alipay')
+        : (method == 'wechat' ? L10n.instance.t('invite_page_wechat') : L10n.instance.t('invite_no_method'));
     final masked = account.length <= 4
         ? account
         : '${account.substring(0, 2)}****${account.substring(account.length - 2)}';
     final codes = <String>[
-      if (wx) '已传微信码',
-      if (ali) '已传支付宝码',
+      if (wx) L10n.instance.t('i18n_254'),
+      if (ali) L10n.instance.t('i18n_255'),
     ].join('、');
-    return '$label · ${name.isEmpty ? '未填姓名' : name} · ${masked.isEmpty ? '未填账号' : masked}'
-        '${codes.isEmpty ? ' · 未传收款码' : ' · $codes'}';
+    return '$label · ${name.isEmpty ? L10n.instance.t('invite_no_name') : name} · ${masked.isEmpty ? L10n.instance.t('invite_no_account') : masked}'
+        '${codes.isEmpty ? L10n.instance.t('invite_no_qr_code') : ' · $codes'}';
   }
 
   String _applyTimeText(int ts) => DateFormat('yyyy-MM-dd HH:mm')
@@ -125,7 +126,7 @@ class _InvitePageState extends State<InvitePage> {
   Future<void> _openPayoutAccount() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const PayoutAccountPage()),
+      MaterialPageRoute(builder: (_) => PayoutAccountPage()),
     );
     if (!mounted) return;
     await _load();
@@ -144,7 +145,7 @@ class _InvitePageState extends State<InvitePage> {
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(
-          '已提交 ${r.count} 笔、合计 ¥${_fmt.format(r.amount)}，打款后会更新状态'),
+          L10n.instance.t('i18n_278', args: {'v0':r.count.toString(), 'v1':_fmt.format(r.amount)})),
     ));
     await _load();
   }
@@ -153,7 +154,7 @@ class _InvitePageState extends State<InvitePage> {
   Widget build(BuildContext context) {
     final st = AppState.instance;
     return Scaffold(
-      appBar: AppBar(title: const Text('推广活动')),
+      appBar: AppBar(title: Text(L10n.instance.t('invite_title'))),
       body: ListenableBuilder(
         listenable: AppState.instance,
         builder: (context, _) {
@@ -161,13 +162,13 @@ class _InvitePageState extends State<InvitePage> {
             return _NotLoggedIn(onLogin: () async {
               final ok = await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const LoginPage()),
+                MaterialPageRoute(builder: (_) => LoginPage()),
               );
               if (ok == true) await _load();
             });
           }
           if (_loading) {
-            return const AppLoading();
+            return AppLoading();
           }
           final need = AppConfig.inviteFreeVipFriends;
           final progress = (_list.length / need).clamp(0.0, 1.0);
@@ -180,34 +181,34 @@ class _InvitePageState extends State<InvitePage> {
                   padding: const EdgeInsets.all(20),
                   child: Column(
                     children: [
-                      const Text('我的邀请码',
+                      Text(L10n.instance.t('invite_my_code'),
                           style: TextStyle(
                               fontSize: 13, color: AppTheme.textSub)),
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
                             _inviteCode,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 32,
                               fontWeight: FontWeight.w800,
                               letterSpacing: 3,
                               color: AppTheme.primary,
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          SizedBox(width: 12),
                           IconButton(
                             onPressed: _copyCode,
-                            icon: const Icon(Icons.copy_rounded,
+                            icon: Icon(Icons.copy_rounded,
                                 size: 20, color: AppTheme.textSub),
-                            tooltip: '复制邀请码',
+                            tooltip: L10n.instance.t('invite_copy_code'),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        '把邀请码发给朋友，朋友注册时填入即可自动完成邀请，无需手动登记。',
+                      SizedBox(height: 12),
+                      Text(
+                        L10n.instance.t('i18n_344'),
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                       ),
@@ -226,50 +227,50 @@ class _InvitePageState extends State<InvitePage> {
                         children: [
                           Expanded(
                             child: _Stat(
-                                label: '已推荐',
+                                label: L10n.instance.t('invite_referred'),
                                 value: '${_list.length}',
-                                unit: '人'),
+                                unit: L10n.instance.t('i18n_098')),
                           ),
                           Expanded(
                             child: _Stat(
-                                label: '已付款',
+                                label: L10n.instance.t('invite_paid'),
                                 value: '${_stats.paidCount}',
-                                unit: '人'),
+                                unit: L10n.instance.t('i18n_098')),
                           ),
                           Expanded(
                             child: _Stat(
-                                label: '累计返现',
+                                label: L10n.instance.t('invite_total_rebate'),
                                 value: _fmt.format(_stats.totalRebate / 100),
-                                unit: '元'),
+                                unit: L10n.instance.t('i18n_119')),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 14),
+                      SizedBox(height: 14),
                       Row(
                         children: [
                           Expanded(
                             child: _Stat(
-                                label: '已打款',
+                                label: L10n.instance.t('invite_paid_out'),
                                 value: _fmt.format(_stats.paidRebate / 100),
-                                unit: '元'),
+                                unit: L10n.instance.t('i18n_119')),
                           ),
                           Expanded(
                             child: _Stat(
-                                label: '待打款',
+                                label: L10n.instance.t('admin_payout_tab'),
                                 value: _fmt.format(_stats.pendingRebate / 100),
-                                unit: '元'),
+                                unit: L10n.instance.t('i18n_119')),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
+                      SizedBox(height: 16),
                       Text(
-                        '推荐 ${_list.length}/$need 位有效好友，即可免费获得 VIP '
-                        '${AppConfig.inviteRewardMonths.toStringAsFixed(0)} 个月'
-                        '${_stats.bonusGranted ? '（已领取）' : ''}',
-                        style: const TextStyle(
+                        '${L10n.instance.t('i18n_366', args: {'v0': _list.length.toString(), 'v1': need.toString()})}'
+                        '${L10n.instance.t('i18n_014', args: {'v0': AppConfig.inviteRewardMonths.toStringAsFixed(0)})}'
+                        '${_stats.bonusGranted ? L10n.instance.t('invite_claimed') : ''}',
+                        style: TextStyle(
                             fontSize: 13, color: AppTheme.textSub),
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: 8),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(AppRadius.xxs),
                         child: LinearProgressIndicator(
@@ -291,30 +292,30 @@ class _InvitePageState extends State<InvitePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('专属邀请链接',
+                      Text(L10n.instance.t('invite_my_link'),
                           style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.textMain)),
-                      const SizedBox(height: 6),
+                      SizedBox(height: 6),
                       Text(_inviteLink,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 12, color: AppTheme.textSub)),
-                      const SizedBox(height: 4),
+                      SizedBox(height: 4),
                       Row(
                         children: [
                           TextButton.icon(
                             onPressed: _copyLink,
-                            icon: const Icon(Icons.link_rounded, size: 16),
-                            label: const Text('复制链接'),
+                            icon: Icon(Icons.link_rounded, size: 16),
+                            label: Text(L10n.instance.t('invite_copy_link')),
                           ),
-                          const Spacer(),
+                          Spacer(),
                           FilledButton.tonalIcon(
                             onPressed: _share,
-                            icon: const Icon(Icons.ios_share_rounded, size: 16),
-                            label: const Text('分享给好友'),
+                            icon: Icon(Icons.ios_share_rounded, size: 16),
+                            label: Text(L10n.instance.t('invite_share')),
                           ),
                         ],
                       ),
@@ -331,8 +332,8 @@ class _InvitePageState extends State<InvitePage> {
                     children: [
                       Row(
                         children: [
-                          const Expanded(
-                            child: Text('返现收款账户',
+                          Expanded(
+                            child: Text(L10n.instance.t('invite_payout_account'),
                                 style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
@@ -342,30 +343,30 @@ class _InvitePageState extends State<InvitePage> {
                             onPressed: _openPayoutAccount,
                             child: Text(
                                 AppState.instance.payoutInfo().isEmpty
-                                    ? '去设置'
-                                    : '修改'),
+                                    ? L10n.instance.t('invite_page_settings')
+                                    : L10n.instance.t('i18n_118')),
                           ),
                         ],
                       ),
                       Text(_accountSummary(),
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 12, color: AppTheme.textSub)),
-                      const SizedBox(height: 8),
+                      SizedBox(height: 8),
                       Text(
                         _stats.applyAt != null
-                            ? '已申请，等待打款（${_applyTimeText(_stats.applyAt!)}）'
-                            : '待打款 ¥${_fmt.format(_stats.pendingRebate / 100)}，可随时申请',
-                        style: const TextStyle(
+                            ? L10n.instance.t('invite_apply_pending_desc', args: {'_applyTimeText(_stats.applyAt!)': _applyTimeText(_stats.applyAt!)})
+                            : L10n.instance.t('i18n_312', args: {'v0': _fmt.format(_stats.pendingRebate / 100)}),
+                        style: TextStyle(
                             fontSize: 12, color: AppTheme.textSub),
                       ),
-                      const SizedBox(height: 10),
+                      SizedBox(height: 10),
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton(
                           onPressed: (_stats.pendingRebate <= 0 || _applying)
                               ? null
                               : _applyPayout,
-                          child: Text(_applying ? '提交中…' : '申请打款'),
+                          child: Text(_applying ? L10n.instance.t('common_submitting') : L10n.instance.t('invite_apply_payout')),
                         ),
                       ),
                     ],
@@ -374,22 +375,22 @@ class _InvitePageState extends State<InvitePage> {
               ),
               // ---- 好友列表 ----
               if (_list.isEmpty)
-                const AppEmpty(
+                AppEmpty(
                   icon: Icons.group_add_outlined,
-                  title: '还没有好友通过你的邀请码注册\n把邀请码发给朋友，注册后自动出现在这里',
+                  title: L10n.instance.t('i18n_596'),
                 )
               else
                 ..._list.map((e) => _InviteeTile(e: e)),
-              const SizedBox(height: 12),
-              const Padding(
+              SizedBox(height: 12),
+              Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
                 child: Text(
-                  '活动规则（第15批过渡期 · 本地核验）：\n'
-                  '1. 好友注册时填写你的邀请码，系统自动绑定邀请关系；\n'
-                  '2. 好友付款开通专业版后自动返现其付款金额的 50%；\n'
-                  '3. 每 2 位有效好友自动免费赠送 VIP 1 个月；\n'
-                  '4. VIP 赠送当前在本地发放并记录（卸载重装 / 换机后将丢失），'
-                  '正式版切云端后由服务器统一赠送，可跨设备保留。',
+                  L10n.instance.t('i18n_484') +
+                  L10n.instance.t('i18n_030') +
+                  L10n.instance.t('i18n_031') +
+                  L10n.instance.t('i18n_034') +
+                  L10n.instance.t('i18n_035') +
+                  L10n.instance.t('i18n_478'),
                   style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                 ),
               ),
@@ -405,7 +406,7 @@ class _Stat extends StatelessWidget {
   final String label;
   final String value;
   final String unit;
-  const _Stat({required this.label, required this.value, required this.unit});
+const _Stat({required this.label, required this.value, required this.unit});
 
   @override
   Widget build(BuildContext context) {
@@ -413,11 +414,11 @@ class _Stat extends StatelessWidget {
       children: [
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
               fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.textMain),
         ),
         Text('$label（$unit）',
-            style: const TextStyle(fontSize: 12, color: AppTheme.textSub)),
+            style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
       ],
     );
   }
@@ -425,12 +426,12 @@ class _Stat extends StatelessWidget {
 
 class _InviteeTile extends StatelessWidget {
   final Invitee e;
-  const _InviteeTile({required this.e});
+const   _InviteeTile({required this.e});
 
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat('#,##0.00');
-    final name = e.name.trim().isEmpty ? '好友${e.id ?? ''}' : e.name;
+    final name = e.name.trim().isEmpty ? L10n.instance.t('invite_friend_id', args: {'v0':'${e.id ?? ''}'}) : e.name;
     return Card(
       child: ListTile(
         leading: CircleAvatar(
@@ -438,15 +439,15 @@ class _InviteeTile extends StatelessWidget {
           foregroundColor: AppTheme.primary,
           child: Text(
             name.characters.first,
-            style: const TextStyle(fontWeight: FontWeight.w700),
+            style: TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
         title: Text(name,
-            style: const TextStyle(fontWeight: FontWeight.w600)),
+            style: TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(
           e.paid
-              ? '已付款 ¥${fmt.format(e.payAmount / 100)} · 返现 ¥${fmt.format(e.rebate / 100)}'
-              : (e.phone.isNotEmpty ? e.phone : '已注册 · 待付款'),
+              ? L10n.instance.t('i18n_253', args: {'v0': fmt.format(e.payAmount / 100), 'v1': fmt.format(e.rebate / 100)})
+              : (e.phone.isNotEmpty ? e.phone : L10n.instance.t('i18n_285')),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
@@ -462,7 +463,7 @@ class _InviteeTile extends StatelessWidget {
                   borderRadius: BorderRadius.circular(AppRadius.xs),
                 ),
                 child: Text(
-                  e.payoutAt != null ? '已打款' : '待打款',
+                  e.payoutAt != null ? L10n.instance.t('invite_page_paid_out') : L10n.instance.t('invite_page_pending_payout'),
                   style: TextStyle(
                       fontSize: 11,
                       color: e.payoutAt != null
@@ -478,7 +479,7 @@ class _InviteeTile extends StatelessWidget {
                   color: AppTheme.textSub.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(AppRadius.xs),
                 ),
-                child: const Text('待付款',
+                child: Text(L10n.instance.t('invite_pending_payment'),
                     style: TextStyle(
                         fontSize: 11,
                         color: AppTheme.textSub,
@@ -491,7 +492,7 @@ class _InviteeTile extends StatelessWidget {
 
 class _NotLoggedIn extends StatelessWidget {
   final VoidCallback onLogin;
-  const _NotLoggedIn({required this.onLogin});
+const   _NotLoggedIn({required this.onLogin});
 
   @override
   Widget build(BuildContext context) {
@@ -501,16 +502,16 @@ class _NotLoggedIn extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.card_giftcard, size: 64, color: AppTheme.primary),
-            const SizedBox(height: 16),
-            const Text('登录后参与推广活动',
+            Icon(Icons.card_giftcard, size: 64, color: AppTheme.primary),
+            SizedBox(height: 16),
+            Text(L10n.instance.t('invite_login_tip'),
                 style:
                     TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            const Text('推荐好友得 VIP，返现 50%',
+            SizedBox(height: 8),
+            Text(L10n.instance.t('invite_banner'),
                 style: TextStyle(color: AppTheme.textSub)),
-            const SizedBox(height: 20),
-            FilledButton(onPressed: onLogin, child: const Text('去登录')),
+            SizedBox(height: 20),
+            FilledButton(onPressed: onLogin, child: Text(L10n.instance.t('common_go_login'))),
           ],
         ),
       ),

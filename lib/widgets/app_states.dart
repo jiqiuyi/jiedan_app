@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 
 import '../theme.dart';
 
@@ -19,8 +20,8 @@ class AppError extends StatelessWidget {
 
   /// 文字与图标颜色。
   final Color color;
-
-  const AppError({
+const 
+  AppError({
     super.key,
     this.icon = Icons.error_outline,
     required this.title,
@@ -38,14 +39,14 @@ class AppError extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 40, color: color.withValues(alpha: 0.7)),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Text(
               title,
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: AppFont.bodyLg, color: color),
             ),
             if (hint != null) ...[
-              const SizedBox(height: 6),
+              SizedBox(height: 6),
               Text(
                 hint!,
                 textAlign: TextAlign.center,
@@ -56,10 +57,10 @@ class AppError extends StatelessWidget {
               ),
             ],
             if (onRetry != null) ...[
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               FilledButton.tonal(
                 onPressed: onRetry,
-                child: const Text('重试'),
+                child: Text(L10n.instance.t('common_retry')),
               ),
             ],
           ],
@@ -76,8 +77,7 @@ class AppLoading extends StatelessWidget {
 
   /// 线宽（默认 2.5）。
   final double strokeWidth;
-
-  const AppLoading({super.key, this.size = 28, this.strokeWidth = 2.5});
+const AppLoading({super.key, this.size = 28, this.strokeWidth = 2.5});
 
   @override
   Widget build(BuildContext context) {
@@ -104,8 +104,7 @@ class AppEmpty extends StatelessWidget {
 
   /// 文字与图标颜色。
   final Color color;
-
-  const AppEmpty({
+const AppEmpty({
     super.key,
     this.icon = Icons.inbox_outlined,
     required this.title,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 
 import '../constants.dart';
 import '../database.dart';
@@ -44,11 +45,11 @@ Future<bool> showPaymentDialog(
   } else if (paidTotal <= 0) {
     defaultType = PayType.deposit;
     amountHint = paidTotal <= 0 && remaining > 0
-        ? '可收定金，剩余待收 ¥${Money.yuan(remaining)}'
+        ? L10n.instance.t('i18n_162', args: {'v0': Money.yuan(remaining)})
         : '';
   } else if (remaining > 0) {
     defaultType = PayType.balance;
-    amountHint = '剩余待收 ¥${Money.yuan(remaining)}';
+    amountHint = L10n.instance.t('i18n_150', args: {'v0': Money.yuan(remaining)});
   } else {
     defaultType = PayType.full;
   }
@@ -64,7 +65,7 @@ Future<bool> showPaymentDialog(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setDlg) => AlertDialog(
-        title: const Text('登记收款'),
+        title: Text(L10n.instance.t('project_record_payment')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -74,39 +75,39 @@ Future<bool> showPaymentDialog(
               inputFormatters: moneyInputFormatters,
               autofocus: true,
               decoration: InputDecoration(
-                labelText: '金额（元） *',
+                labelText: L10n.instance.t('i18n_622'),
                 hintText: amountHint,
               ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             DropdownButtonFormField<PayType>(
               initialValue: type,
-              decoration: const InputDecoration(labelText: '类型'),
+              decoration: InputDecoration(labelText: L10n.instance.t('common_type')),
               items: PayType.values
                   .map((e) => DropdownMenuItem(value: e, child: Text(e.label)))
                   .toList(),
               onChanged: (v) => setDlg(() => type = v!),
             ),
             if (type == PayType.custom) ...[
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               TextField(
                 controller: customTypeCtrl,
                 decoration: InputDecoration(
-                  labelText: '自定义类型名称 *',
-                  hintText: '如：首期款 / 二期款 / 质保金',
-                  errorText: customTypeError ? '请输入自定义类型名称' : null,
+                  labelText: L10n.instance.t('i18n_545'),
+                  hintText: L10n.instance.t('payment_dialog_type_example'),
+                  errorText: customTypeError ? L10n.instance.t('payment_dialog_custom_type') : null,
                 ),
                 onChanged: (_) => setDlg(() => customTypeError = false),
               ),
             ],
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             if (quotes.isNotEmpty) ...[
               DropdownButtonFormField<int?>(
                 initialValue: selQuote,
-                decoration: const InputDecoration(labelText: '关联报价'),
+                decoration: InputDecoration(labelText: L10n.instance.t('i18n_133')),
                 items: [
-                  const DropdownMenuItem<int?>(
-                      value: null, child: Text('不关联报价')),
+                  DropdownMenuItem<int?>(
+                      value: null, child: Text(L10n.instance.t('payment_dialog_no_quote'))),
                   for (final q in quotes)
                     DropdownMenuItem<int?>(
                       value: q.id,
@@ -116,16 +117,16 @@ Future<bool> showPaymentDialog(
                 ],
                 onChanged: (v) => setDlg(() => selQuote = v),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
             ],
             TextField(
               controller: noteCtrl,
-              decoration: const InputDecoration(labelText: '备注', hintText: '如：首期款到账'),
+              decoration: InputDecoration(labelText: L10n.instance.t('common_note'), hintText: L10n.instance.t('payment_dialog_remark_example')),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.instance.t('common_cancel'))),
           FilledButton(
             onPressed: () {
               final v = double.tryParse(amountCtrl.text.trim());
@@ -140,7 +141,7 @@ Future<bool> showPaymentDialog(
               }
               Navigator.pop(ctx, true);
             },
-            child: const Text('保存'),
+            child: Text(L10n.instance.t('common_save')),
           ),
         ],
       ),

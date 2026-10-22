@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../l10n/l10n.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -37,7 +38,7 @@ import '../widgets/app_ui.dart';
 /// + 数据概览四列 + 订阅/额度卡 + 常用功能宫格 + 设置列表，
 /// 功能入口全部沿用接单管家原有能力，未新增任何外部依赖。
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+const   SettingsPage({super.key});
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -97,7 +98,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _goLogin() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const LoginPage()),
+      MaterialPageRoute(builder: (_) => LoginPage()),
     );
     _loadStats();
   }
@@ -111,25 +112,25 @@ class _SettingsPageState extends State<SettingsPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(16, 16, 16, 6),
-              child: AppSheetHeader(title: '更换头像'),
+              child: AppSheetHeader(title: L10n.instance.t('settings_avatar_change')),
             ),
             ListTile(
               leading:
-                  const Icon(Icons.photo_library_outlined, color: AppTheme.primary),
-              title: const Text('从相册选择'),
-              subtitle: const Text('图片仅保存在本机，不会上传',
+                  Icon(Icons.photo_library_outlined, color: AppTheme.primary),
+              title: Text(L10n.instance.t('settings_avatar_pick')),
+              subtitle: Text(L10n.instance.t('settings_avatar_pick_sub'),
                   style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
               onTap: () => Navigator.pop(ctx, 'pick'),
             ),
             if (hasCustom)
               ListTile(
-                leading: const Icon(Icons.restart_alt, color: AppTheme.textSub),
-                title: const Text('恢复默认头像'),
+                leading: Icon(Icons.restart_alt, color: AppTheme.textSub),
+                title: Text(L10n.instance.t('settings_avatar_reset')),
                 onTap: () => Navigator.pop(ctx, 'reset'),
               ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
           ],
         ),
       ),
@@ -138,13 +139,13 @@ class _SettingsPageState extends State<SettingsPage> {
     if (action == 'pick') {
       try {
         final p = await AvatarService.instance.pickFromGallery();
-        if (p != null) _toast('头像已更新');
+        if (p != null) _toast(L10n.instance.t('settings_avatar_updated'));
       } catch (_) {
-        _toast('选择头像失败，请重试');
+        _toast(L10n.instance.t('settings_avatar_failed'));
       }
     } else if (action == 'reset') {
       await AvatarService.instance.clear();
-      _toast('已恢复默认头像');
+      _toast(L10n.instance.t('settings_avatar_reset_done'));
     }
   }
 
@@ -152,14 +153,14 @@ class _SettingsPageState extends State<SettingsPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('退出登录'),
-        content: const Text('退出后本地数据仍会保留，下次登录同一账号即可继续使用。'),
+        title: Text(L10n.instance.t('common_logout')),
+        content: Text(L10n.instance.t('settings_logout_confirm')),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+              child: Text(L10n.instance.t('common_cancel'))),
           AppButton(
-            label: '退出',
+            label: L10n.instance.t('settings_logout_btn'),
             kind: AppButtonKind.danger,
             size: AppButtonSize.medium,
             expand: false,
@@ -188,7 +189,7 @@ class _SettingsPageState extends State<SettingsPage> {
             onRefresh: _loadStats,
             child: ListView(
               padding: EdgeInsets.zero,
-              physics: const AlwaysScrollableScrollPhysics(),
+              physics: AlwaysScrollableScrollPhysics(),
               children: [
                 _ProfileHeader(
                   user: user,
@@ -209,32 +210,32 @@ class _SettingsPageState extends State<SettingsPage> {
                   customerCount: _customerCount,
                   projectCount: _projectCount,
                   onTap: () => _push(PaywallPage(
-                    title: '解锁接单管家的全部能力',
-                    desc: '从此不限客户数、不限项目数，专心接单不再被工具卡住。',
+                    title: L10n.instance.t('settings_upgrade_paywall_title'),
+                    desc: L10n.instance.t('settings_upgrade_paywall_desc'),
                   )),
                 ),
                 _FunctionGrid(
                   items: [
-                    _FuncItem(Icons.receipt_long_outlined, AppTheme.accent, '记账',
+                    _FuncItem(Icons.receipt_long_outlined, AppTheme.accent, L10n.instance.t('settings_page_ledger'),
                         () => _push(const LedgerPage())),
                     _FuncItem(Icons.account_balance_wallet_outlined,
-                        AppTheme.primary, '钱包', () => _push(const WalletPage())),
-                    _FuncItem(Icons.qr_code_2, AppTheme.accent, '收款设置',
+                        AppTheme.primary, L10n.instance.t('settings_func_wallet'), () => _push(const WalletPage())),
+                    _FuncItem(Icons.qr_code_2, AppTheme.accent, L10n.instance.t('settings_page_payment_codes'),
                         () => _push(const PaymentCodeSettingsPage())),
-                    _FuncItem(Icons.bar_chart, AppTheme.warn, '收入统计',
+                    _FuncItem(Icons.bar_chart, AppTheme.warn, L10n.instance.t('settings_func_income'),
                         () => _push(const IncomeStatsPage())),
-                    _FuncItem(Icons.rule_outlined, const Color(0xFF7C5CF0),
-                        '对账汇总', () => _push(const ReconciliationPage())),
-                    _FuncItem(Icons.card_giftcard, const Color(0xFFE8437A),
-                        '推广活动', () => _push(const InvitePage())),
+                    _FuncItem(Icons.rule_outlined, Color(0xFF7C5CF0),
+                        L10n.instance.t('reconciliation_page_reconciliation'), () => _push(const ReconciliationPage())),
+                    _FuncItem(Icons.card_giftcard, Color(0xFFE8437A),
+                        L10n.instance.t('invite_title'), () => _push(const InvitePage())),
                     _FuncItem(Icons.manage_search_outlined, AppTheme.success,
-                        '数据管理', () => _push(const DataManagementPage())),
-                    _FuncItem(Icons.cloud_outlined, const Color(0xFF2F80ED),
-                        '数据存储', () => _push(const StorageModePage())),
-                    _FuncItem(Icons.label_outline, const Color(0xFF00A67E),
-                        '标签维护', () => _push(const TagManagementPage())),
+                        L10n.instance.t('data_management_title'), () => _push(const DataManagementPage())),
+                    _FuncItem(Icons.cloud_outlined, Color(0xFF2F80ED),
+                        L10n.instance.t('settings_func_storage'), () => _push(const StorageModePage())),
+                    _FuncItem(Icons.label_outline, Color(0xFF00A67E),
+                        L10n.instance.t('tags_title'), () => _push(const TagManagementPage())),
                     _FuncItem(Icons.feedback_outlined, AppTheme.textSub,
-                        '意见反馈', () => _push(const FeedbackPage())),
+                        L10n.instance.t('settings_func_feedback'), () => _push(const FeedbackPage())),
                   ],
                 ),
                 _SettingsCard(
@@ -243,18 +244,18 @@ class _SettingsPageState extends State<SettingsPage> {
                   loggedIn: user != null,
                   onCheckUpdate: () =>
                       UpdateService.instance.checkManual(context),
-                  onPrivacy: () => _push(const PrivacyPolicyPage()),
-                  onAdmin: () => _push(const AdminPage()),
-                  onPayNotice: () => _push(const PayNoticeGuidePage()),
+                  onPrivacy: () => _push(PrivacyPolicyPage()),
+                  onAdmin: () => _push(AdminPage()),
+                  onPayNotice: () => _push(PayNoticeGuidePage()),
                   onLogout: _confirmLogout,
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 Card(
                   margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                   child: ListTile(
-                    leading: const Icon(Icons.bug_report_outlined),
-                    title: const Text('错误日志'),
-                    subtitle: const Text('查看最近运行异常，复制后反馈给开发者'),
+                    leading: Icon(Icons.bug_report_outlined),
+                    title: Text(L10n.instance.t('settings_error_log')),
+                    subtitle: Text(L10n.instance.t('settings_error_log_sub')),
                     trailing: const Icon(Icons.chevron_right, size: 20),
                     onTap: () => _push(const ErrorLogPage()),
                   ),
@@ -263,7 +264,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: Column(
                     children: [
                       Text(
-                        '接单管家 v${AppConfig.version}',
+                        L10n.instance.t('i18n_361', args: {'v0': AppConfig.version}),
                         style: const TextStyle(
                             color: AppTheme.textSub, fontSize: 12),
                       ),
@@ -290,14 +291,14 @@ class _SettingsPageState extends State<SettingsPage> {
       final expire = st.currentUser?.proExpireAt;
       if (st.currentUser != null && expire != null) {
         final date = DateTime.fromMillisecondsSinceEpoch(expire);
-        return '订阅有效期至 ${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+        return L10n.instance.t('settings_subscription_until', args: {'v0':date.year.toString(), 'v1':date.month.toString().padLeft(2, '0'), 'v2':date.day.toString().padLeft(2, '0')});
       }
-      return '感谢支持，欢迎持续使用';
+      return L10n.instance.t('settings_sub_thanks');
     }
     if (st.currentUser == null) {
-      return '登录后购买订阅，账号内长期有效';
+      return L10n.instance.t('settings_sub_login_tip');
     }
-    return '免费版可管理 ${AppConfig.freeCustomerLimit} 个客户、${AppConfig.freeProjectLimit} 个进行中项目';
+    return L10n.instance.t('i18n_123', args: {'v0':'${AppConfig.freeCustomerLimit}', 'v1':'${AppConfig.freeProjectLimit}'});
   }
 }
 
@@ -314,8 +315,8 @@ class _ProfileHeader extends StatelessWidget {
   final VoidCallback onAvatarTap;
   final VoidCallback? onAccountTap;
   final VoidCallback onCheckUpdate;
-
-  const _ProfileHeader({
+const 
+  _ProfileHeader({
     required this.user,
     required this.isPro,
     required this.monthIncome,
@@ -331,15 +332,15 @@ class _ProfileHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final nickname = user == null
-        ? '未登录'
-        : (user!.nickname.isNotEmpty ? user!.nickname : '接单管家用户');
-    final subtitle = user == null ? '登录后订阅状态云端长期有效' : user!.maskedPhone;
+        ? L10n.instance.t('common_not_logged_in')
+        : (user!.nickname.isNotEmpty ? user!.nickname : L10n.instance.t('settings_default_nickname'));
+    final subtitle = user == null ? L10n.instance.t('settings_login_sub') : user!.maskedPhone;
     final idText = user?.id == null ? 'ID: —' : 'ID: ${user!.id}';
 
     return Container(
       padding: EdgeInsets.fromLTRB(
           18, MediaQuery.of(context).padding.top + 10, 10, 20),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [Color(0xFF4A5AF0), Color(0xFF7C5CF0)],
           begin: Alignment.topLeft,
@@ -351,21 +352,21 @@ class _ProfileHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text('我的',
+              Text(L10n.instance.t('settings_title'),
                   style: TextStyle(
                       color: Colors.white,
                       fontSize: 18,
                       fontWeight: FontWeight.w700)),
-              const Spacer(),
+              Spacer(),
               IconButton(
                 onPressed: onCheckUpdate,
-                tooltip: '检查更新',
+                tooltip: L10n.instance.t('settings_check_update'),
                 icon: const Icon(Icons.system_update_alt,
                     color: Colors.white, size: 22),
               ),
             ],
           ),
-          const SizedBox(height: 2),
+          SizedBox(height: 2),
           Row(
             children: [
               _AvatarView(
@@ -377,7 +378,7 @@ class _ProfileHeader extends StatelessWidget {
                         : user!.maskedPhone),
                 onEdit: onAvatarTap,
               ),
-              const SizedBox(width: 14),
+              SizedBox(width: 14),
               Expanded(
                 child: GestureDetector(
                   onTap: onAccountTap,
@@ -418,17 +419,17 @@ class _ProfileHeader extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 18),
+          SizedBox(height: 18),
           Row(
             children: [
               _MetricTile(
-                  value: '¥${fmt.format(monthIncome / 100)}', label: '本月收入'),
-              const _MetricDivider(),
-              _MetricTile(value: '$customerCount', label: '客户'),
-              const _MetricDivider(),
-              _MetricTile(value: '$projectCount', label: '项目'),
-              const _MetricDivider(),
-              _MetricTile(value: '¥${fmt.format(balance / 100)}', label: '返佣余额'),
+                  value: '¥${fmt.format(monthIncome / 100)}', label: L10n.instance.t('dashboard_month_income')),
+              _MetricDivider(),
+              _MetricTile(value: '$customerCount', label: L10n.instance.t('common_customer')),
+              _MetricDivider(),
+              _MetricTile(value: '$projectCount', label: L10n.instance.t('common_project')),
+              _MetricDivider(),
+              _MetricTile(value: '¥${fmt.format(balance / 100)}', label: L10n.instance.t('settings_rebate_balance')),
             ],
           ),
         ],
@@ -441,8 +442,7 @@ class _AvatarView extends StatelessWidget {
   final String? path;
   final String fallback;
   final VoidCallback onEdit;
-
-  const _AvatarView({
+const _AvatarView({
     required this.path,
     required this.fallback,
     required this.onEdit,
@@ -524,7 +524,7 @@ class _AvatarView extends StatelessWidget {
 
 class _LevelBadge extends StatelessWidget {
   final bool isPro;
-  const _LevelBadge({required this.isPro});
+const _LevelBadge({required this.isPro});
 
   @override
   Widget build(BuildContext context) {
@@ -539,10 +539,10 @@ class _LevelBadge extends StatelessWidget {
         children: [
           Icon(isPro ? Icons.verified : Icons.lock_outline,
               size: 12, color: Colors.white),
-          const SizedBox(width: 3),
+          SizedBox(width: 3),
           Text(
-            isPro ? '专业版' : '免费版',
-            style: const TextStyle(
+            isPro ? L10n.instance.t('common_pro') : L10n.instance.t('settings_free'),
+            style: TextStyle(
                 color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
           ),
         ],
@@ -554,7 +554,7 @@ class _LevelBadge extends StatelessWidget {
 class _MetricTile extends StatelessWidget {
   final String value;
   final String label;
-  const _MetricTile({required this.value, required this.label});
+const _MetricTile({required this.value, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -571,7 +571,7 @@ class _MetricTile extends StatelessWidget {
                   fontWeight: FontWeight.w700),
             ),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           Text(label,
               style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.75), fontSize: 11)),
@@ -582,7 +582,7 @@ class _MetricTile extends StatelessWidget {
 }
 
 class _MetricDivider extends StatelessWidget {
-  const _MetricDivider();
+const _MetricDivider();
 
   @override
   Widget build(BuildContext context) {
@@ -602,8 +602,8 @@ class _SubscriptionCard extends StatelessWidget {
   final int customerCount;
   final int projectCount;
   final VoidCallback onTap;
-
-  const _SubscriptionCard({
+const 
+  _SubscriptionCard({
     required this.isPro,
     required this.subText,
     required this.customerCount,
@@ -636,7 +636,7 @@ class _SubscriptionCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          isPro ? '专业版 · 已解锁全部功能' : '免费版',
+                          isPro ? L10n.instance.t('settings_pro_unlocked') : L10n.instance.t('settings_free'),
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
@@ -658,7 +658,7 @@ class _SubscriptionCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(AppRadius.sheet),
                     ),
                     child: Text(
-                      isPro ? '续费' : '升级',
+                      isPro ? L10n.instance.t('settings_renew') : L10n.instance.t('settings_upgrade'),
                       style: const TextStyle(
                           color: AppTheme.primary,
                           fontSize: 13,
@@ -683,8 +683,8 @@ class _SubscriptionCard extends StatelessWidget {
                 children: [
                   Text(
                     isPro
-                        ? '订阅权益已全部生效'
-                        : '客户额度 $customerCount/${AppConfig.freeCustomerLimit} · 项目额度 $projectCount/${AppConfig.freeProjectLimit}',
+                        ? L10n.instance.t('settings_sub_active')
+                        : L10n.instance.t('i18n_230', args: {'v0':'$customerCount', 'v1':'${AppConfig.freeCustomerLimit}', 'v2':'$projectCount', 'v3':'${AppConfig.freeProjectLimit}'}),
                     style: const TextStyle(
                         color: AppTheme.textSub, fontSize: 11),
                   ),
@@ -708,12 +708,12 @@ class _FuncItem {
   final Color color;
   final String label;
   final VoidCallback onTap;
-  const _FuncItem(this.icon, this.color, this.label, this.onTap);
+  _FuncItem(this.icon, this.color, this.label, this.onTap);
 }
 
 class _FunctionGrid extends StatelessWidget {
   final List<_FuncItem> items;
-  const _FunctionGrid({required this.items});
+const _FunctionGrid({required this.items});
 
   @override
   Widget build(BuildContext context) {
@@ -726,11 +726,11 @@ class _FunctionGrid extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(8, 16, 8, 6),
         child: Column(
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(horizontal: 8),
               child: Row(
                 children: [
-                  Text('常用功能',
+                  Text(L10n.instance.t('settings_common_func'),
                       style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
@@ -738,7 +738,7 @@ class _FunctionGrid extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             GridView.builder(
               shrinkWrap: true,
               // 显式清零 padding：否则 ScrollView 会隐式套用 MediaQuery 的系统栏内边距，
@@ -801,8 +801,8 @@ class _SettingsCard extends StatelessWidget {
   final VoidCallback onAdmin;
   final VoidCallback onPayNotice;
   final VoidCallback onLogout;
-
-  const _SettingsCard({
+const 
+  _SettingsCard({
     required this.isPro,
     required this.isAdmin,
     required this.loggedIn,
@@ -819,8 +819,8 @@ class _SettingsCard extends StatelessWidget {
       child: Column(
         children: [
           ListTile(
-            leading: const Icon(Icons.system_update, color: AppTheme.primary),
-            title: const Text('检查更新'),
+            leading: Icon(Icons.system_update, color: AppTheme.primary),
+            title: Text(L10n.instance.t('settings_check_update')),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -832,13 +832,13 @@ class _SettingsCard extends StatelessWidget {
             ),
             onTap: onCheckUpdate,
           ),
-          const _CardDivider(),
-          const _FeedbackReportSwitch(),
-          const _CardDivider(),
+          _CardDivider(),
+          _FeedbackReportSwitch(),
+          _CardDivider(),
           ListTile(
             leading:
-                const Icon(Icons.privacy_tip_outlined, color: AppTheme.primary),
-            title: const Text('隐私政策'),
+                Icon(Icons.privacy_tip_outlined, color: AppTheme.primary),
+            title: Text(L10n.instance.t('settings_privacy')),
             trailing:
                 const Icon(Icons.chevron_right, color: AppTheme.textSub),
             onTap: onPrivacy,
@@ -848,8 +848,8 @@ class _SettingsCard extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.admin_panel_settings,
                   color: AppTheme.primary),
-              title: const Text('后台管理'),
-              subtitle: const Text('待确认 / 抽查 / 返现 / 收款配置',
+              title: Text(L10n.instance.t('settings_admin')),
+              subtitle: Text(L10n.instance.t('settings_admin_sub'),
                   style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
               trailing:
                   const Icon(Icons.chevron_right, color: AppTheme.textSub),
@@ -859,8 +859,8 @@ class _SettingsCard extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.notifications_active_outlined,
                   color: AppTheme.primary),
-              title: const Text('到账监听状态'),
-              subtitle: const Text('仅运维：查看本机通知监听是否生效',
+              title: Text(L10n.instance.t('settings_paynotice_status')),
+              subtitle: Text(L10n.instance.t('settings_paynotice_status_sub'),
                   style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
               trailing:
                   const Icon(Icons.chevron_right, color: AppTheme.textSub),
@@ -871,7 +871,7 @@ class _SettingsCard extends StatelessWidget {
             const _CardDivider(),
             ListTile(
               leading: const Icon(Icons.logout, color: AppTheme.danger),
-              title: const Text('退出登录',
+              title: Text(L10n.instance.t('common_logout'),
                   style: TextStyle(
                       color: AppTheme.danger, fontWeight: FontWeight.w600)),
               onTap: onLogout,
@@ -884,7 +884,7 @@ class _SettingsCard extends StatelessWidget {
 }
 
 class _CardDivider extends StatelessWidget {
-  const _CardDivider();
+const _CardDivider();
 
   @override
   Widget build(BuildContext context) {
@@ -895,7 +895,7 @@ class _CardDivider extends StatelessWidget {
 /// 反馈信息上报开关（v1.26.0）：默认开启；关闭后提交反馈不再附带设备信息，
 /// 仅影响本次提交的可选载荷，不影响反馈功能本身。
 class _FeedbackReportSwitch extends StatefulWidget {
-  const _FeedbackReportSwitch();
+const _FeedbackReportSwitch();
 
   @override
   State<_FeedbackReportSwitch> createState() => _FeedbackReportSwitchState();
@@ -920,7 +920,7 @@ class _FeedbackReportSwitchState extends State<_FeedbackReportSwitch> {
   Widget build(BuildContext context) {
     return SwitchListTile(
       secondary: const Icon(Icons.devices_outlined, color: AppTheme.primary),
-      title: const Text('反馈信息上报'),
+      title: Text(L10n.instance.t('settings_feedback_report')),
       value: _enabled,
       onChanged: (v) async {
         setState(() => _enabled = v);

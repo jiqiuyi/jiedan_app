@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../l10n/l10n.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -27,7 +28,7 @@ class AttachmentSection extends StatefulWidget {
   /// 'project' / 'contract'
   final String ownerType;
   final int ownerId;
-  const AttachmentSection({
+const   AttachmentSection({
     super.key,
     required this.ownerType,
     required this.ownerId,
@@ -77,7 +78,7 @@ class _AttachmentSectionState extends State<AttachmentSection> {
     final file = File(path);
     final size = await file.length();
     if (size > _maxBytes) {
-      _toast('文件超过 50MB 上限，无法上传');
+      _toast(L10n.instance.t('i18n_408'));
       return;
     }
     setState(() => _uploading = true);
@@ -89,19 +90,19 @@ class _AttachmentSectionState extends State<AttachmentSection> {
         req.headers['Authorization'] = 'Bearer $token';
       }
       req.files.add(await http.MultipartFile.fromPath('file', path));
-      final resp = await req.send().timeout(const Duration(seconds: 180));
+      final resp = await req.send().timeout(Duration(seconds: 180));
       final body = await resp.stream.bytesToString();
       final Map<String, dynamic> json;
       try {
         json = jsonDecode(body) as Map<String, dynamic>;
       } catch (_) {
-        throw const ApiException('上传失败（服务异常）');
+        throw ApiException(L10n.instance.t('i18n_065'));
       }
       if (resp.statusCode == 401) {
-        throw const TokenInvalidException();
+        throw TokenInvalidException(L10n.instance.t('common_session_expired'));
       }
       if (resp.statusCode != 200 || json['ok'] != true) {
-        throw ApiException((json['error'] as String?) ?? '上传失败');
+        throw ApiException((json['error'] as String?) ?? L10n.instance.t('i18n_063'));
       }
       final now = DateTime.now().millisecondsSinceEpoch;
       await AppDb.instance.insertAttachment({
@@ -115,11 +116,11 @@ class _AttachmentSectionState extends State<AttachmentSection> {
         'updated_at': now,
       });
       await _load();
-      _toast('上传成功');
+      _toast(L10n.instance.t('i18n_066'));
     } on TokenInvalidException {
-      _toast('登录已失效，请重新登录');
+      _toast(L10n.instance.t('common_session_expired'));
     } catch (e) {
-      _toast(e is ApiException ? e.message : '网络异常，上传失败');
+      _toast(e is ApiException ? e.message : L10n.instance.t('i18n_540'));
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
@@ -136,9 +137,9 @@ class _AttachmentSectionState extends State<AttachmentSection> {
     }
     final client = http.Client();
     try {
-      final resp = await client.send(req).timeout(const Duration(seconds: 180));
-      if (resp.statusCode == 401) throw const TokenInvalidException();
-      if (resp.statusCode != 200) throw const ApiException('下载失败');
+      final resp = await client.send(req).timeout(Duration(seconds: 180));
+      if (resp.statusCode == 401) throw TokenInvalidException(L10n.instance.t('common_session_expired'));
+      if (resp.statusCode != 200) throw ApiException(L10n.instance.t('i18n_074'));
       final total = resp.contentLength ?? 0;
       final chunks = <List<int>>[];
       var received = 0;
@@ -200,12 +201,12 @@ class _AttachmentSectionState extends State<AttachmentSection> {
           Uri.file(tmp.path),
           mode: LaunchMode.externalApplication,
         );
-        if (!ok) _toast('未能唤起外部应用打开该文件');
+        if (!ok) _toast(L10n.instance.t('i18n_443'));
       }
     } on TokenInvalidException {
-      _toast('登录已失效，请重新登录');
+      _toast(L10n.instance.t('common_session_expired'));
     } catch (e) {
-      _toast(e is ApiException ? e.message : '下载失败，请重试');
+      _toast(e is ApiException ? e.message : L10n.instance.t('i18n_076'));
     } finally {
       if (mounted) setState(() => _downloadProgress = null);
     }
@@ -216,12 +217,12 @@ class _AttachmentSectionState extends State<AttachmentSection> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除附件'),
-        content: Text('确定删除附件「${row['filename']}」吗？'),
+        title: Text(L10n.instance.t('attachment_delete')),
+        content: Text(L10n.instance.t('attachment_delete_confirm', args: {'v0':'${row['filename']}'})),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.instance.t('common_cancel'))),
           AppButton(
-            label: '删除',
+            label: L10n.instance.t('common_delete'),
             kind: AppButtonKind.danger,
             onPressed: () => Navigator.pop(ctx, true),
           ),
@@ -241,18 +242,18 @@ class _AttachmentSectionState extends State<AttachmentSection> {
       children: [
         Row(
           children: [
-            const Expanded(
-              child: Text('附件', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            Expanded(
+              child: Text(L10n.instance.t('common_attachment'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             ),
             TextButton.icon(
               onPressed: _uploading ? null : _pickAndUpload,
-              icon: const Icon(Icons.attach_file, size: 18),
-              label: const Text('添加附件'),
+              icon: Icon(Icons.attach_file, size: 18),
+              label: Text(L10n.instance.t('attachment_add')),
             ),
           ],
         ),
         if (_uploading)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
             child: LinearProgressIndicator(),
           ),
@@ -265,19 +266,19 @@ class _AttachmentSectionState extends State<AttachmentSection> {
             ),
           ),
         if (_loading)
-          const AppLoading(size: 22)
+          AppLoading(size: 22)
         else if (_items.isEmpty)
-          const AppEmpty(
+          AppEmpty(
             icon: Icons.attach_file_outlined,
-            title: '还没有附件',
-            hint: '可上传图片 / 文档 / 表格 / PDF 等，单个不超过 50MB',
+            title: L10n.instance.t('attachment_empty'),
+            hint: L10n.instance.t('i18n_159'),
           )
         else
           ..._items.map(
             (row) => Card(
               child: ListTile(
                 leading: Icon(_iconFor(row), color: AppTheme.primary),
-                title: Text((row['filename'] as String?) ?? '附件',
+                title: Text((row['filename'] as String?) ?? L10n.instance.t('common_attachment'),
                     maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text(
                   '${_fmtSize((row['size'] as num?)?.toInt() ?? 0)} · ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch((row['created_at'] as num?)?.toInt() ?? 0))}',
@@ -328,7 +329,7 @@ class _AttachmentSectionState extends State<AttachmentSection> {
 class _ImageViewerPage extends StatelessWidget {
   final File file;
   final String title;
-  const _ImageViewerPage({required this.file, required this.title});
+const _ImageViewerPage({required this.file, required this.title});
 
   @override
   Widget build(BuildContext context) {
@@ -349,7 +350,7 @@ class _ImageViewerPage extends StatelessWidget {
 class _PdfViewerPage extends StatelessWidget {
   final Uint8List bytes;
   final String title;
-  const _PdfViewerPage({required this.bytes, required this.title});
+const _PdfViewerPage({required this.bytes, required this.title});
 
   @override
   Widget build(BuildContext context) {

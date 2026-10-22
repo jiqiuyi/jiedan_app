@@ -1,3 +1,4 @@
+import '../../l10n/l10n.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -58,7 +59,7 @@ class BackupUtil {
   static const Set<String> kSupportedVersions = {'1.0', '1.1'};
 
   /// 导出文件名前缀。
-  static const String kFileNamePrefix = '接单管家_备份_';
+  static String get kFileNamePrefix => L10n.instance.t('backup_file_prefix');
 
   /// 一次导出七张业务表全部数据，生成 JSON 全量备份，返回文件完整路径。
   /// 导出成功后再由 UI 层通过系统分享面板让用户保存到下载/网盘/微信。
@@ -133,28 +134,28 @@ class BackupUtil {
   Future<Map<String, int>> restoreFromFile(String path) async {
     final file = File(path);
     if (!await file.exists()) {
-      throw const FormatException('备份文件不存在');
+      throw FormatException(L10n.instance.t('i18n_192'));
     }
     // 解析 JSON（含解析层异常捕获，统一转中文提示）。
     final Object? decoded;
     try {
       decoded = jsonDecode(await file.readAsString());
     } catch (_) {
-      throw const FormatException('备份文件不是有效的 JSON 文件');
+      throw FormatException(L10n.instance.t('i18n_193'));
     }
     if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('备份文件格式错误：顶层应为 JSON 对象');
+      throw FormatException(L10n.instance.t('i18n_196'));
     }
     // 1) 版本校验：不在支持范围内直接拒绝，避免错误覆盖。
     final version = decoded['exportVersion'];
     if (version is! String || !kSupportedVersions.contains(version)) {
-      throw FormatException('备份文件版本不兼容（当前支持 v${kSupportedVersions.join('/')}）');
+      throw FormatException(L10n.instance.t('backup_version_unsupported', args: {'v0': kSupportedVersions.join('/')}));
     }
     // 2) 字段完整性校验：data 段内三张核心业务表必须为数组；
     //    四张扩展表为 v1.1 新增，旧 v1.0 文件缺失时按空数据处理，不阻断导入。
     final data = decoded['data'];
     if (data is! Map<String, dynamic>) {
-      throw const FormatException('备份文件缺少 data 数据段');
+      throw FormatException(L10n.instance.t('i18n_198'));
     }
     final quotes = _parseRows(data['quotes'], 'quotes');
     final customers = _parseRows(data['customers'], 'customers');
@@ -224,7 +225,7 @@ class BackupUtil {
   /// 校验 data 段内某核心表数组：必须为 List；逐行要求是 Map，非 Map 行丢弃。
   List<Map<String, Object?>> _parseRows(Object? rows, String table) {
     if (rows is! List) {
-      throw FormatException('备份文件缺少「$table」数据，无法恢复');
+      throw FormatException(L10n.instance.t('i18n_199', args: {'v0': table}));
     }
     return rows
         .whereType<Map>()

@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../l10n/l10n.dart';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:ui' show IsolateNameServer;
@@ -27,7 +28,7 @@ class AppUpdater {
   static const String _installChannelName = 'com.jiedan.guanjia/apk_install';
   static const String _portName = 'app_updater_download_port';
 
-  final MethodChannel _installChannel = const MethodChannel(
+  final MethodChannel _installChannel = MethodChannel(
     _installChannelName,
   );
 
@@ -97,7 +98,7 @@ class AppUpdater {
     try {
       final head = await http
           .head(Uri.parse(_withCacheBust(url)))
-          .timeout(const Duration(seconds: 10));
+          .timeout(Duration(seconds: 10));
       final cl =
           head.headers['content-length'] ?? head.headers['Content-Length'];
       if (head.statusCode == 200 && cl != null) {
@@ -153,7 +154,7 @@ class AppUpdater {
         openFileFromNotification: true,
       );
       if (taskId == null || taskId.isEmpty) {
-        _showSnack('开始下载失败，请稍后重试');
+        _showSnack(L10n.instance.t('i18n_304'));
         unawaited(
           ErrorReporter.instance.logError(
             'updater_enqueue_empty',
@@ -164,7 +165,7 @@ class AppUpdater {
         );
         return;
       }
-      _showSnack('已开始后台下载，完成后自动安装');
+      _showSnack(L10n.instance.t('i18n_268'));
       // enqueue 成功即写待安装记录（v1.48.1）：taskId 持久化，覆盖
       // 「complete 回调丢失」场景——冷启动/回前台兜底扫描不依赖回调，
       // 只要有下载目录 APK 即可自动校验并安装。
@@ -204,7 +205,7 @@ class AppUpdater {
         ),
       );
     } catch (e) {
-      _showSnack('开始下载失败，请稍后重试');
+      _showSnack(L10n.instance.t('i18n_304'));
       unawaited(
         ErrorReporter.instance.logError(
           'updater_enqueue_failed',
@@ -242,7 +243,7 @@ class AppUpdater {
       }
       if (!_retriedOnce && _lastDownloadUrl != null && _lastVersion != null) {
         _retriedOnce = true;
-        _showSnack('下载失败，正在自动重试…');
+        _showSnack(L10n.instance.t('i18n_075'));
         await startDownload(
           _lastDownloadUrl!,
           _lastVersion!,
@@ -250,7 +251,7 @@ class AppUpdater {
         );
         return;
       }
-      _showSnack('新版本下载失败，请检查网络后重试');
+      _showSnack(L10n.instance.t('i18n_409'));
       unawaited(
         ErrorReporter.instance.logError(
           'updater_download_failed',
@@ -269,7 +270,7 @@ class AppUpdater {
         st,
         module: LogModule.updater,
       );
-      _showSnack('新版本下载失败，请检查网络后重试');
+      _showSnack(L10n.instance.t('i18n_409'));
     }
   }
 
@@ -301,7 +302,7 @@ class AppUpdater {
     } else if (status == DownloadTaskStatus.failed) {
       unawaited(_handleDownloadFailed(id));
     } else if (status == DownloadTaskStatus.canceled) {
-      _showSnack('已取消更新下载');
+      _showSnack(L10n.instance.t('i18n_265'));
     }
   }
 
@@ -339,7 +340,7 @@ class AppUpdater {
         path = await _findLatestApk();
       }
       if (path == null) {
-        _showSnack('新版本已下载，但未找到安装包，请稍后重试');
+        _showSnack(L10n.instance.t('i18n_410'));
         return;
       }
       // 兜底 2：安装前完整性校验（大小 / magic bytes / EOCD / Content-Length）。
@@ -368,7 +369,7 @@ class AppUpdater {
       }
       await _installApk(path);
     } catch (_) {
-      _showSnack('下载完成但安装失败，请稍后重试');
+      _showSnack(L10n.instance.t('i18n_077'));
     }
   }
 
@@ -402,27 +403,27 @@ class AppUpdater {
   String? _validateApk(String path, {int? expectBytes}) {
     try {
       final f = File(path);
-      if (!f.existsSync()) return '安装包文件不存在';
+      if (!f.existsSync()) return L10n.instance.t('i18n_214');
       final len = f.lengthSync();
-      if (len < 1024 * 1024) return '安装包文件不完整（大小异常）';
+      if (len < 1024 * 1024) return L10n.instance.t('i18n_217');
       if (expectBytes != null && expectBytes > 0) {
         final lower = (expectBytes * 0.95).floor();
         final upper = (expectBytes * 1.05).ceil();
         if (len < lower || len > upper) {
-          return '安装包文件不完整（大小与服务器不一致）';
+          return L10n.instance.t('i18n_216');
         }
       }
       final raf = f.openSync();
       try {
         final head = raf.readSync(4);
         if (head.length < 4 || head[0] != 0x50 || head[1] != 0x4B) {
-          return '安装包文件损坏（非有效 APK）';
+          return L10n.instance.t('i18n_219');
         }
         // 尾部校验 ZIP 结束记录（EOCD 标记 PK\x05\x06）：下载中断 / CDN 缓存
         // 半截文件时头部 magic 仍完整、但尾部缺失，系统安装器会报「解析失败」。
         // 扫描文件末尾 ≤64KB（ZIP 注释区上限）内的 EOCD 标记。
         final len = f.lengthSync();
-        if (len < 22) return '安装包文件不完整（下载中断）';
+        if (len < 22) return L10n.instance.t('i18n_215');
         final tailLen = len > 22 + 65536 ? 22 + 65536 : len;
         raf.setPositionSync(len - tailLen);
         final tail = raf.readSync(tailLen);
@@ -436,13 +437,13 @@ class AppUpdater {
             break;
           }
         }
-        if (!eocd) return '安装包文件损坏（下载不完整）';
+        if (!eocd) return L10n.instance.t('i18n_218');
       } finally {
         raf.closeSync();
       }
       return null;
     } catch (_) {
-      return '安装包文件校验失败';
+      return L10n.instance.t('i18n_220');
     }
   }
 
@@ -502,7 +503,7 @@ class AppUpdater {
       } else if (path != null && path.isNotEmpty) {
         final f = File(path);
         if (!f.existsSync()) {
-          _showSnack('安装包不存在，请重新下载更新');
+          _showSnack(L10n.instance.t('i18n_213'));
         } else {
           // 通知点击 / 文件打开路径：同样先做完整性校验；校验不通过时
           // （v1.47.2）保留文件并弹「手动安装/重新下载」，不再删除。
@@ -523,7 +524,7 @@ class AppUpdater {
         }
       }
     } catch (_) {
-      _showSnack('安装失败，请稍后重试');
+      _showSnack(L10n.instance.t('i18n_222'));
     }
   }
 
@@ -632,7 +633,7 @@ class AppUpdater {
         ),
       );
       if (ok != true) {
-        _showInstallFailedDialog(reason ?? '系统未启动安装界面，请重试', path: path);
+        _showInstallFailedDialog(reason ?? L10n.instance.t('i18n_525'), path: path);
       } else {
         // 安装界面已成功拉起（v1.48.1）：清除 pending 记录，避免后续启动
         // 重复扫描同一任务；系统安装结果仍由 PackageInstaller 广播回传。
@@ -660,7 +661,7 @@ class AppUpdater {
         );
         _showNeedUnknownSourcesDialog();
       } else {
-        _showInstallFailedDialog(e.message ?? '请稍后重试', path: path);
+        _showInstallFailedDialog(e.message ?? L10n.instance.t('i18n_582'), path: path);
       }
     } catch (e, st) {
       ErrorReporter.instance.logError(
@@ -703,24 +704,24 @@ class AppUpdater {
         context: ctx,
         barrierDismissible: false,
         builder: (dialogCtx) => AlertDialog(
-          title: const Text('需要允许安装新版本'),
-          content: const Text(
-            '安装新版本前需要允许「安装未知来源应用」权限，否则下载完成后无法自动弹出安装界面。\n'
-            '华为/荣耀设备：设置 → 更多安全设置 → 外部来源应用（或安装外部来源应用）→ 允许本应用。\n'
-            '其他设备：设置 → 安全 → 安装未知应用 → 允许本应用。\n'
-            '开启后返回即可继续下载安装。',
+          title: Text(L10n.instance.t('updater_allow_install')),
+          content: Text(
+            L10n.instance.t('i18n_223') +
+            L10n.instance.t('i18n_152') +
+            L10n.instance.t('i18n_138') +
+            L10n.instance.t('i18n_301'),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogCtx),
-              child: const Text('仍然下载'),
+              child: Text(L10n.instance.t('updater_download_anyway')),
             ),
             FilledButton(
               onPressed: () {
                 goSettings = true;
                 Navigator.pop(dialogCtx);
               },
-              child: const Text('去开启'),
+              child: Text(L10n.instance.t('updater_go_enable')),
             ),
           ],
         ),
@@ -742,14 +743,14 @@ class AppUpdater {
     await showDialog<void>(
       context: ctx,
       builder: (dialogCtx) => AlertDialog(
-        title: const Text('安装包校验未通过'),
+        title: Text(L10n.instance.t('updater_verify_failed')),
         content: Text(
-          '$reason\n\n安装包已保留在本地，可尝试手动安装；若仍失败建议重新下载后安装。',
+          L10n.instance.t('i18n_010', args: {'v0': reason}),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('关闭'),
+            child: Text(L10n.instance.t('common_close')),
           ),
           TextButton(
             onPressed: () {
@@ -758,14 +759,14 @@ class AppUpdater {
                 unawaited(startDownload(_lastDownloadUrl!, _lastVersion!));
               }
             },
-            child: const Text('重新下载'),
+            child: Text(L10n.instance.t('updater_download_again')),
           ),
           FilledButton(
             onPressed: () {
               Navigator.pop(dialogCtx);
               unawaited(_installApk(path));
             },
-            child: const Text('手动安装'),
+            child: Text(L10n.instance.t('updater_manual_install')),
           ),
         ],
       ),
@@ -805,15 +806,15 @@ class AppUpdater {
     showDialog<void>(
       context: ctx,
       builder: (dialogCtx) => AlertDialog(
-        title: const Text('新版本安装失败'),
+        title: Text(L10n.instance.t('updater_install_failed')),
         content: Text(
-          '下载已完成，但安装未成功：\n$reason\n\n'
-          '可尝试手动安装；若仍失败，可重新下载后再次安装。',
+          L10n.instance.t('i18n_078', args: {'v0': reason}) +
+          L10n.instance.t('i18n_160'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('关闭'),
+            child: Text(L10n.instance.t('common_close')),
           ),
           if (canReDownload)
             TextButton(
@@ -821,7 +822,7 @@ class AppUpdater {
                 Navigator.pop(dialogCtx);
                 unawaited(startDownload(_lastDownloadUrl!, _lastVersion!));
               },
-              child: const Text('重新尝试'),
+              child: Text(L10n.instance.t('updater_try_again')),
             ),
           if (path != null)
             FilledButton(
@@ -829,7 +830,7 @@ class AppUpdater {
                 Navigator.pop(dialogCtx);
                 unawaited(_installApk(path));
               },
-              child: const Text('手动安装'),
+              child: Text(L10n.instance.t('updater_manual_install')),
             ),
         ],
       ),
@@ -861,18 +862,18 @@ class AppUpdater {
     showDialog<void>(
       context: ctx,
       builder: (dialogCtx) => AlertDialog(
-        title: const Text('需要允许安装未知来源应用'),
-        content: const Text(
-          '系统未允许安装未知来源应用，将无法弹出安装界面。\n'
-          '请点击「去开启」跳转系统设置：\n'
-          '华为/荣耀设备：设置 → 更多安全设置 → 外部来源应用（或安装外部来源应用）→ 允许本应用。\n'
-          '其他设备：设置 → 安全 → 安装未知应用 → 允许本应用。\n'
-          '开启后返回本页重试即可。',
+        title: Text(L10n.instance.t('updater_allow_unknown')),
+        content: Text(
+          L10n.instance.t('i18n_524') +
+          L10n.instance.t('i18n_576') +
+          L10n.instance.t('i18n_152') +
+          L10n.instance.t('i18n_138') +
+          L10n.instance.t('i18n_302'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('取消'),
+            child: Text(L10n.instance.t('common_cancel')),
           ),
           FilledButton(
             onPressed: () {
@@ -881,7 +882,7 @@ class AppUpdater {
                 _installChannel.invokeMethod('openUnknownSourcesSettings'),
               );
             },
-            child: const Text('去开启'),
+            child: Text(L10n.instance.t('updater_go_enable')),
           ),
         ],
       ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
@@ -10,7 +11,7 @@ import '../theme.dart';
 /// 日常记账首页（v23）：月份切换、本月支出/收入/结余统计卡片、
 /// 按 entry_date 倒序分组明细列表；右上角新增走完整记账表单弹窗。
 class LedgerPage extends StatefulWidget {
-  const LedgerPage({super.key});
+const   LedgerPage({super.key});
 
   @override
   State<LedgerPage> createState() => _LedgerPageState();
@@ -77,10 +78,10 @@ class _LedgerPageState extends State<LedgerPage> {
     if (result == null || !mounted) return;
     if (entry == null) {
       await _db.insertLedgerEntry(result);
-      _toast('已保存');
+      _toast(L10n.instance.t('i18n_256'));
     } else {
       await _db.updateLedgerEntry(result);
-      _toast('已更新');
+      _toast(L10n.instance.t('i18n_283'));
     }
     _reload();
   }
@@ -89,23 +90,23 @@ class _LedgerPageState extends State<LedgerPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除这条记录？'),
-        content: Text('${entry.category} ${_fmtMoney(entry.amount)}，删除后可在其他端同步移除。'),
+        title: Text(L10n.instance.t('ledger_delete_record')),
+        content: Text(L10n.instance.t('ledger_delete_record_desc', args: {'entry.category': entry.category, '_fmtMoney(entry.amount)': _fmtMoney(entry.amount)})),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text(L10n.instance.t('common_cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除', style: TextStyle(color: AppTheme.danger)),
+            child: Text(L10n.instance.t('common_delete'), style: TextStyle(color: AppTheme.danger)),
           ),
         ],
       ),
     );
     if (ok == true && mounted) {
       await _db.deleteLedgerEntry(entry.id!);
-      _toast('已删除');
+      _toast(L10n.instance.t('i18n_263'));
       _reload();
     }
   }
@@ -120,11 +121,11 @@ class _LedgerPageState extends State<LedgerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('记账'),
+        title: Text(L10n.instance.t('common_ledger')),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add_circle_outline),
-            tooltip: '记一笔',
+            icon: Icon(Icons.add_circle_outline),
+            tooltip: L10n.instance.t('ledger_add'),
             onPressed: () => _showForm(),
           ),
         ],
@@ -148,20 +149,20 @@ class _LedgerPageState extends State<LedgerPage> {
         children: [
           IconButton(
             onPressed: _prevMonth,
-            icon: const Icon(Icons.chevron_left),
-            tooltip: '上个月',
+            icon: Icon(Icons.chevron_left),
+            tooltip: L10n.instance.t('common_last_month'),
           ),
           Expanded(
             child: Text(
-              '${_month.year}年${_month.month}月',
+              L10n.instance.t('i18n_016', args: {'v0':'${_month.year}', 'v1':'${_month.month}'}),
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
             ),
           ),
           IconButton(
             onPressed: isCurrent ? null : _nextMonth,
-            icon: const Icon(Icons.chevron_right),
-            tooltip: '下个月',
+            icon: Icon(Icons.chevron_right),
+            tooltip: L10n.instance.t('common_next_month'),
           ),
           TextButton(
             onPressed: isCurrent
@@ -169,7 +170,7 @@ class _LedgerPageState extends State<LedgerPage> {
                 : () => setState(() {
                       _month = DateTime(now.year, now.month);
                     }),
-            child: const Text('本月'),
+            child: Text(L10n.instance.t('common_this_month')),
           ),
         ],
       ),
@@ -184,11 +185,11 @@ class _LedgerPageState extends State<LedgerPage> {
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: Row(
         children: [
-          _StatCard(label: '支出', value: _fmtMoney(expense), color: AppTheme.danger, flex: 2),
-          const SizedBox(width: 10),
-          _StatCard(label: '收入', value: _fmtMoney(income), color: AppTheme.success, flex: 2),
-          const SizedBox(width: 10),
-          _StatCard(label: '结余', value: _fmtMoney(balance), color: balance < 0 ? AppTheme.danger : AppTheme.primary, flex: 2),
+          _StatCard(label: L10n.instance.t('common_expense'), value: _fmtMoney(expense), color: AppTheme.danger, flex: 2),
+          SizedBox(width: 10),
+          _StatCard(label: L10n.instance.t('common_income'), value: _fmtMoney(income), color: AppTheme.success, flex: 2),
+          SizedBox(width: 10),
+          _StatCard(label: L10n.instance.t('common_balance'), value: _fmtMoney(balance), color: balance < 0 ? AppTheme.danger : AppTheme.primary, flex: 2),
         ],
       ),
     );
@@ -202,13 +203,13 @@ class _LedgerPageState extends State<LedgerPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.receipt_long_outlined, size: 56, color: AppTheme.textSub.withValues(alpha: 0.4)),
-            const SizedBox(height: 10),
-            Text('本月还没有记账记录', style: TextStyle(color: AppTheme.textSub)),
-            const SizedBox(height: 6),
+            SizedBox(height: 10),
+            Text(L10n.instance.t('ledger_empty'), style: TextStyle(color: AppTheme.textSub)),
+            SizedBox(height: 6),
             TextButton.icon(
               onPressed: () => _showForm(),
-              icon: const Icon(Icons.add),
-              label: const Text('记一笔'),
+              icon: Icon(Icons.add),
+              label: Text(L10n.instance.t('ledger_add')),
             ),
           ],
         ),
@@ -232,7 +233,7 @@ class _LedgerPageState extends State<LedgerPage> {
         final day = keys[i];
         final items = groups[day]!;
         final header =
-            '${DateFormat('M月d日').format(day)} ${_weekday(day.weekday)}';
+            '${DateFormat(L10n.instance.t('fmt_md')).format(day)} ${_weekday(day.weekday)}';
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -243,7 +244,7 @@ class _LedgerPageState extends State<LedgerPage> {
                 children: [
                   Text(header,
                       style: TextStyle(fontSize: 13, color: AppTheme.textSub, fontWeight: FontWeight.w600)),
-                  Text(_dayTotal(items), style: const TextStyle(fontSize: 12, color: AppTheme.textSub)),
+                  Text(_dayTotal(items), style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
                 ],
               ),
             ),
@@ -255,14 +256,14 @@ class _LedgerPageState extends State<LedgerPage> {
   }
 
   String _weekday(int w) =>
-      const ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][w - 1];
+      [L10n.instance.t('i18n_176'), L10n.instance.t('i18n_178'), L10n.instance.t('i18n_177'), L10n.instance.t('i18n_181'), L10n.instance.t('i18n_179'), L10n.instance.t('i18n_180'), L10n.instance.t('i18n_182')][w - 1];
 
   String _dayTotal(List<LedgerEntry> items) {
     final ex = items.where((e) => e.kind == 0).fold(0, (s, e) => s + e.amount);
     final inc = items.where((e) => e.kind == 1).fold(0, (s, e) => s + e.amount);
     final parts = <String>[];
-    if (ex > 0) parts.add('支出 ${_fmtMoney(ex)}');
-    if (inc > 0) parts.add('收入 ${_fmtMoney(inc)}');
+    if (ex > 0) parts.add(L10n.instance.t('i18n_376', args: {'v0': _fmtMoney(ex)}));
+    if (inc > 0) parts.add(L10n.instance.t('i18n_377', args: {'v0': _fmtMoney(inc)}));
     return parts.isEmpty ? '' : parts.join(' · ');
   }
 
@@ -278,7 +279,7 @@ class _LedgerPageState extends State<LedgerPage> {
     }
     final subtitle = [
       if (e.note.isNotEmpty) e.note,
-      if (projectName != null) '项目：$projectName',
+      if (projectName != null) L10n.instance.t('i18n_636', args: {'v0': projectName}),
     ].join(' · ');
     return ListTile(
       dense: true,
@@ -291,7 +292,7 @@ class _LedgerPageState extends State<LedgerPage> {
           style: TextStyle(color: color, fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
-      title: Text(e.category, style: const TextStyle(fontWeight: FontWeight.w600)),
+      title: Text(e.category, style: TextStyle(fontWeight: FontWeight.w600)),
       subtitle: subtitle.isEmpty ? null : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: Text(
         isExpense ? '-${_fmtMoney(e.amount)}' : '+${_fmtMoney(e.amount)}',
@@ -309,19 +310,19 @@ class _LedgerPageState extends State<LedgerPage> {
           children: [
             ListTile(
               title: Text('${e.category} ${_fmtMoney(e.amount)}',
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text(DateFormat('yyyy年M月d日 HH:mm').format(
+                  style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(DateFormat(L10n.instance.t('ledger_date_time_format')).format(
                   DateTime.fromMillisecondsSinceEpoch(e.entryDate))),
             ),
-            const Divider(height: 1),
+            Divider(height: 1),
             ListTile(
-              leading: const Icon(Icons.edit_outlined),
-              title: const Text('编辑'),
+              leading: Icon(Icons.edit_outlined),
+              title: Text(L10n.instance.t('common_edit')),
               onTap: () => Navigator.pop(ctx, 'edit'),
             ),
             ListTile(
-              leading: const Icon(Icons.delete_outline, color: AppTheme.danger),
-              title: const Text('删除', style: TextStyle(color: AppTheme.danger)),
+              leading: Icon(Icons.delete_outline, color: AppTheme.danger),
+              title: Text(L10n.instance.t('common_delete'), style: TextStyle(color: AppTheme.danger)),
               onTap: () => Navigator.pop(ctx, 'delete'),
             ),
           ],
@@ -339,7 +340,7 @@ class _LedgerPageState extends State<LedgerPage> {
 
 /// 完整记账表单弹窗：分类、金额、日期（默认今天）、备注；「项目支出」可选关联项目。
 class _LedgerFormDialog extends StatefulWidget {
-  const _LedgerFormDialog({required this.entry, required this.projects});
+const _LedgerFormDialog({required this.entry, required this.projects});
 
   final LedgerEntry? entry;
   final List<Project> projects;
@@ -384,7 +385,7 @@ class _LedgerFormDialogState extends State<_LedgerFormDialog> {
       context: context,
       initialDate: _date,
       firstDate: DateTime(2000),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      lastDate: DateTime.now().add(Duration(days: 365)),
     );
     if (picked != null) setState(() => _date = picked);
   }
@@ -394,7 +395,7 @@ class _LedgerFormDialogState extends State<_LedgerFormDialog> {
     final fen = (double.parse(_amountCtrl.text.trim()) * 100).round();
     if (fen <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('金额需大于 0')));
+          SnackBar(content: Text(L10n.instance.t('ledger_amount_positive'))));
       return;
     }
     final day = DateTime(_date.year, _date.month, _date.day);
@@ -405,7 +406,7 @@ class _LedgerFormDialogState extends State<_LedgerFormDialog> {
       kind: _kind,
       category: _category,
       note: _noteCtrl.text.trim(),
-      projectId: (_category == '项目支出' && _projectId != null)
+      projectId: (_category == L10n.instance.t('ledger_cat_project') && _projectId != null)
           ? _projectId!
           : 0,
       entryDate: day.millisecondsSinceEpoch,
@@ -418,7 +419,7 @@ class _LedgerFormDialogState extends State<_LedgerFormDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.entry == null ? '记一笔' : '编辑记录'),
+      title: Text(widget.entry == null ? L10n.instance.t('ledger_add') : L10n.instance.t('ledger_edit_entry')),
       content: SingleChildScrollView(
         child: Form(
           key: _formKey,
@@ -428,14 +429,14 @@ class _LedgerFormDialogState extends State<_LedgerFormDialog> {
             children: [
               // 支出/收入切换
               SegmentedButton<int>(
-                segments: const [
-                  ButtonSegment(value: 0, label: Text('支出')),
-                  ButtonSegment(value: 1, label: Text('收入')),
+                segments: [
+                  ButtonSegment(value: 0, label: Text(L10n.instance.t('common_expense'))),
+                  ButtonSegment(value: 1, label: Text(L10n.instance.t('common_income'))),
                 ],
                 selected: {_kind},
                 onSelectionChanged: (s) => setState(() => _kind = s.first),
               ),
-              const SizedBox(height: 14),
+              SizedBox(height: 14),
               // 分类
               Wrap(
                 spacing: 8,
@@ -443,7 +444,7 @@ class _LedgerFormDialogState extends State<_LedgerFormDialog> {
                 children: AppConfig.LEDGER_CATEGORIES.map((c) {
                   final selected = _category == c;
                   return ChoiceChip(
-                    label: Text(c),
+                    label: Text(L10n.instance.t(AppConfig.ledgerCatKey(c))),
                     selected: selected,
                     onSelected: (_) => setState(() => _category = c),
                     selectedColor: AppTheme.primary.withValues(alpha: 0.12),
@@ -455,18 +456,18 @@ class _LedgerFormDialogState extends State<_LedgerFormDialog> {
                 }).toList(),
               ),
               // 项目支出：可选关联项目
-              if (_category == '项目支出') ...[
-                const SizedBox(height: 12),
+              if (_category == L10n.instance.t('ledger_cat_project')) ...[
+                SizedBox(height: 12),
                 DropdownButtonFormField<int>(
                   initialValue: _projectId,
-                  decoration: const InputDecoration(
-                    labelText: '关联项目（可选）',
+                  decoration: InputDecoration(
+                    labelText: L10n.instance.t('quote_link_project_optional'),
                     border: OutlineInputBorder(),
                     isDense: true,
                   ),
                   items: widget.projects.isEmpty
-                      ? const [
-                          DropdownMenuItem(value: 0, child: Text('暂无项目')),
+                      ? [
+                          DropdownMenuItem(value: 0, child: Text(L10n.instance.t('common_no_projects'))),
                         ]
                       : widget.projects
                           .map((p) => DropdownMenuItem(
@@ -475,7 +476,7 @@ class _LedgerFormDialogState extends State<_LedgerFormDialog> {
                   onChanged: (v) => setState(() => _projectId = v),
                 ),
               ],
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               // 金额
               TextFormField(
                 controller: _amountCtrl,
@@ -484,33 +485,33 @@ class _LedgerFormDialogState extends State<_LedgerFormDialog> {
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                 ],
-                decoration: const InputDecoration(
-                  labelText: '金额（元）',
+                decoration: InputDecoration(
+                  labelText: L10n.instance.t('i18n_621'),
                   prefixText: '¥ ',
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
                 validator: (v) {
                   final val = double.tryParse((v ?? '').trim());
-                  if (val == null || val <= 0) return '请输入有效金额';
+                  if (val == null || val <= 0) return L10n.instance.t('i18n_583');
                   return null;
                 },
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               // 日期
               InkWell(
                 onTap: _pickDate,
                 borderRadius: BorderRadius.circular(8),
                 child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: '日期',
+                  decoration: InputDecoration(
+                    labelText: L10n.instance.t('common_date'),
                     border: OutlineInputBorder(),
                     isDense: true,
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(DateFormat('yyyy年M月d日').format(_date)),
+                      Text(DateFormat(L10n.instance.t('ledger_date_format')).format(_date)),
                       const Icon(Icons.calendar_today_outlined, size: 16),
                     ],
                   ),
@@ -521,8 +522,8 @@ class _LedgerFormDialogState extends State<_LedgerFormDialog> {
               TextField(
                 controller: _noteCtrl,
                 maxLength: 50,
-                decoration: const InputDecoration(
-                  labelText: '备注（可选）',
+                decoration: InputDecoration(
+                  labelText: L10n.instance.t('common_note_optional'),
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),
@@ -534,11 +535,11 @@ class _LedgerFormDialogState extends State<_LedgerFormDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
+          child: Text(L10n.instance.t('common_cancel')),
         ),
         FilledButton(
           onPressed: _save,
-          child: const Text('保存'),
+          child: Text(L10n.instance.t('common_save')),
         ),
       ],
     );
@@ -547,7 +548,7 @@ class _LedgerFormDialogState extends State<_LedgerFormDialog> {
 
 /// 统计卡片。
 class _StatCard extends StatelessWidget {
-  const _StatCard({
+const _StatCard({
     required this.label,
     required this.value,
     required this.color,

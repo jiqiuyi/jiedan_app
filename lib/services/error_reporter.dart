@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../l10n/l10n.dart';
 import 'dart:io';
 import 'dart:ui';
 
@@ -44,16 +45,16 @@ abstract final class LogModule {
 
   /// 模块中文名（页面 Tab / 卡片标签展示用）。
   static String label(String m) => switch (m) {
-    all => '全部',
-    dashboard => '看板',
-    customer => '客户',
-    project => '项目',
-    quote => '报价',
-    sync => '同步',
-    db => '数据库',
-    updater => '更新',
-    login => '登录',
-    _ => '其他',
+    all => L10n.instance.t('error_reporter_all'),
+    dashboard => L10n.instance.t('error_reporter_dashboard'),
+    customer => L10n.instance.t('common_customer'),
+    project => L10n.instance.t('common_project'),
+    quote => L10n.instance.t('common_quote'),
+    sync => L10n.instance.t('common_sync'),
+    db => L10n.instance.t('i18n_400'),
+    updater => L10n.instance.t('i18n_428'),
+    login => L10n.instance.t('common_login'),
+    _ => L10n.instance.t('common_other'),
   };
 
   /// 由 tag 推断日志模块（存量日志 / 调用方未显式传 module 时的兜底）。
@@ -171,7 +172,7 @@ class ErrorReporter {
         s.contains('SharedPreferences') ||
         s.contains('DatabaseException') ||
         s.contains('DbException') ||
-        s.contains('数据库操作失败') ||
+        s.contains(L10n.instance.t('i18n_402')) ||
         s.contains('MissingPluginException');
   }
 
@@ -196,7 +197,7 @@ class ErrorReporter {
       final m = module ?? LogModule.moduleOfTag(tag);
       final buf = StringBuffer()
         ..writeln('[$now] [$tag] [$m] $error')
-        ..writeln('  ${stack ?? '(无堆栈)'}');
+        ..writeln('  ${stack ?? L10n.instance.t('err_no_stack')}');
       if (context != null && context.isNotEmpty) {
         context.forEach((k, v) {
           buf.writeln('  [ctx] $k=$v');
@@ -227,7 +228,7 @@ class ErrorReporter {
     if (messenger == null) return;
     messenger.showSnackBar(
       SnackBar(
-        content: Text(message ?? '操作未能完成，请稍后重试'),
+        content: Text(message ?? L10n.instance.t('common_op_failed')),
         duration: const Duration(seconds: 3),
       ),
     );

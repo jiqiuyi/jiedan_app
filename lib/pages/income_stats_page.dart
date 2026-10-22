@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import 'package:intl/intl.dart';
 
 import '../app_state.dart';
@@ -16,7 +17,7 @@ import '../widgets/app_ui.dart';
 /// 统计口径自动排除草稿(draft)、作废(voided) 报价与报价模板(is_template=1)。
 /// 数据全部来自本机 SQLite，不涉及任何云端。
 class IncomeStatsPage extends StatefulWidget {
-  const IncomeStatsPage({super.key});
+const IncomeStatsPage({super.key});
 
   @override
   State<IncomeStatsPage> createState() => _IncomeStatsPageState();
@@ -44,7 +45,7 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
   int _quoteTotal = 0; // 范围内有效报价总额（排除草稿/作废）
   int _receivable = 0; // 应收欠款（当前存量，不对时间过滤）
   int _lastMonthIncome = 0; // 上月收入（用于月度对比）
-  String _rangeTitle = '近12个月';
+  String _rangeTitle = L10n.instance.t('i18n_593');
 
   // 自定义起止日期（当天）：
   DateTime _rStart = DateTime(DateTime.now().year, DateTime.now().month, 1);
@@ -114,19 +115,19 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
     final now = DateTime.now();
     switch (_mode) {
       case _RangeMode.month:
-        return '${now.year}年${now.month}月';
+        return L10n.instance.t('i18n_022', args: {'v0':'${now.year}', 'v1':'${now.month}'});
       case _RangeMode.lastMonth:
         final m = now.month == 1 ? 12 : now.month - 1;
         final y = now.month == 1 ? now.year - 1 : now.year;
-        return '$y年$m月';
+        return L10n.instance.t('i18n_013', args: {'v0':'$y', 'v1':'$m'});
       case _RangeMode.last12:
-        return '近12个月';
+        return L10n.instance.t('i18n_593');
       case _RangeMode.custom:
         // 与「收入记录」页共用同一套区间文案：起止两端都带年份。
         // 注意：此处必须用字符串拼接，不能再走 NumberFormat 格式化 DateTime，
         // 否则运行期会抛 NoSuchMethodError(isNegative) 导致整页白屏。
-        return '${_rStart.year}年${_rStart.month}月${_rStart.day}日 - '
-            '${_rEnd.year}年${_rEnd.month}月${_rEnd.day}日';
+        return L10n.instance.t('i18n_018', args: {'v0':'${_rStart.year}', 'v1':'${_rStart.month}', 'v2':'${_rStart.day}'}) +
+            L10n.instance.t('i18n_017', args: {'v0':'${_rEnd.year}', 'v1':'${_rEnd.month}', 'v2':'${_rEnd.day}'});
     }
   }
 
@@ -137,30 +138,30 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
     if (!AppState.instance.isPro) {
       return _vipGate(
         context,
-        appBarTitle: '统计看板',
-        feature: '统计·高级分析',
-        desc: '自定义日期区间、月度对比与分类汇总为专业版专属权益。',
+        appBarTitle: L10n.instance.t('income_stats_page_stats_dashboard'),
+        feature: L10n.instance.t('i18n_535'),
+        desc: L10n.instance.t('i18n_544'),
       );
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('统计看板')),
+      appBar: AppBar(title: Text(L10n.instance.t('income_stats_title'))),
       body: _loading
-          ? const AppLoading()
+          ? AppLoading()
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
                 padding: const EdgeInsets.only(top: 8, bottom: 32),
                 children: [
                   _buildRangeSelector(),
-                  const SizedBox(height: 6),
+                  SizedBox(height: 6),
                   _buildReceivableCard(),
-                  const SizedBox(height: 6),
+                  SizedBox(height: 6),
                   _buildRangeSummaryCard(),
                   if (_mode == _RangeMode.last12) ...[
-                    const SizedBox(height: 6),
-                    const Padding(
+                    SizedBox(height: 6),
+                    Padding(
                       padding: EdgeInsets.fromLTRB(18, 14, 18, 6),
-                      child: Text('近 12 个月收入',
+                      child: Text(L10n.instance.t('income_stats_12m'),
                           style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
@@ -168,13 +169,13 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
                     ),
                     _MonthlyBarChart(data: _monthly),
                   ],
-                  const SizedBox(height: 6),
+                  SizedBox(height: 6),
                   _buildGroupSummary(),
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.fromLTRB(18, 12, 18, 4),
                     child: Text(
-                      '口径说明：统计默认排除「草稿」「作废」状态的报价及报价模板；'
-                      '应收欠款为当前未回款存量，不随时间范围过滤。',
+                      L10n.instance.t('i18n_158') +
+                      L10n.instance.t('i18n_296'),
                       style: TextStyle(
                           fontSize: 11, color: AppTheme.textSub),
                     ),
@@ -193,11 +194,11 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         RangeFilterBar<_RangeMode>(
-          items: const [
-            RangeFilterItem(_RangeMode.month, '本月'),
-            RangeFilterItem(_RangeMode.lastMonth, '上月'),
-            RangeFilterItem(_RangeMode.last12, '近12个月'),
-            RangeFilterItem(_RangeMode.custom, '自定义'),
+          items: [
+            RangeFilterItem(_RangeMode.month, L10n.instance.t('income_stats_page_this_month')),
+            RangeFilterItem(_RangeMode.lastMonth, L10n.instance.t('i18n_068')),
+            RangeFilterItem(_RangeMode.last12, L10n.instance.t('i18n_593')),
+            RangeFilterItem(_RangeMode.custom, L10n.instance.t('common_custom')),
           ],
           value: _mode,
           onChanged: (mode) {
@@ -207,7 +208,7 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
           },
         ),
         if (_mode == _RangeMode.custom) ...[
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: InkWell(
@@ -223,18 +224,18 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.date_range,
+                    Icon(Icons.date_range,
                         size: 16, color: AppTheme.primary),
-                    const SizedBox(width: 6),
+                    SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        '统计区间：${_titleOf()}',
+                        L10n.instance.t('i18n_536', args: {'v0': _titleOf()}),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12),
+                        style: TextStyle(fontSize: 12),
                       ),
                     ),
-                    const Icon(Icons.chevron_right,
+                    Icon(Icons.chevron_right,
                         size: 16, color: AppTheme.textSub),
                   ],
                 ),
@@ -255,7 +256,7 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
       end: _rEnd,
       firstDate: DateTime(now.year - 10, 1, 1),
       lastDate: now,
-      title: '选择统计起止日期',
+      title: L10n.instance.t('income_stats_pick_range'),
     );
     if (range == null || !mounted) return;
     setState(() {
@@ -274,12 +275,12 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: cleared
-            ? const LinearGradient(
+            ? LinearGradient(
                 colors: [Color(0xFF27AE60), Color(0xFF2EBD85)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               )
-            : const LinearGradient(
+            : LinearGradient(
                 colors: [Color(0xFFE67E22), Color(0xFFF39C12)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -298,25 +299,25 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
                 size: 18,
                 color: Colors.white,
               ),
-              const SizedBox(width: 6),
+              SizedBox(width: 6),
               Text(
-                cleared ? '应收款项 · 已全部结清' : '应收欠款 · 待追回',
+                cleared ? L10n.instance.t('i18n_297') : L10n.instance.t('i18n_295'),
                 style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.9), fontSize: 13),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: 10),
           Text(
             '¥${cleared ? '0.00' : receivableText}',
-            style: const TextStyle(
+            style: TextStyle(
                 color: Colors.white, fontSize: 30, fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
             cleared
-                ? '无未回款，所有收款均已结清'
-                : '共 ¥$receivableText 尚未收回，请及时跟进催收',
+                ? L10n.instance.t('i18n_411')
+                : L10n.instance.t('i18n_131', args: {'v0': receivableText}),
             style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 12),
           ),
         ],
@@ -337,24 +338,24 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('$_rangeTitle 统计',
-                style: const TextStyle(
+            Text(L10n.instance.t('income_stats_range_stats', args: {'_rangeTitle':_rangeTitle}),
+                style: TextStyle(
                     fontSize: 15, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: _Metric(
                     color: AppTheme.accent,
-                    label: '$_rangeTitle 已收入',
+                    label: L10n.instance.t('income_stats_range_income', args: {'_rangeTitle':_rangeTitle}),
                     value: '¥${_fmt.format(_paidTotal / 100)}',
                   ),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 Expanded(
                   child: _Metric(
                     color: AppTheme.primary,
-                    label: '$_rangeTitle 有效报价',
+                    label: L10n.instance.t('income_stats_range_quotes', args: {'_rangeTitle':_rangeTitle}),
                     value: '¥${_fmt.format(_quoteTotal / 100)}',
                   ),
                 ),
@@ -362,7 +363,7 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
             ),
             if (_mode == _RangeMode.month ||
                 _mode == _RangeMode.lastMonth) ...[
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               Row(
                 children: [
                   Icon(
@@ -371,22 +372,22 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
                         : Icons.trending_down,
                     size: 16,
                     color: delta >= 0
-                        ? const Color(0xFF27AE60)
-                        : const Color(0xFFE74C3C),
+                        ? Color(0xFF27AE60)
+                        : Color(0xFFE74C3C),
                   ),
-                  const SizedBox(width: 6),
+                  SizedBox(width: 6),
                   Text(
                     _mode == _RangeMode.month
-                        ? '较上月 ${delta >= 0 ? '+' : ''}'
+                        ? '${L10n.instance.t('income_stats_vs_last_month', args: {'v0': delta >= 0 ? '+' : ''})}'
                             '${_fmt.format(delta / 100)}'
                             '（${(deltaRatio * 100).toStringAsFixed(1)}%）'
-                        : '上月收入较本月 ${delta >= 0 ? '+' : ''}'
+                        : '${L10n.instance.t('income_stats_last_vs_this', args: {'v0': delta >= 0 ? '+' : ''})}'
                             '${_fmt.format(delta / 100)}',
                     style: TextStyle(
                         fontSize: 12,
                         color: delta >= 0
-                            ? const Color(0xFF27AE60)
-                            : const Color(0xFFE74C3C),
+                            ? Color(0xFF27AE60)
+                            : Color(0xFFE74C3C),
                         fontWeight: FontWeight.w600),
                   ),
                 ],
@@ -403,9 +404,9 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
+        Padding(
           padding: EdgeInsets.fromLTRB(18, 14, 18, 6),
-          child: Text('分类汇总',
+          child: Text(L10n.instance.t('income_stats_category'),
               style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -417,9 +418,9 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
             spacing: 8,
             children: [
               for (final (g, label) in [
-                (_GroupMode.customer, '按客户'),
-                (_GroupMode.quoteType, '按报价类型'),
-                (_GroupMode.projectStatus, '按项目阶段'),
+                (_GroupMode.customer, L10n.instance.t('i18n_355')),
+                (_GroupMode.quoteType, L10n.instance.t('i18n_357')),
+                (_GroupMode.projectStatus, L10n.instance.t('i18n_360')),
               ])
                 AppFilterChip(
                   label: label,
@@ -439,19 +440,19 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
       case _GroupMode.customer:
         return _buildRankList(
           rows: _contrib,
-          emptyText: '所选时间范围内还没有收款记录',
+          emptyText: L10n.instance.t('i18n_340'),
         );
       case _GroupMode.quoteType:
         final rows = [
           for (final e in _byType)
             {
-              'name': ((e['type'] as String?) == 'simple' ? '简单报价' : '详细报价'),
+              'name': ((e['type'] as String?) == 'simple' ? L10n.instance.t('quote_simple') : L10n.instance.t('quote_detailed')),
               'total': (e['total'] as num?)?.toInt() ?? 0,
             },
         ];
         return _buildRankList(
           rows: rows,
-          emptyText: '所选时间范围内还没有有效报价',
+          emptyText: L10n.instance.t('i18n_341'),
         );
       case _GroupMode.projectStatus:
         final rows = [
@@ -463,18 +464,18 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
         ];
         return _buildRankList(
           rows: rows,
-          emptyText: '所选时间范围内还没有收款记录',
+          emptyText: L10n.instance.t('i18n_340'),
         );
     }
   }
 
   String _statusLabel(Object? status) {
-    if (status == null) return '其他 / 已删除项目';
+    if (status == null) return '${L10n.instance.t('common_other')} / ${L10n.instance.t('common_deleted_project')}';
     final idx = (status as num).toInt();
     if (idx >= 0 && idx < ProjectStatus.values.length) {
       return ProjectStatus.values[idx].label;
     }
-    return '其他';
+    return L10n.instance.t('common_other');
   }
 
   Widget _buildRankList({
@@ -482,11 +483,11 @@ class _IncomeStatsPageState extends State<IncomeStatsPage> {
     required String emptyText,
   }) {
     if (rows.isEmpty) {
-      return const Card(
+      return Card(
         margin: EdgeInsets.symmetric(horizontal: 16),
         child: AppEmpty(
           icon: Icons.inbox_outlined,
-          title: '暂无数据',
+          title: L10n.instance.t('common_empty'),
         ),
       );
     }
@@ -511,7 +512,7 @@ class _Metric extends StatelessWidget {
   final Color color;
   final String label;
   final String value;
-  const _Metric({
+const _Metric({
     required this.color,
     required this.label,
     required this.value,
@@ -529,8 +530,8 @@ class _Metric extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: const TextStyle(fontSize: 11, color: AppTheme.textSub)),
-          const SizedBox(height: 4),
+              style: TextStyle(fontSize: 11, color: AppTheme.textSub)),
+          SizedBox(height: 4),
           Text(value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -548,7 +549,7 @@ class _ContribRow extends StatelessWidget {
   final int rank;
   final String name;
   final int total;
-  const _ContribRow({
+const _ContribRow({
     required this.rank,
     required this.name,
     required this.total,
@@ -577,17 +578,17 @@ class _ContribRow extends StatelessWidget {
                     fontWeight: FontWeight.w700,
                     color: rank <= 3 ? AppTheme.primary : AppTheme.textSub)),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: 12),
           Expanded(
             child: Text(name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                     fontWeight: FontWeight.w600, fontSize: 14)),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: 12),
           Text('¥${fmt.format(total / 100)}',
-              style: const TextStyle(
+              style: TextStyle(
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textMain,
                   fontSize: 14)),
@@ -600,7 +601,7 @@ class _ContribRow extends StatelessWidget {
 /// 近 12 个月收入柱状图（自绘，不引入图表库）
 class _MonthlyBarChart extends StatelessWidget {
   final List<Map<String, int>> data;
-  const _MonthlyBarChart({required this.data});
+const _MonthlyBarChart({required this.data});
 
   @override
   Widget build(BuildContext context) {
@@ -658,15 +659,15 @@ class _MonthlyBarChart extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: 6),
               Row(
                 children: [
                   for (final e in data)
                     Expanded(
                       child: Text(
-                        '${e['month']}月',
+                        L10n.instance.t('income_stats_month_tpl', args: {'v0':'${e['month']}'}),
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 10, color: AppTheme.textSub),
                       ),
                     ),
@@ -713,30 +714,30 @@ Widget _vipGate(BuildContext context,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.lock_outline, size: 64, color: AppTheme.primary),
-            const SizedBox(height: 16),
-            Text('$feature为专业版专属',
+            Icon(Icons.lock_outline, size: 64, color: AppTheme.primary),
+            SizedBox(height: 16),
+            Text(L10n.instance.t('paywall_feature_pro_only', args: {'feature':feature}),
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(desc,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                     color: AppTheme.textSub, fontSize: 13)),
-            const SizedBox(height: 24),
+            SizedBox(height: 24),
             FilledButton.icon(
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const PaywallPage(
-                    title: '升级专业版',
-                    desc: '解锁全部高级经营功能',
+                  builder: (_) => PaywallPage(
+                    title: L10n.instance.t('paywall_upgrade_pro'),
+                    desc: L10n.instance.t('i18n_554'),
                   ),
                 ),
               ),
-              icon: const Icon(Icons.workspace_premium),
-              label: const Text('升级 VIP 解锁'),
+              icon: Icon(Icons.workspace_premium),
+              label: Text(L10n.instance.t('paywall_upgrade_vip')),
             ),
           ],
         ),

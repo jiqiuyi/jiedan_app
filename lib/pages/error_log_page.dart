@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../l10n/l10n.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -22,7 +23,7 @@ import '../services/error_reporter.dart';
 /// - 「上传日志」POST 到 https://yurouyun.cn/api/logs/upload，带超时；
 ///   后端无该端点 / 网络异常时自动降级为复制到剪贴板提示粘贴发送。
 class ErrorLogPage extends StatefulWidget {
-  const ErrorLogPage({super.key});
+const ErrorLogPage({super.key});
 
   @override
   State<ErrorLogPage> createState() => _ErrorLogPageState();
@@ -32,7 +33,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
   bool _loading = true;
   bool _uploading = false;
   String? _error;
-  List<_LogFile> _files = const [];
+  List<_LogFile> _files = [];
   String _selectedPath = '';
   String _content = '';
   String _info = '';
@@ -41,7 +42,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
   String _moduleFilter = LogModule.all;
 
   /// 当前文件的日志条目（_openFile 时解析，折叠交互数据源）。
-  List<_LogEntry> _entries = const [];
+  List<_LogEntry> _entries = [];
 
   /// 已展开完整堆栈的条目索引集合。
   final Set<int> _expanded = {};
@@ -75,7 +76,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
       if (!await logDir.exists().timeout(_fileTimeout)) {
         setState(() {
           _loading = false;
-          _info = '暂无错误日志（logs 目录不存在）';
+          _info = L10n.instance.t('i18n_425');
         });
         return;
       }
@@ -99,7 +100,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
       if (files.isEmpty) {
         setState(() {
           _loading = false;
-          _info = '暂无错误日志';
+          _info = L10n.instance.t('error_log_page_no_error');
         });
         return;
       }
@@ -112,7 +113,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
     } catch (e, st) {
       setState(() {
         _loading = false;
-        _error = '日志读取失败：$e\n${st.toString().split('\n').take(3).join('\n')}';
+        _error = L10n.instance.t('error_log_read_failed', args: {'v0':'$e', 'v1':st.toString().split('\n').take(3).join('\n')});
       });
     }
   }
@@ -140,7 +141,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
         lastErr = e;
       }
     }
-    throw StateError('无法获取应用目录（平台通道无响应：$lastErr）');
+    throw StateError(L10n.instance.t('i18n_412', args: {'v0':'$lastErr'}));
   }
 
   Future<void> _openFile(String path) async {
@@ -166,7 +167,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
       _entries = parsed;
       _expanded.clear();
       _info =
-          '${p.basename(path)} · ${bytes.length} 字节 · 共 ${_files.length} 个日志文件';
+          L10n.instance.t('i18n_023', args: {'v0':p.basename(path), 'v1':bytes.length.toString(), 'v2':_files.length.toString()});
     });
   }
 
@@ -189,12 +190,12 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('日志已复制到剪贴板，可直接粘贴发给开发者')));
+        ).showSnackBar(SnackBar(content: Text(L10n.instance.t('error_log_copied'))));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('复制失败：$e')));
+            .showSnackBar(SnackBar(content: Text(L10n.instance.t('error_log_copy_fail', args: {'e':'$e'}))));
       }
     }
   }
@@ -217,7 +218,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
         }
         final hidden = e.bodyLines.length - shown.length;
         if (hidden > 0) {
-          buf.writeln('  … 省略 $hidden 行堆栈');
+          buf.writeln(L10n.instance.t('i18n_003', args: {'v0':'$hidden'}));
         }
         buf.writeln();
       }
@@ -238,7 +239,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '日志已复制（精简版：每条目异常+时间+前 $_previewLineCount 行堆栈），可直接粘贴发给开发者',
+              L10n.instance.t('i18n_415', args: {'v0':'$_previewLineCount'}),
             ),
           ),
         );
@@ -246,7 +247,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('复制失败：$e')));
+            .showSnackBar(SnackBar(content: Text(L10n.instance.t('error_log_copy_fail', args: {'e':'$e'}))));
       }
     }
   }
@@ -262,15 +263,15 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('日志读取失败：$e')));
+            .showSnackBar(SnackBar(content: Text(L10n.instance.t('error_log_read_fail', args: {'e':'$e'}))));
       }
       if (mounted) setState(() => _uploading = false);
       return;
     }
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+    final client = HttpClient()..connectionTimeout = Duration(seconds: 5);
     try {
       final uri = Uri.parse('https://yurouyun.cn/api/logs/upload');
-      final req = await client.postUrl(uri).timeout(const Duration(seconds: 5));
+      final req = await client.postUrl(uri).timeout(Duration(seconds: 5));
       req.headers.contentType = ContentType.json;
       req.headers.set(HttpHeaders.userAgentHeader, 'jiedan_app');
       final payload = jsonEncode({
@@ -287,7 +288,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
         if (resp.statusCode >= 200 && resp.statusCode < 300) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(SnackBar(content: Text('上传成功（${resp.statusCode}）')));
+          ).showSnackBar(SnackBar(content: Text(L10n.instance.t('error_log_upload_ok', args: {'resp.statusCode': '${resp.statusCode}'}))));
         } else {
           // 后端无该端点（404 等）或返回错误：降级为复制提示粘贴发送。
           await Clipboard.setData(ClipboardData(text: text));
@@ -295,7 +296,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  '上传失败（HTTP ${resp.statusCode}），日志已复制到剪贴板，请粘贴发送给开发者',
+                  L10n.instance.t('i18n_064', args: {'v0':'${resp.statusCode}'}),
                 ),
               ),
             );
@@ -310,7 +311,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('上传失败（$e），日志已复制到剪贴板，请粘贴发送给开发者')));
+        ).showSnackBar(SnackBar(content: Text(L10n.instance.t('error_log_upload_fail', args: {'e':'$e'}))));
       }
     } finally {
       client.close(force: true);
@@ -322,24 +323,24 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('错误日志'),
+        title: Text(L10n.instance.t('settings_error_log')),
         actions: [
           if (!_loading && _files.isNotEmpty) ...[
             IconButton(
-              tooltip: '上传日志',
-              icon: const Icon(Icons.cloud_upload_outlined),
+              tooltip: L10n.instance.t('error_log_upload'),
+              icon: Icon(Icons.cloud_upload_outlined),
               onPressed: _uploading ? null : _uploadAll,
             ),
             PopupMenuButton<_CopyMode>(
-              tooltip: '复制日志',
-              icon: const Icon(Icons.copy_all_outlined),
+              tooltip: L10n.instance.t('error_log_copy'),
+              icon: Icon(Icons.copy_all_outlined),
               onSelected: (mode) => _copyLog(mode == _CopyMode.compact),
-              itemBuilder: (context) => const [
+              itemBuilder: (context) => [
                 PopupMenuItem(
                   value: _CopyMode.compact,
-                  child: Text('复制精简版（异常+时间+前5行堆栈）'),
+                  child: Text(L10n.instance.t('error_log_copy_brief')),
                 ),
-                PopupMenuItem(value: _CopyMode.full, child: Text('复制完整版')),
+                PopupMenuItem(value: _CopyMode.full, child: Text(L10n.instance.t('error_log_copy_full'))),
               ],
             ),
           ],
@@ -350,7 +351,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
   }
 
   Widget _buildBody() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return Center(child: CircularProgressIndicator());
     if (_error != null) {
       return Center(
         child: Padding(
@@ -358,11 +359,11 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, size: 40, color: AppTheme.danger),
-              const SizedBox(height: 12),
+              Icon(Icons.error_outline, size: 40, color: AppTheme.danger),
+              SizedBox(height: 12),
               Text(_error!, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              FilledButton.tonal(onPressed: _load, child: const Text('重试')),
+              SizedBox(height: 16),
+              FilledButton.tonal(onPressed: _load, child: Text(L10n.instance.t('common_retry'))),
             ],
           ),
         ),
@@ -375,10 +376,10 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.inbox_outlined, size: 40),
-              const SizedBox(height: 12),
-              const Text('暂无错误日志'),
-              const SizedBox(height: 4),
+              Icon(Icons.inbox_outlined, size: 40),
+              SizedBox(height: 12),
+              Text(L10n.instance.t('error_log_empty')),
+              SizedBox(height: 4),
               Text(_info, style: const TextStyle(color: AppTheme.textSub)),
             ],
           ),
@@ -391,8 +392,8 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
           child: Row(
             children: [
-              const Icon(Icons.info_outline, size: 16, color: AppTheme.textSub),
-              const SizedBox(width: 6),
+              Icon(Icons.info_outline, size: 16, color: AppTheme.textSub),
+              SizedBox(width: 6),
               Expanded(
                 child: Text(
                   _info,
@@ -439,12 +440,12 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
               ],
             ),
           ),
-        const Divider(height: 1),
+        Divider(height: 1),
         Expanded(
           child: _content.isEmpty
-              ? const Center(child: Text('日志为空'))
+              ? Center(child: Text(L10n.instance.t('error_log_empty_log')))
               : _filteredEntries.isEmpty
-              ? const Center(child: Text('当前模块暂无日志'))
+              ? Center(child: Text(L10n.instance.t('error_log_empty_module')))
               : ListView.builder(
                   padding: const EdgeInsets.all(12),
                   itemCount: _filteredEntries.length,
@@ -545,7 +546,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
                       ),
                       onPressed: () => _toggleEntry(index),
                       child: Text(
-                        expanded ? '收起堆栈' : '展开完整堆栈（剩余 $hiddenCount 行）',
+                        expanded ? L10n.instance.t('i18n_392') : L10n.instance.t('i18n_250', args: {'v0':'$hiddenCount'}),
                       ),
                     ),
                   ),
@@ -612,12 +613,12 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
     final headerRe = RegExp(
       r'^\[([^\]]*)\] \[([^\]]*)\](?: \[([^\]]*)\])? (.*)$',
     );
-    for (final line in const LineSplitter().convert(content)) {
+    for (final line in LineSplitter().convert(content)) {
       if (line.startsWith('[')) {
         if (orphan.isNotEmpty) {
           entries.add(
             _LogEntry(
-              header: '（日志截断残片）',
+              header: L10n.instance.t('error_log_truncated'),
               bodyLines: [orphan.toString().trimRight()],
               module: LogModule.other,
             ),
@@ -642,7 +643,7 @@ class _ErrorLogPageState extends State<ErrorLogPage> {
     if (orphan.isNotEmpty) {
       entries.add(
         _LogEntry(
-          header: '（日志截断残片）',
+          header: L10n.instance.t('error_log_truncated'),
           bodyLines: [orphan.toString().trimRight()],
           module: LogModule.other,
         ),

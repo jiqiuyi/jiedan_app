@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import 'package:intl/intl.dart';
 
 import '../services/sync_service.dart';
@@ -15,12 +16,12 @@ Future<void> showConflictResolverSheet(BuildContext context) {
   return showAppSheet<void>(
     context,
     isScrollControlled: true,
-    builder: (ctx) => const _ConflictSheet(),
+    builder: (ctx) => _ConflictSheet(),
   );
 }
 
 class _ConflictSheet extends StatefulWidget {
-  const _ConflictSheet();
+const   _ConflictSheet();
 
   @override
   State<_ConflictSheet> createState() => _ConflictSheetState();
@@ -44,10 +45,10 @@ class _ConflictSheetState extends State<_ConflictSheet> {
                 Navigator.of(context).pop();
               }
             });
-            return const SizedBox(
+            return SizedBox(
               height: 160,
               child: Center(
-                child: Text('没有待处理的同步冲突了',
+                child: Text(L10n.instance.t('conflict_resolver_sheet_no_pending'),
                     style: TextStyle(color: AppTheme.textSub)),
               ),
             );
@@ -61,19 +62,19 @@ class _ConflictSheetState extends State<_ConflictSheet> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
                   child: Text(
-                    '同步冲突（${_sync.pendingConflicts.length}）',
+                    L10n.instance.t('i18n_170', args: {'v0':'${_sync.pendingConflicts.length}'}),
                     style:
-                        const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                 ),
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
-                    '云端与本地对同一条数据都有更新，请选择采用哪一版：',
+                    L10n.instance.t('i18n_093'),
                     style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                   ),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 Expanded(
                   child: ListView.builder(
                     controller: scrollCtrl,
@@ -96,12 +97,12 @@ class _ConflictSheetState extends State<_ConflictSheet> {
                                 '${_tableLabel(c.table)}：${c.title}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                     color: AppTheme.textMain),
                               ),
-                              const SizedBox(height: 4),
+                              SizedBox(height: 4),
                               Text.rich(
                                 TextSpan(
                                   style: const TextStyle(
@@ -109,26 +110,26 @@ class _ConflictSheetState extends State<_ConflictSheet> {
                                   children: [
                                     TextSpan(
                                       text:
-                                          '本地：${_fmt.format(DateTime.fromMillisecondsSinceEpoch(c.localTs))}',
+                                          L10n.instance.t('i18n_454', args: {'v0': _fmt.format(DateTime.fromMillisecondsSinceEpoch(c.localTs))}),
                                       style: const TextStyle(
                                           color: AppTheme.textMain),
                                     ),
                                     const TextSpan(text: '  ·  '),
                                     TextSpan(
                                       text:
-                                          '云端：${_fmt.format(DateTime.fromMillisecondsSinceEpoch(c.serverTs))}',
+                                          L10n.instance.t('i18n_094', args: {'v0': _fmt.format(DateTime.fromMillisecondsSinceEpoch(c.serverTs))}),
                                       style: const TextStyle(
                                           color: AppTheme.primary),
                                     ),
                                   ],
                                 ),
                               ),
-                              const SizedBox(height: 6),
+                              SizedBox(height: 6),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
                                   AppButton(
-                                    label: '保留本地',
+                                    label: L10n.instance.t('conflict_keep_local'),
                                     icon: Icons.phone_android,
                                     kind: AppButtonKind.ghost,
                                     size: AppButtonSize.small,
@@ -136,9 +137,9 @@ class _ConflictSheetState extends State<_ConflictSheet> {
                                     onPressed: () =>
                                         _sync.keepLocalVersions([c]),
                                   ),
-                                  const SizedBox(width: 4),
+                                  SizedBox(width: 4),
                                   AppButton(
-                                    label: '采用云端',
+                                    label: L10n.instance.t('conflict_use_cloud'),
                                     icon: Icons.cloud_done,
                                     kind: AppButtonKind.primary,
                                     size: AppButtonSize.small,
@@ -155,24 +156,24 @@ class _ConflictSheetState extends State<_ConflictSheet> {
                     },
                   ),
                 ),
-                const AppCardDivider(),
+                AppCardDivider(),
                 Padding(
                   padding: const EdgeInsets.all(12),
                   child: Row(
                     children: [
                       Expanded(
                         child: AppButton(
-                          label: '暂时不管',
+                          label: L10n.instance.t('conflict_ignore'),
                           kind: AppButtonKind.secondary,
                           size: AppButtonSize.small,
                           expand: true,
                           onPressed: _sync.clearPendingConflicts,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: 8),
                       Expanded(
                         child: AppButton(
-                          label: '全部保留本地',
+                          label: L10n.instance.t('conflict_keep_all_local'),
                           kind: AppButtonKind.secondary,
                           size: AppButtonSize.small,
                           expand: true,
@@ -180,10 +181,10 @@ class _ConflictSheetState extends State<_ConflictSheet> {
                               _sync.keepLocalVersions(List.of(conflicts)),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: 8),
                       Expanded(
                         child: AppButton(
-                          label: '全部采用云端',
+                          label: L10n.instance.t('conflict_use_all_cloud'),
                           kind: AppButtonKind.primary,
                           size: AppButtonSize.small,
                           expand: true,
@@ -203,13 +204,13 @@ class _ConflictSheetState extends State<_ConflictSheet> {
   }
 
   static String _tableLabel(String t) => switch (t) {
-    'customers' => '客户',
-    'projects' => '项目',
-    'payments' => '收款',
-    'quotes' => '报价',
-    'pending_collections' => '待收款',
-    'milestones' => '里程碑',
-    'contracts' => '合同',
+    'customers' => L10n.instance.t('common_customer'),
+    'projects' => L10n.instance.t('common_project'),
+    'payments' => L10n.instance.t('conflict_resolver_sheet_collect'),
+    'quotes' => L10n.instance.t('common_quote'),
+    'pending_collections' => L10n.instance.t('constants_pending_collection'),
+    'milestones' => L10n.instance.t('common_milestone'),
+    'contracts' => L10n.instance.t('common_contract'),
     _ => t,
   };
 }

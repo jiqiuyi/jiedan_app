@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import '../l10n/l10n.dart';
 import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -130,13 +131,13 @@ class QuotePdfService {
     final bytes = await doc.save();
     await Printing.sharePdf(
       bytes: bytes,
-      filename: '报价单_${safeFileName(data.title)}_$date.pdf',
+      filename: L10n.instance.t('i18n_349', args: {'v0': safeFileName(data.title), 'v1': date}),
     );
   }
 
   static String safeFileName(String s) {
     final cleaned = s.replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_');
-    return cleaned.isEmpty ? '报价' : cleaned;
+    return cleaned.isEmpty ? L10n.instance.t('common_quote') : cleaned;
   }
 
   static String _quoteNumber(int ts) {
@@ -158,10 +159,10 @@ class QuotePdfService {
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           crossAxisAlignment: pw.CrossAxisAlignment.center,
           children: [
-            pw.Text('报价单',
+            pw.Text(L10n.instance.t('quote_title'),
                 style: pw.TextStyle(
                     fontSize: 22, fontWeight: pw.FontWeight.bold, color: primary)),
-            pw.Text('编号 $number\n日期 $date',
+            pw.Text(L10n.instance.t('i18n_539', args: {'v0': number, 'v1': date}),
                 textAlign: pw.TextAlign.right,
                 style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
           ],
@@ -174,7 +175,7 @@ class QuotePdfService {
                 fontSize: 16, fontWeight: pw.FontWeight.bold)),
         pw.SizedBox(height: 4),
         pw.Text(
-          data.type == 'simple' ? '一口价报价' : '详细报价',
+          data.type == 'simple' ? L10n.instance.t('i18n_057') : L10n.instance.t('quote_detailed'),
           style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
         ),
         pw.SizedBox(height: 12),
@@ -191,7 +192,7 @@ class QuotePdfService {
       ),
       child: pw.TableHelper.fromTextArray(
         border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.4),
-        headers: ['客户', '关联项目', '编号', '报价日期'],
+        headers: [L10n.instance.t('common_customer'), L10n.instance.t('quote_pdf_related_project'), L10n.instance.t('quote_pdf_no'), L10n.instance.t('quote_pdf_date')],
         data: [
           [data.customerName.isEmpty ? '-' : data.customerName,
            data.projectName.isEmpty ? '-' : data.projectName, number, date],
@@ -223,7 +224,7 @@ class QuotePdfService {
           color: PdfColor.fromInt(AppTheme.primary.toARGB32()),
         ),
         children: [
-          for (final h in ['序号', '项目名称', '工时', '单价', '物料费', '小计'])
+          for (final h in [L10n.instance.t('i18n_294'), L10n.instance.t('i18n_631'), L10n.instance.t('i18n_251'), L10n.instance.t('i18n_153'), L10n.instance.t('i18n_488'), L10n.instance.t('i18n_245')])
             _tableCell(
               h,
               align: pw.Alignment.center,
@@ -246,7 +247,7 @@ class QuotePdfService {
     ];
     var idx = 1;
     for (final l in data.lines) {
-      final item = l.itemName.isEmpty ? '（未命名项目）' : l.itemName;
+      final item = l.itemName.isEmpty ? L10n.instance.t('i18n_639') : l.itemName;
       final cells = l.hours > 0 || l.hourRate > 0
           ? [
               '$idx',
@@ -314,13 +315,13 @@ class QuotePdfService {
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.stretch,
             children: [
-              _moneyRow('费用小计', '￥${_money(data.subtotal)}'),
-              _moneyRow('税费（${(data.taxRate * 100).toStringAsFixed(1)}%）',
+              _moneyRow(L10n.instance.t('i18n_588'), '￥${_money(data.subtotal)}'),
+              _moneyRow(L10n.instance.t('i18n_514', args: {'v0': (data.taxRate * 100).toStringAsFixed(1)}),
                   '￥${_money(data.tax)}'),
               pw.Divider(color: PdfColors.grey400, height: 8),
               pw.Row(
                 children: [
-                  pw.Text('本次报价合计',
+                  pw.Text(L10n.instance.t('quote_pdf_total'),
                       style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
                   pw.Spacer(),
                   pw.Text(data.currencyText,
@@ -347,7 +348,7 @@ class QuotePdfService {
       ),
       child: pw.Row(
         children: [
-          pw.Text('报价金额', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+          pw.Text(L10n.instance.t('quote_pdf_amount'), style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
           pw.Spacer(),
           pw.Text(data.currencyText,
               style: pw.TextStyle(
@@ -370,7 +371,7 @@ class QuotePdfService {
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text('备注',
+          pw.Text(L10n.instance.t('common_note'),
               style: pw.TextStyle(
                   fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
           pw.SizedBox(height: 4),
@@ -417,7 +418,7 @@ class QuotePdfService {
         border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
       ),
       child: pw.Text(
-        '第 ${ctx.pageNumber} / ${ctx.pagesCount} 页   ·   接单管家 出品',
+        L10n.instance.t('i18n_518', args: {'v0':'${ctx.pageNumber}', 'v1':'${ctx.pagesCount}'}),
         style: pw.TextStyle(
             fontSize: 9, color: PdfColors.grey600, height: 1.2),
       ),

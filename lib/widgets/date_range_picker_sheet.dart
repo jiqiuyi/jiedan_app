@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 
 import '../theme.dart';
 import '../widgets/app_ui.dart';
@@ -17,7 +18,7 @@ Future<DateTimeRange?> showDateRangeSheet({
   required DateTime end,
   DateTime? firstDate,
   DateTime? lastDate,
-  String title = '选择起止日期',
+  String? title,
 }) {
   return showAppSheet<DateTimeRange>(
     context,
@@ -27,7 +28,7 @@ Future<DateTimeRange?> showDateRangeSheet({
       end: end,
       firstDate: firstDate ?? DateTime(2000, 1, 1),
       lastDate: lastDate ?? DateTime.now(),
-      title: title,
+      title: title ?? L10n.instance.t('date_range_picker_sheet_select_date'),
     ),
   );
 }
@@ -38,8 +39,7 @@ class _DateRangeSheet extends StatefulWidget {
   final DateTime firstDate;
   final DateTime lastDate;
   final String title;
-
-  const _DateRangeSheet({
+const _DateRangeSheet({
     required this.start,
     required this.end,
     required this.firstDate,
@@ -143,44 +143,44 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(widget.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 _buildEdgeRow(
-                  label: '开始',
+                  label: L10n.instance.t('common_start'),
                   value: _start,
                   active: !_editingEnd,
                   onTap: () => setState(() => _editingEnd = false),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 _buildEdgeRow(
-                  label: '结束',
+                  label: L10n.instance.t('common_end'),
                   value: _end,
                   active: _editingEnd,
                   onTap: () => setState(() => _editingEnd = true),
                 ),
-                const SizedBox(height: 6),
+                SizedBox(height: 6),
                 Text(
-                  _editingEnd ? '请点选结束日期' : '请点选开始日期',
-                  style: const TextStyle(fontSize: 11, color: AppTheme.textSub),
+                  _editingEnd ? L10n.instance.t('i18n_578') : L10n.instance.t('i18n_577'),
+                  style: TextStyle(fontSize: 11, color: AppTheme.textSub),
                 ),
-                const SizedBox(height: 6),
+                SizedBox(height: 6),
                 if (_yearMode) _buildYearGrid() else _buildMonthView(),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
                       child: OutlinedButton(
                         onPressed: () => Navigator.pop(context),
-                        child: const Text('取消'),
+                        child: Text(L10n.instance.t('common_cancel')),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    SizedBox(width: 10),
                     Expanded(
                       child: FilledButton(
                         onPressed: () => Navigator.pop(
                             context, DateTimeRange(start: _start, end: _end)),
-                        child: const Text('确定'),
+                        child: Text(L10n.instance.t('common_ok')),
                       ),
                     ),
                   ],
@@ -210,7 +210,7 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
               : AppTheme.bgCard,
           borderRadius: BorderRadius.circular(AppRadius.sm),
           border: Border.all(
-            color: active ? AppTheme.primary : const Color(0xFFE4E7EF),
+            color: active ? AppTheme.primary : Color(0xFFE4E7EF),
             width: active ? 1.4 : 1,
           ),
         ),
@@ -221,10 +221,10 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: active ? AppTheme.primary : AppTheme.textSub)),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Text(
-              '${value.year}年${value.month}月${value.day}日',
-              style: const TextStyle(
+              L10n.instance.t('i18n_026', args: {'v0':'${value.year}', 'v1':'${value.month}', 'v2':'${value.day}'}),
+              style: TextStyle(
                   fontSize: 14, fontWeight: FontWeight.w700),
             ),
           ],
@@ -241,7 +241,7 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
     return GridView.count(
       crossAxisCount: yearColumns,
       shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+      physics: NeverScrollableScrollPhysics(),
       mainAxisSpacing: 8,
       crossAxisSpacing: 8,
       childAspectRatio: 2.1,
@@ -259,7 +259,7 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
               ),
               alignment: Alignment.center,
               child: Text(
-                '$y年',
+                L10n.instance.t('i18n_012', args: {'v0':'$y'}),
                 style: TextStyle(
                   fontSize: 13,
                   color: y == _viewYear ? Colors.white : AppTheme.textMain,
@@ -289,9 +289,9 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
           children: [
             IconButton(
               onPressed: () => _shiftMonth(-1),
-              icon: const Icon(Icons.chevron_left),
+              icon: Icon(Icons.chevron_left),
               visualDensity: VisualDensity.compact,
-              tooltip: '上一月',
+              tooltip: L10n.instance.t('date_prev_month'),
             ),
             Expanded(
               child: InkWell(
@@ -302,7 +302,7 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('$_viewYear年$_viewMonth月',
+                      Text(L10n.instance.t('date_view_year_month', args: {'_viewYear':'$_viewYear', '_viewMonth':'$_viewMonth'}),
                           style: const TextStyle(
                               fontSize: 15, fontWeight: FontWeight.w700)),
                       const SizedBox(width: 4),
@@ -317,13 +317,13 @@ class _DateRangeSheetState extends State<_DateRangeSheet> {
               onPressed: () => _shiftMonth(1),
               icon: const Icon(Icons.chevron_right),
               visualDensity: VisualDensity.compact,
-              tooltip: '下一月',
+              tooltip: L10n.instance.t('date_next_month'),
             ),
           ],
         ),
         Row(
           children: [
-            for (final w in const ['一', '二', '三', '四', '五', '六', '日'])
+            for (final w in [L10n.instance.t('i18n_056'), L10n.instance.t('i18n_090'), L10n.instance.t('i18n_059'), L10n.instance.t('i18n_183'), L10n.instance.t('i18n_095'), L10n.instance.t('i18n_128'), L10n.instance.t('i18n_414')])
               Expanded(
                 child: Text(w,
                     textAlign: TextAlign.center,

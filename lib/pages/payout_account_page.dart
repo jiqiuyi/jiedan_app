@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../l10n/l10n.dart';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -13,7 +14,7 @@ import '../utils/qr_base64.dart';
 /// 由服务端保存并在申请打款时写入订单快照。
 /// 与钱包页的「本地余额提现」完全独立，互不影响。
 class PayoutAccountPage extends StatefulWidget {
-  const PayoutAccountPage({super.key});
+const   PayoutAccountPage({super.key});
 
   @override
   State<PayoutAccountPage> createState() => _PayoutAccountPageState();
@@ -73,7 +74,7 @@ class _PayoutAccountPageState extends State<PayoutAccountPage> {
     if (!mounted) return;
     if (dataUrl == null) {
       setState(() => _busy = false);
-      _toast('图片过大或无法读取，请换一张更小的收款码截图');
+      _toast(L10n.instance.t('i18n_188'));
       return;
     }
     setState(() {
@@ -94,19 +95,19 @@ class _PayoutAccountPageState extends State<PayoutAccountPage> {
     final name = _nameCtrl.text.trim();
     final account = _accountCtrl.text.trim();
     if (name.isEmpty) {
-      _toast('请填写收款人姓名');
+      _toast(L10n.instance.t('i18n_571'));
       return;
     }
     if (name.length > 20) {
-      _toast('姓名不能超过 20 个字');
+      _toast(L10n.instance.t('i18n_211'));
       return;
     }
     if (account.isEmpty) {
-      _toast('请填写收款账号');
+      _toast(L10n.instance.t('i18n_572'));
       return;
     }
     if (account.length > 40) {
-      _toast('收款账号不能超过 40 个字符');
+      _toast(L10n.instance.t('i18n_388'));
       return;
     }
     setState(() => _busy = true);
@@ -123,21 +124,21 @@ class _PayoutAccountPageState extends State<PayoutAccountPage> {
       _toast(err);
       return;
     }
-    _toast('收款账户已保存');
+    _toast(L10n.instance.t('i18n_389'));
     Navigator.pop(context, true);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('返现收款账户')),
+      appBar: AppBar(title: Text(L10n.instance.t('invite_payout_account'))),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
         children: [
-          const Padding(
+          Padding(
             padding: EdgeInsets.fromLTRB(4, 4, 4, 12),
             child: Text(
-              '用于接收邀请返现打款，仅在申请打款时使用；与钱包余额提现相互独立。',
+              L10n.instance.t('i18n_491'),
               style: TextStyle(fontSize: 12, color: AppTheme.textSub),
             ),
           ),
@@ -147,26 +148,26 @@ class _PayoutAccountPageState extends State<PayoutAccountPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('收款方式',
+                  Text(L10n.instance.t('payout_method_title'),
                       style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.textMain)),
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   Row(
                     children: [
                       Expanded(
                         child: _MethodChip(
-                          label: '微信',
+                          label: L10n.instance.t('common_wechat'),
                           icon: Icons.chat_bubble_outline,
                           selected: _method == 'wechat',
                           onTap: () => setState(() => _method = 'wechat'),
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      SizedBox(width: 10),
                       Expanded(
                         child: _MethodChip(
-                          label: '支付宝',
+                          label: L10n.instance.t('common_alipay'),
                           icon: Icons.account_balance_wallet_outlined,
                           selected: _method == 'alipay',
                           onTap: () => setState(() => _method = 'alipay'),
@@ -174,23 +175,23 @@ class _PayoutAccountPageState extends State<PayoutAccountPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: 16),
                   TextField(
                     controller: _nameCtrl,
                     maxLength: 20,
-                    decoration: const InputDecoration(
-                      labelText: '收款人姓名',
-                      hintText: '用于打款核对，如「张三」',
+                    decoration: InputDecoration(
+                      labelText: L10n.instance.t('i18n_380'),
+                      hintText: L10n.instance.t('payout_name_hint'),
                       counterText: '',
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                   TextField(
                     controller: _accountCtrl,
                     maxLength: 40,
-                    decoration: const InputDecoration(
-                      labelText: '收款账号',
-                      hintText: '微信号 / 支付宝账号',
+                    decoration: InputDecoration(
+                      labelText: L10n.instance.t('i18n_387'),
+                      hintText: L10n.instance.t('payout_account_hint'),
                       counterText: '',
                     ),
                   ),
@@ -204,25 +205,25 @@ class _PayoutAccountPageState extends State<PayoutAccountPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('收款码',
+                  Text(L10n.instance.t('payout_account_page_qr_code'),
                       style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.textMain)),
-                  const SizedBox(height: 6),
-                  const Text('选填，建议上传以便后台扫码转账；单张压缩后不超过 200KB。',
+                  SizedBox(height: 6),
+                  Text(L10n.instance.t('payout_code_hint'),
                       style:
                           TextStyle(fontSize: 12, color: AppTheme.textSub)),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   _QrRow(
-                    label: '微信收款码',
+                    label: L10n.instance.t('payment_code_wechat'),
                     hasImage: _hasWx,
                     previewPath: _wxPreview,
                     onPick: () => _pick(isWechat: true),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   _QrRow(
-                    label: '支付宝收款码',
+                    label: L10n.instance.t('payment_code_alipay'),
                     hasImage: _hasAli,
                     previewPath: _aliPreview,
                     onPick: () => _pick(isWechat: false),
@@ -231,16 +232,16 @@ class _PayoutAccountPageState extends State<PayoutAccountPage> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           FilledButton(
             onPressed: _busy ? null : _save,
             child: _busy
-                ? const SizedBox(
+                ? SizedBox(
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('保存收款账户'),
+                : Text(L10n.instance.t('payout_save')),
           ),
         ],
       ),
@@ -253,7 +254,7 @@ class _MethodChip extends StatelessWidget {
   final IconData icon;
   final bool selected;
   final VoidCallback onTap;
-  const _MethodChip({
+const _MethodChip({
     required this.label,
     required this.icon,
     required this.selected,
@@ -299,7 +300,7 @@ class _QrRow extends StatelessWidget {
   final bool hasImage;
   final String? previewPath;
   final VoidCallback onPick;
-  const _QrRow({
+const _QrRow({
     required this.label,
     required this.hasImage,
     required this.previewPath,
@@ -326,7 +327,7 @@ class _QrRow extends StatelessWidget {
                   color: hasImage ? AppTheme.accent : AppTheme.textSub,
                 ),
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -339,8 +340,8 @@ class _QrRow extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 path != null
-                    ? '已选择新图片，保存后生效'
-                    : (hasImage ? '已设置' : '未设置'),
+                    ? L10n.instance.t('i18n_289')
+                    : (hasImage ? L10n.instance.t('i18n_287') : L10n.instance.t('i18n_446')),
                 style: const TextStyle(fontSize: 12, color: AppTheme.textSub),
               ),
             ],
@@ -348,7 +349,7 @@ class _QrRow extends StatelessWidget {
         ),
         TextButton(
           onPressed: onPick,
-          child: Text(hasImage ? '更换' : '选择图片'),
+          child: Text(hasImage ? L10n.instance.t('common_change') : L10n.instance.t('common_pick_image')),
         ),
       ],
     );

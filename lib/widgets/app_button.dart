@@ -63,8 +63,7 @@ class AppButton extends StatelessWidget {
 
   /// 是否处于提交中（展示等尺寸加载圈，同时禁用点击）。
   final bool loading;
-
-  const AppButton({
+const AppButton({
     super.key,
     required this.label,
     this.icon,

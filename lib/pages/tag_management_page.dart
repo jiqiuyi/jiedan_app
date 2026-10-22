@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 
 import '../database.dart';
 import '../theme.dart';
@@ -9,7 +10,7 @@ import '../widgets/app_ui.dart';
 /// 行业 / 来源供新增 / 编辑客户表单下拉选择与客户列表筛选下拉共用，
 /// 成本标签供项目成本记录选择。
 class TagManagementPage extends StatefulWidget {
-  const TagManagementPage({super.key});
+const   TagManagementPage({super.key});
 
   @override
   State<TagManagementPage> createState() => _TagManagementPageState();
@@ -63,16 +64,16 @@ class _TagManagementPageState extends State<TagManagementPage> {
     final ctrl = _ctrls[kind]!;
     final name = ctrl.text.trim();
     if (name.isEmpty) {
-      _toast('请输入标签内容');
+      _toast(L10n.instance.t('i18n_584'));
       return;
     }
     final ok = await AppDb.instance.addTagItem(kind, name);
     if (!ok) {
-      _toast('标签已存在');
+      _toast(L10n.instance.t('i18n_463'));
       return;
     }
     ctrl.clear();
-    _toast('标签已添加');
+    _toast(L10n.instance.t('i18n_464'));
     _reload();
   }
 
@@ -80,15 +81,15 @@ class _TagManagementPageState extends State<TagManagementPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除标签'),
-        content: Text('确认删除「$name」？已使用该标签的客户不受影响。'),
+        title: Text(L10n.instance.t('customers_delete_tag')),
+        content: Text(L10n.instance.t('tags_delete_confirm', args: {'name':name})),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text(L10n.instance.t('common_cancel')),
           ),
           AppButton(
-            label: '删除',
+            label: L10n.instance.t('common_delete'),
             kind: AppButtonKind.danger,
             size: AppButtonSize.medium,
             expand: false,
@@ -99,11 +100,11 @@ class _TagManagementPageState extends State<TagManagementPage> {
     );
     if (ok != true) return;
     await AppDb.instance.deleteTagItem(kind, name);
-    _toast('标签已删除');
+    _toast(L10n.instance.t('i18n_462'));
     _reload();
   }
 
-  Widget _section(String kind, String label, String hint, {String emptyTip = '暂无标签，添加后可在新增 / 编辑客户中下拉选择'}) {
+  Widget _section(String kind, String label, String hint, {String? emptyTip}) {
     final tags = _tags[kind] ?? const <String>[];
     return Card(
       child: Padding(
@@ -113,12 +114,12 @@ class _TagManagementPageState extends State<TagManagementPage> {
           children: [
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textMain),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -140,9 +141,9 @@ class _TagManagementPageState extends State<TagManagementPage> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 AppButton(
-                  label: '添加',
+                  label: L10n.instance.t('common_add'),
                   kind: AppButtonKind.primary,
                   size: AppButtonSize.medium,
                   expand: false,
@@ -153,7 +154,7 @@ class _TagManagementPageState extends State<TagManagementPage> {
             const SizedBox(height: 12),
             if (tags.isEmpty)
               Text(
-                emptyTip,
+                emptyTip ?? L10n.instance.t('i18n_422'),
                 style: const TextStyle(fontSize: 12.5, color: AppTheme.textSub),
               )
             else
@@ -190,7 +191,7 @@ class _TagManagementPageState extends State<TagManagementPage> {
     return Scaffold(
       backgroundColor: AppTheme.bg,
       appBar: AppBar(
-        title: const Text('标签维护'),
+        title: Text(L10n.instance.t('tags_title')),
         backgroundColor: AppTheme.bg,
         elevation: 0,
         centerTitle: true,
@@ -200,15 +201,15 @@ class _TagManagementPageState extends State<TagManagementPage> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                _section('industry', '行业标签', '输入行业标签，如：餐饮、电商、装修'),
+                _section('industry', L10n.instance.t('i18n_552'), L10n.instance.t('i18n_592')),
                 const SizedBox(height: 14),
-                _section('source', '来源标签', '输入来源标签，如：朋友介绍、小红书、老客'),
+                _section('source', L10n.instance.t('i18n_459'), L10n.instance.t('i18n_591')),
                 const SizedBox(height: 14),
-                _section('cost', '成本标签', '输入成本标签，如：物料、人工、外包',
-                    emptyTip: '暂无标签，添加后可在项目成本中选择'),
+                _section('cost', L10n.instance.t('i18n_335'), L10n.instance.t('i18n_590'),
+                    emptyTip: L10n.instance.t('i18n_423')),
                 const SizedBox(height: 8),
-                const Text(
-                  '提示：行业 / 来源标签用于新增 / 编辑客户时快速选择，仍可手动输入；成本标签用于项目成本记录。客户列表筛选下拉同源。',
+                Text(
+                  L10n.instance.t('i18n_372'),
                   style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                 ),
               ],

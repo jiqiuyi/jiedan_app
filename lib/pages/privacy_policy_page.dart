@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 
 import '../constants.dart';
 import '../theme.dart';
@@ -12,87 +13,57 @@ class PrivacyPolicyPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('隐私政策')),
+      appBar: AppBar(title: Text(L10n.instance.t('settings_privacy'))),
       body: ListView(
         padding: const EdgeInsets.all(20),
-        children: const [
-          _SectionTitle('一、我们收集哪些信息'),
-          _Paragraph(
-              '1. 账号信息：注册 / 登录所需的手机号与密码（密码经加盐哈希处理后存储，我们不掌握、不存储您的登录明文密码）、昵称。'),
-          _Paragraph(
-              '2. 设备与运行信息：用于实现功能与保障安全所必需的基础信息，如应用版本号、设备型号与操作系统版本（仅用于兼容性判断与问题排查，不采集精确位置、通讯录、相册、通话记录等与功能无关的信息）。'),
-          _Paragraph(
-              '3. 业务数据：您在本应用中主动录入的客户、项目、收款记录、报价单、待收款、里程碑、合同等资料。这些数据属于您自己，如何使用、存放于何处由您在「数据存储方式」中自主选择。'),
-          _Paragraph(
-              '4. 订阅与消费信息：专业版订阅状态（是否开通及到期时间）、开通与支付相关信息、推广活动（邀请关系、返现）等，用于为您提供对应权益。'),
-          _SectionTitle('二、业务数据的存储方式（三选一，均免费）'),
-          _Paragraph(
-              '您的业务数据存放在哪里，由您自己在应用「设置 → 数据与存储 → 数据存储方式」中选择，三种方式均不收取任何费用：'),
-          _Paragraph(
-              '1. 仅本地：业务数据只保存在您自己的手机（应用沙箱内的 SQLite 数据库）中，不经过我们的服务器，我们无法读取，也绝不上传——隐私优先。'),
-          _Paragraph(
-              '2. 仅服务器：业务数据以您自己的云端账号命名空间为准保存于我们提供的服务器上，手机端仅作缓存；同一账号登录即可恢复。'),
-          _Paragraph(
-              '3. 本地 + 服务器：两端双写并自动同步（本地变更异步推送到云端，登录 / 启动时从云端拉取合并），其中一端的数据都会同步到另一端，冲突以服务器最新为准。'),
-          _Paragraph(
-              '无论选择哪种方式，业务数据都会保存在您自己的手机或您本人账号下的服务器空间中，我们仅按您的选择代为存储与同步，绝不挪作他用。'),
-          _SectionTitle('三、信息如何使用'),
-          _Paragraph(
-              '我们仅将收集的信息用于：① 为您提供客户管理、项目管理、报价、收款、合同管理等核心功能；② 账号登录与订阅权益校验；③ 处理您提交的意见反馈；④ 保障账号与数据安全（防破解、防冒用）；⑤ 在您授权范围内推送功能与订阅相关通知。'),
-          _SectionTitle('四、权限使用说明'),
-          _Paragraph(
-              '1. 通知访问（收款到账提醒）：当您开启收款到账提醒后，本应用需要读取手机上收到的到账通知，仅用于在收到微信 / 支付宝到账时向您提示「收款到账」并用于核对开通专业版。我们不会读取您的短信、通讯录、通话记录或聊天内容，应用没有也不申请任何与功能无关的权限。'),
-          _Paragraph(
-              '2. 存储与文件访问（备份导出 / 导入）：当您使用「数据管理 → 导出备份」时，我们会把您的业务数据打包导出为一个备份文件，保存到您手机的「下载」目录，或通过系统分享面板让您自行保存到网盘、微信等位置；导入恢复时，应用只读取您明确选择的备份文件。应用不会扫描、访问或上传您手机上的其他个人文件。'),
-          _Paragraph(
-              '3. 其它说明：本应用不申请也无法使用您的位置、相机、麦克风、通讯录等与经营记账无关的权限。'),
-          _SectionTitle('五、是否与第三方共享'),
-          _Paragraph(
-              '我们不与任何广告商共享、出售或出租您的个人信息，应用中不含第三方广告 SDK 采集您的行为数据。'),
-          _Paragraph(
-              '仅以下场景会发生必要的云端交互：账号 / 订阅 / 推广 / 支付相关数据的传输（用于登录鉴权、订阅校验与结算），以及您主动开启「仅服务器 / 本地+服务器」模式后的业务数据同步。除法律法规另有规定或取得您明确授权外，我们不会向任何第三方提供您的个人信息。'),
-          _Paragraph(
-              '第三方服务说明：① 支付——开通专业版付款时，根据您选择的支付方式会跳转到微信或支付宝的官方支付页面完成付款，支付由您所使用的支付平台按其自身的规则与隐私政策处理，本应用不保存您的支付密码、银行卡号等信息；② 推送与通知——目前到账提醒、待收尾款提醒等均由应用在本机生成并展示（本地通知），未接入第三方推送服务收集设备信息；未来即便选用推送服务，也仅会用于向您发送账号、订阅、收款提醒等与业务必要的通知。'),
-          _SectionTitle('六、数据安全措施'),
-          _Paragraph(
-              '1. 传输安全：客户端与服务器通信采用 token 鉴权，云端接口全部校验登录态；正式部署后将启用 HTTPS 并对服务器证书做固定校验（防伪造服务器）。'),
-          _Paragraph(
-              '2. 存储安全：账号密码采用加盐哈希（bcrypt）存储；App 内置自签名校验与混淆防重打包，防止被篡改后窃取数据；云端业务数据按用户命名空间强制隔离，不同账号互不可见。'),
-          _Paragraph(
-              '3. 本地安全：本地数据库位于应用沙箱目录，系统层禁止未授权备份导出；请妥善保管您的手机号与密码，不要向他人泄露。'),
-          _SectionTitle('七、数据保留与删除'),
-          _Paragraph(
-              '1. 本地数据：您可随时在应用内查看、修改或删除本机业务数据；删除客户 / 项目时，其关联的收款记录将一并删除；卸载或清除应用数据会删除本地数据，请提前用「数据管理 → 导出备份」做好备份。'),
-          _Paragraph(
-              '2. 服务器数据：在「数据存储方式」中选择「仅服务器 / 本地+服务器」后，业务数据会同步到您账号下的服务器空间。当您从这两种模式切换回「仅本地」时，应用会主动询问是否同时删除服务器上已同步的数据（可删可不删，由您选择），选择删除后服务器端该账号的全部同步数据将被清除。'),
-          _Paragraph(
-              '3. 账号注销：如需注销云端账号或删除全部云端数据，请联系我们，我们将在核实身份后协助处理。'),
-          _SectionTitle('八、您的权利'),
-          _Paragraph(
-              '1. 导出：您可通过「数据管理 → 导出备份」将本地业务数据导出为文件，随时带走。'),
-          _Paragraph(
-              '2. 导入：您可通过「数据管理 → 导入恢复」将备份文件恢复到本机。'),
-          _Paragraph(
-              '3. 删除：您可随时删除本机任意客户 / 项目 / 收款等数据，也可按第七节所述删除服务器端的同步数据。'),
-          _Paragraph(
-              '4. 查询与更正：您可在应用内随时查看和修改自己的信息，如对个人信息处理有任何疑问，可通过「意见反馈」联系我们。'),
-          _SectionTitle('九、未成年人条款'),
-          _Paragraph(
-              '本应用面向成年人（年满 18 周岁）的经营与记账场景。若您为未成年人，请在监护人指导下使用，并应事先取得监护人的同意；我们不为未成年人提供超出其年龄与智力范围的功能。'),
-          _SectionTitle('十、隐私政策的更新与生效'),
-          _Paragraph(
-              '我们可能会适时更新本隐私政策，重大变更将通过应用内公告或推送告知。政策更新后，您在应用内继续使用即视为您已阅读并接受更新后的内容。'),
-          _SectionTitle('十一、联系我们'),
-          _Paragraph(
-              '如您对本隐私政策、数据存储方式或个人信息处理有任何疑问、意见或诉求，可通过以下任一方式联系我们：'),
-          _Paragraph(
-              '1. 在线反馈（最快送达）：应用内「我的 → 意见反馈」在线实时提交；如方便，可在反馈时留下您的联系邮箱，我们会优先通过该邮箱回复书面问题。'),
-          _Paragraph(
-              '2. 电子邮箱：您可以发送邮件至 qhw19980901@gmail.com，我们会在收到后的合理时间内回复您。'),
-          SizedBox(height: 12),
+        children: [
+          _SectionTitle(L10n.instance.t('privacy_s1_title')),
+          _Paragraph(L10n.instance.t('privacy_p1')),
+          _Paragraph(L10n.instance.t('privacy_p2')),
+          _Paragraph(L10n.instance.t('privacy_p3')),
+          _Paragraph(L10n.instance.t('privacy_p4')),
+          _SectionTitle(L10n.instance.t('privacy_s2_title')),
+          _Paragraph(L10n.instance.t('privacy_p5')),
+          _Paragraph(L10n.instance.t('privacy_p6')),
+          _Paragraph(L10n.instance.t('privacy_p7')),
+          _Paragraph(L10n.instance.t('privacy_p8')),
+          _Paragraph(L10n.instance.t('privacy_p9')),
+          _SectionTitle(L10n.instance.t('privacy_s3_title')),
+          _Paragraph(L10n.instance.t('privacy_p10')),
+          _SectionTitle(L10n.instance.t('privacy_s4_title')),
+          _Paragraph(L10n.instance.t('privacy_p11')),
+          _Paragraph(L10n.instance.t('privacy_p12')),
+          _Paragraph(L10n.instance.t('privacy_p13')),
+          _SectionTitle(L10n.instance.t('privacy_s5_title')),
+          _Paragraph(L10n.instance.t('privacy_p14')),
+          _Paragraph(L10n.instance.t('privacy_p15')),
+          _Paragraph(L10n.instance.t('privacy_p16')),
+          _SectionTitle(L10n.instance.t('privacy_s6_title')),
+          _Paragraph(L10n.instance.t('privacy_p17')),
+          _Paragraph(L10n.instance.t('privacy_p18')),
+          _Paragraph(L10n.instance.t('privacy_p19')),
+          _SectionTitle(L10n.instance.t('privacy_s7_title')),
+          _Paragraph(L10n.instance.t('privacy_p20')),
+          _Paragraph(L10n.instance.t('privacy_p21')),
+          _Paragraph(L10n.instance.t('privacy_p22')),
+          _SectionTitle(L10n.instance.t('privacy_s8_title')),
+          _Paragraph(L10n.instance.t('privacy_p23')),
+          _Paragraph(L10n.instance.t('privacy_p24')),
+          _Paragraph(L10n.instance.t('privacy_p25')),
+          _Paragraph(L10n.instance.t('privacy_p26')),
+          _SectionTitle(L10n.instance.t('privacy_s9_title')),
+          _Paragraph(L10n.instance.t('privacy_p27')),
+          _SectionTitle(L10n.instance.t('privacy_s10_title')),
+          _Paragraph(L10n.instance.t('privacy_p28')),
+          _SectionTitle(L10n.instance.t('privacy_s11_title')),
+          _Paragraph(L10n.instance.t('privacy_p29')),
+          _Paragraph(L10n.instance.t('privacy_p30')),
+          _Paragraph(L10n.instance.t('privacy_p31')),
+          const SizedBox(height: 12),
           Text(
-            '生效日期：2026-09-02\n最近更新：2026-09-04 · 版本：${AppConfig.version}',
-            style: TextStyle(fontSize: 12, color: AppTheme.textSub),
+            L10n.instance.t('privacy_effective_note',
+                args: {'v0': AppConfig.version}),
+            style: const TextStyle(fontSize: 12, color: AppTheme.textSub),
           ),
         ],
       ),

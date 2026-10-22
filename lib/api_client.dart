@@ -1,3 +1,4 @@
+import '../l10n/l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -25,7 +26,7 @@ class ApiException implements Exception {
 /// 重新登录，而不是当作普通网络/服务错误提示。继承 [ApiException]，
 /// 保证既有 `on ApiException` 捕获点仍能兜住。
 class TokenInvalidException extends ApiException {
-  const TokenInvalidException([super.message = '登录已失效，请重新登录']);
+  TokenInvalidException([super.message = '']);
 }
 
 /// 云端 API 封装：账号 / 订阅 / 订单 / 推广数据。
@@ -167,20 +168,20 @@ class ApiClient {
             .timeout(const Duration(seconds: 12));
       }
     } catch (_) {
-      throw const ApiException('网络异常，请检查网络后重试');
+      throw ApiException(L10n.instance.t('i18n_541'));
     }
     final Map<String, dynamic> json;
     try {
       json = jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
     } catch (_) {
-      throw ApiException('服务异常（HTTP ${resp.statusCode}）');
+      throw ApiException(L10n.instance.t('i18n_436', args: {'v0':'${resp.statusCode}'}));
     }
     if (resp.statusCode == 401 || json['ok'] == false) {
       // 鉴权接口的 401 独立为 token 失效分支，供上层触发登出 / 跳转登录。
       if (authRequired && resp.statusCode == 401) {
-        throw const TokenInvalidException();
+        throw TokenInvalidException(L10n.instance.t('common_session_expired'));
       }
-      throw ApiException((json['error'] as String?) ?? '请求失败');
+      throw ApiException((json['error'] as String?) ?? L10n.instance.t('i18n_575'));
     }
     return json;
   }
@@ -235,7 +236,7 @@ class ApiClient {
   /// 拉取当前账号的云端信息（含订阅状态 / 邀请码 / 邀请人列表 / 返现）
   Future<Map<String, dynamic>> me() async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('GET', '/api/me', null);
   }
 
@@ -251,7 +252,7 @@ class ApiClient {
     String wechatQrcode = '',
     String alipayQrcode = '',
   }) async {
-    if (_token == null) throw const ApiException('未登录');
+    if (_token == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/payout/account', {
       'method': method,
       'name': name,
@@ -264,7 +265,7 @@ class ApiClient {
   /// 申请返现打款（服务端写 applyAt 冻结 + 账户快照，幂等）。
   /// 返回 { ok, applyCount, applyAmount }。
   Future<Map<String, dynamic>> applyPayout() async {
-    if (_token == null) throw const ApiException('未登录');
+    if (_token == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/payout/apply', null, authRequired: true);
   }
 
@@ -284,7 +285,7 @@ class ApiClient {
   /// 真正的开通由后端收到监听上报（金额 + 时间）匹配后才执行。
   Future<Map<String, dynamic>> confirmOrder(int orderId) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/order/confirm', {
       'orderId': orderId,
     }, authRequired: true);
@@ -297,7 +298,7 @@ class ApiClient {
   /// 后端未配置 ZPAY_PID/ZPAY_KEY 时返回「未配置支付渠道」。
   Future<Map<String, dynamic>> payCreate(String plan) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/pay/create', {'plan': plan}, authRequired: true);
   }
 
@@ -311,7 +312,7 @@ class ApiClient {
     String payMethod,
   ) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/jianpay/create', {
       'plan': plan,
       'payMethod': payMethod,
@@ -324,7 +325,7 @@ class ApiClient {
   /// 返回 { orderNo, status, remoteStatus, paid, granted }。
   Future<Map<String, dynamic>> jianpaySyncOrder(String orderNo) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/jianpay/sync-order', {
       'orderNo': orderNo,
     }, authRequired: true);
@@ -334,7 +335,7 @@ class ApiClient {
   /// 返回 { canRefund, reason, orderNo, paidAt, deadlineAt, usedRefund, windowHours }。
   Future<Map<String, dynamic>> jianpayRefundStatus() async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call(
       'POST',
       '/api/jianpay/refund/status',
@@ -348,7 +349,7 @@ class ApiClient {
   /// 返回 { refundNo, status, remoteStatus, vipRevoked, message }。
   Future<Map<String, dynamic>> jianpayRefund(String orderNo) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/jianpay/refund', {
       'orderNo': orderNo,
     }, authRequired: true);
@@ -359,7 +360,7 @@ class ApiClient {
   /// user 为开通后的云端用户信息（VIP 以云端为准）。
   Future<Map<String, dynamic>> redeemCode(String code) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/redeem', {'code': code}, authRequired: true);
   }
 
@@ -373,7 +374,7 @@ class ApiClient {
     String deviceId = '',
   }) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/listener/report', {
       'amount': amount,
       'ts': ts,
@@ -387,7 +388,7 @@ class ApiClient {
   /// 待确认/抽查/已支付/全部订单：GET /api/admin/orders?status=...
   Future<List<Map<String, dynamic>>> adminOrders(String status) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     final json = await _call(
       'GET',
       '/api/admin/orders',
@@ -402,7 +403,7 @@ class ApiClient {
   /// 抽查单列表。
   Future<List<Map<String, dynamic>>> adminSpotchecks() async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     final json = await _call(
       'GET',
       '/api/admin/spotchecks',
@@ -419,7 +420,7 @@ class ApiClient {
     String action,
   ) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/admin/spotcheck/review', {
       'spotcheckId': spotcheckId,
       'action': action,
@@ -429,14 +430,14 @@ class ApiClient {
   /// 返现明细：{ details, totals }。
   Future<Map<String, dynamic>> adminRebates() async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('GET', '/api/admin/rebates', null, authRequired: true);
   }
 
   /// 待打款：{ payouts, totalRebate }。
   Future<Map<String, dynamic>> adminPayouts() async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('GET', '/api/admin/payouts', null, authRequired: true);
   }
 
@@ -446,7 +447,7 @@ class ApiClient {
     String? alipay,
   }) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/admin/qrcode', {
       'wechat': wechat,
       'alipay': alipay,
@@ -456,21 +457,21 @@ class ApiClient {
   /// 读取当前收款码配置（管理后台回显用）。
   Future<Map<String, dynamic>> adminQrcodeGet() async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('GET', '/api/admin/qrcode', null, authRequired: true);
   }
 
   /// 监听状态汇总。
   Future<Map<String, dynamic>> adminListener() async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('GET', '/api/admin/listener', null, authRequired: true);
   }
 
   /// 吊销专业版权限。
   Future<Map<String, dynamic>> adminRevoke(int userId) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/admin/revoke', {
       'userId': userId,
     }, authRequired: true);
@@ -479,7 +480,7 @@ class ApiClient {
   /// 设备拉黑。
   Future<Map<String, dynamic>> adminBlock(String deviceId, String note) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/admin/block', {
       'deviceId': deviceId,
       'note': note,
@@ -489,7 +490,7 @@ class ApiClient {
   /// 管理操作日志。
   Future<List<Map<String, dynamic>>> adminLogs() async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     final json = await _call(
       'GET',
       '/api/admin/logs',
@@ -516,7 +517,7 @@ class ApiClient {
   /// 服务器按行合并，冲突以服务器最新为准；serverTs 用于增量拉取水位。
   Future<Map<String, dynamic>> pushSync(Map<String, dynamic> tables) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/sync/push', {
       'tables': tables,
     }, authRequired: true);
@@ -526,7 +527,7 @@ class ApiClient {
   /// [since] 为上次成功同步的服务器时间戳（0 = 全量）。
   Future<Map<String, dynamic>> pullSync(int since) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call(
       'GET',
       '/api/sync/pull',
@@ -540,7 +541,7 @@ class ApiClient {
   /// 推送采纳后的结果）。用于「本地+服务器」首启全量 + 登录/启动合并。
   Future<Map<String, dynamic>> mergeSync(Map<String, dynamic> tables) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/sync/merge', {
       'tables': tables,
     }, authRequired: true);
@@ -550,7 +551,7 @@ class ApiClient {
   /// 返回 { ok, deletedRows, uid }；不影响其他用户的命名空间。
   Future<Map<String, dynamic>> deleteServerSync() async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('DELETE', '/api/sync/all', null, authRequired: true);
   }
 
@@ -571,7 +572,7 @@ class ApiClient {
     String buildNumber = '',
   }) async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('POST', '/api/feedback', {
       'type': type,
       'content': content,
@@ -588,7 +589,7 @@ class ApiClient {
   /// createdAt/reply/repliedAt，reply 为作者回复（未回复时为 null）。
   Future<Map<String, dynamic>> fetchMyFeedbacks() async {
     final t = _token;
-    if (t == null) throw const ApiException('未登录');
+    if (t == null) throw ApiException(L10n.instance.t('common_not_logged_in'));
     return _call('GET', '/api/feedback/mine', null, authRequired: true);
   }
 

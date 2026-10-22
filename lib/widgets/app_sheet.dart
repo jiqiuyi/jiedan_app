@@ -30,8 +30,7 @@ class AppSheetHeader extends StatelessWidget {
 
   /// 可选副标题。
   final String? subtitle;
-
-  const AppSheetHeader({super.key, required this.title, this.subtitle});
+const AppSheetHeader({super.key, required this.title, this.subtitle});
 
   @override
   Widget build(BuildContext context) {

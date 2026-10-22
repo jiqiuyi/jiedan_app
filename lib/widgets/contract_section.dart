@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import 'package:intl/intl.dart';
 
 import '../constants.dart';
@@ -16,7 +17,7 @@ import 'attachment_section.dart';
 /// 卡片下挂附件能力（owner_type='contract'，复用 AttachmentSection）。
 class ContractSection extends StatefulWidget {
   final int projectId;
-  const ContractSection({super.key, required this.projectId});
+const   ContractSection({super.key, required this.projectId});
 
   @override
   State<ContractSection> createState() => _ContractSectionState();
@@ -57,26 +58,26 @@ class _ContractSectionState extends State<ContractSection> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) => AlertDialog(
-          title: Text(c == null ? '新增合同' : '编辑合同'),
+          title: Text(c == null ? L10n.instance.t('contract_new') : L10n.instance.t('contract_edit')),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
                   controller: noCtrl,
-                  decoration: const InputDecoration(labelText: '合同编号', hintText: '如：HT-2026-001'),
+                  decoration: InputDecoration(labelText: L10n.instance.t('contract_section_number_label'), hintText: L10n.instance.t('contract_section_e_g')),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 TextField(
                   controller: targetCtrl,
-                  decoration: const InputDecoration(labelText: '对方名称 *', hintText: '签约客户/公司名'),
+                  decoration: InputDecoration(labelText: L10n.instance.t('contract_section_party_label'), hintText: L10n.instance.t('contract_section_contract_party')),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: amountCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: moneyInputFormatters,
-                  decoration: const InputDecoration(labelText: '金额（元）', hintText: '0.00'),
+                  decoration: InputDecoration(labelText: L10n.instance.t('i18n_621'), hintText: '0.00'),
                 ),
                 const SizedBox(height: 12),
                 InkWell(
@@ -92,7 +93,7 @@ class _ContractSectionState extends State<ContractSection> {
                     }
                   },
                   child: InputDecorator(
-                    decoration: const InputDecoration(labelText: '签署日期'),
+                    decoration: InputDecoration(labelText: L10n.instance.t('i18n_520')),
                     child: Text(DateFormat('yyyy-MM-dd')
                         .format(DateTime.fromMillisecondsSinceEpoch(signedAt))),
                   ),
@@ -100,7 +101,7 @@ class _ContractSectionState extends State<ContractSection> {
                 const SizedBox(height: 12),
                 DropdownButtonFormField<ContractStatus>(
                   initialValue: status,
-                  decoration: const InputDecoration(labelText: '状态'),
+                  decoration: InputDecoration(labelText: L10n.instance.t('common_status')),
                   items: ContractStatus.values
                       .map((s) => DropdownMenuItem(value: s, child: Text(s.label)))
                       .toList(),
@@ -111,18 +112,18 @@ class _ContractSectionState extends State<ContractSection> {
                   controller: noteCtrl,
                   maxLines: 3,
                   maxLength: 300,
-                  decoration: const InputDecoration(labelText: '备注（可选）'),
+                  decoration: InputDecoration(labelText: L10n.instance.t('common_note_optional')),
                 ),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.instance.t('common_cancel'))),
             FilledButton(
               onPressed: () => targetCtrl.text.trim().isEmpty
                   ? null
                   : Navigator.pop(ctx, true),
-              child: const Text('保存'),
+              child: Text(L10n.instance.t('common_save')),
             ),
           ],
         ),
@@ -159,12 +160,12 @@ class _ContractSectionState extends State<ContractSection> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除合同'),
-        content: Text('确定删除合同「${c.contractNo.isEmpty ? c.target : c.contractNo}」吗？'),
+        title: Text(L10n.instance.t('contract_delete')),
+        content: Text(L10n.instance.t('contract_delete_confirm', args: {'c.contractNo.isEmpty ? c.target : c.contractNo': c.contractNo.isEmpty ? c.target : c.contractNo})),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.instance.t('common_cancel'))),
           AppButton(
-            label: '删除',
+            label: L10n.instance.t('common_delete'),
             kind: AppButtonKind.danger,
             onPressed: () => Navigator.pop(ctx, true),
           ),
@@ -184,23 +185,23 @@ class _ContractSectionState extends State<ContractSection> {
       children: [
         Row(
           children: [
-            const Expanded(
-              child: Text('合同', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            Expanded(
+              child: Text(L10n.instance.t('common_contract'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             ),
             TextButton.icon(
               onPressed: _edit,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('新增合同'),
+              icon: Icon(Icons.add, size: 18),
+              label: Text(L10n.instance.t('contract_new')),
             ),
           ],
         ),
         if (_loading)
-          const AppLoading(size: 22)
+          AppLoading(size: 22)
         else if (_contracts.isEmpty)
-          const AppEmpty(
+          AppEmpty(
             icon: Icons.description_outlined,
-            title: '还没有合同',
-            hint: '点击右上角「新增合同」登记合同信息',
+            title: L10n.instance.t('contract_empty'),
+            hint: L10n.instance.t('i18n_486'),
           )
         else
           ..._contracts.map((c) => Card(
@@ -249,7 +250,7 @@ class _ContractSectionState extends State<ContractSection> {
 
 class _StatusBadge extends StatelessWidget {
   final ContractStatus status;
-  const _StatusBadge({required this.status});
+const _StatusBadge({required this.status});
 
   @override
   Widget build(BuildContext context) {

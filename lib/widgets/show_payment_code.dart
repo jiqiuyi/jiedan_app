@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../l10n/l10n.dart';
 
 import 'package:flutter/material.dart';
 
@@ -28,15 +29,15 @@ Future<void> showPaymentCodeSheet(BuildContext context) async {
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('尚未配置收款码'),
-        content: const Text('先在「我的 → 收款设置」里选择微信 / 支付宝收款码截图，收款时才能出示给客户扫码。'),
+        title: Text(L10n.instance.t('show_payment_not_configured')),
+        content: Text(L10n.instance.t('show_payment_configure_hint')),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('暂不')),
+              child: Text(L10n.instance.t('common_not_now'))),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('去设置'),
+            child: Text(L10n.instance.t('payment_code_go_settings')),
           ),
         ],
       ),
@@ -44,7 +45,7 @@ Future<void> showPaymentCodeSheet(BuildContext context) async {
     if (go == true && context.mounted) {
       await Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const PaymentCodeSettingsPage()),
+        MaterialPageRoute(builder: (_) => PaymentCodeSettingsPage()),
       );
     }
     return;
@@ -63,7 +64,7 @@ Future<void> showPaymentCodeSheet(BuildContext context) async {
 class _Sheet extends StatefulWidget {
   final String? wxPath;
   final String? aliPath;
-  const _Sheet({required this.wxPath, required this.aliPath});
+const _Sheet({required this.wxPath, required this.aliPath});
 
   @override
   State<_Sheet> createState() => _SheetState();
@@ -86,22 +87,22 @@ class _SheetState extends State<_Sheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('出示收款码',
+            Text(L10n.instance.t('payment_show_code'),
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            const Text('请客户扫码付款',
+            SizedBox(height: 4),
+            Text(L10n.instance.t('show_payment_scan_pay'),
                 style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             if (wx && ali)
               SegmentedButton<int>(
-                segments: const [
-                  ButtonSegment(value: 0, label: Text('微信'), icon: Icon(Icons.wechat)),
-                  ButtonSegment(value: 1, label: Text('支付宝'), icon: Icon(Icons.account_balance_wallet_outlined)),
+                segments: [
+                  ButtonSegment(value: 0, label: Text(L10n.instance.t('common_wechat')), icon: Icon(Icons.wechat)),
+                  ButtonSegment(value: 1, label: Text(L10n.instance.t('common_alipay')), icon: Icon(Icons.account_balance_wallet_outlined)),
                 ],
                 selected: {_tab},
                 onSelectionChanged: (s) => setState(() => _tab = s.first),
               ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             if (current != null)
               ClipRRect(
                 borderRadius: BorderRadius.circular(AppRadius.sm),
@@ -110,45 +111,45 @@ class _SheetState extends State<_Sheet> {
                   width: qrSize,
                   height: qrSize,
                   fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => const Padding(
+                  errorBuilder: (_, _, _) => Padding(
                     padding: EdgeInsets.all(32),
-                    child: Text('收款码图片加载失败，请到「收款设置」重新配置'),
+                    child: Text(L10n.instance.t('show_payment_image_failed')),
                   ),
                 ),
               )
             else
-              const Padding(
+              Padding(
                 padding: EdgeInsets.all(24),
-                child: Text('该收款码尚未配置',
+                child: Text(L10n.instance.t('show_payment_not_configured2'),
                     style: TextStyle(color: AppTheme.textSub)),
               ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: AppTheme.accent.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.info_outline, size: 16, color: AppTheme.accent),
                   SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      '客户付款到账后，请返回点击「登记收款」完成入账。',
+                      L10n.instance.t('i18n_226'),
                       style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('关闭'),
+                child: Text(L10n.instance.t('common_close')),
               ),
             ),
           ],
@@ -183,15 +184,15 @@ Future<bool> showProjectCollectSheet(
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('尚未配置收款码'),
-        content: const Text('请先到「我的 → 收款设置」上传自己的微信 / 支付宝收款码，收款时才能出示给客户扫码。'),
+        title: Text(L10n.instance.t('show_payment_not_configured')),
+        content: Text(L10n.instance.t('show_payment_configure_hint2')),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('暂不')),
+              child: Text(L10n.instance.t('common_not_now'))),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('去设置'),
+            child: Text(L10n.instance.t('payment_code_go_settings')),
           ),
         ],
       ),
@@ -199,7 +200,7 @@ Future<bool> showProjectCollectSheet(
     if (go == true && context.mounted) {
       await Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const PaymentCodeSettingsPage()),
+        MaterialPageRoute(builder: (_) => PaymentCodeSettingsPage()),
       );
     }
     return false;
@@ -227,8 +228,7 @@ class _ProjectCollectSheet extends StatefulWidget {
   final int paidTotal; // 分
   final String? wxPath;
   final String? aliPath;
-
-  const _ProjectCollectSheet({
+const _ProjectCollectSheet({
     required this.projectId,
     required this.projectTitle,
     required this.amountTotal,
@@ -279,13 +279,13 @@ class _ProjectCollectSheetState extends State<_ProjectCollectSheet> {
     final v = double.tryParse(_amountCtrl.text.trim());
     if (v == null || v <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入有效的实收金额')),
+        SnackBar(content: Text(L10n.instance.t('show_payment_invalid_amount'))),
       );
       return;
     }
     if (_type == PayType.custom && _customTypeCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入自定义收款类型名称')),
+        SnackBar(content: Text(L10n.instance.t('show_payment_custom_type'))),
       );
       return;
     }
@@ -333,29 +333,29 @@ class _ProjectCollectSheetState extends State<_ProjectCollectSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Center(
-                child: Text('项目收款',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                child: Text(L10n.instance.t('payment_project_title'),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               ),
-              const SizedBox(height: 4),
+              SizedBox(height: 4),
               Center(
                 child: Text(widget.projectTitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13, color: AppTheme.textSub)),
+                    style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               if (wx && ali)
                 Center(
                   child: SegmentedButton<int>(
-                    segments: const [
-                      ButtonSegment(value: 0, label: Text('微信'), icon: Icon(Icons.wechat)),
-                      ButtonSegment(value: 1, label: Text('支付宝'), icon: Icon(Icons.account_balance_wallet_outlined)),
+                    segments: [
+                      ButtonSegment(value: 0, label: Text(L10n.instance.t('common_wechat')), icon: Icon(Icons.wechat)),
+                      ButtonSegment(value: 1, label: Text(L10n.instance.t('common_alipay')), icon: Icon(Icons.account_balance_wallet_outlined)),
                     ],
                     selected: {_tab},
                     onSelectionChanged: (s) => setState(() => _tab = s.first),
                   ),
                 ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               Center(
                 child: current != null
                     ? ClipRRect(
@@ -365,78 +365,78 @@ class _ProjectCollectSheetState extends State<_ProjectCollectSheet> {
                           width: qrSize,
                           height: qrSize,
                           fit: BoxFit.contain,
-                          errorBuilder: (_, _, _) => const Padding(
+                          errorBuilder: (_, _, _) => Padding(
                             padding: EdgeInsets.all(24),
-                            child: Text('收款码图片加载失败，请到「收款设置」重新配置'),
+                            child: Text(L10n.instance.t('show_payment_image_failed')),
                           ),
                         ),
                       )
-                    : const Padding(
+                    : Padding(
                         padding: EdgeInsets.all(20),
-                        child: Text('该收款码尚未配置',
+                        child: Text(L10n.instance.t('show_payment_not_configured2'),
                             style: TextStyle(color: AppTheme.textSub)),
                       ),
               ),
-              const SizedBox(height: 12),
-              const Text('客户扫码付款后，手动确认到账：',
+              SizedBox(height: 12),
+              Text(L10n.instance.t('show_payment_manual_confirm'),
                   style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               TextField(
                 controller: _amountCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: moneyInputFormatters,
                 decoration: InputDecoration(
-                  labelText: '实收金额（元） *',
+                  labelText: L10n.instance.t('i18n_224'),
                   hintText: widget.amountTotal > 0
-                      ? '约定总额 ¥${Money.yuan(widget.amountTotal)}，已收 ¥${Money.yuan(widget.paidTotal)}'
-                      : '未约定总额',
+                      ? L10n.instance.t('i18n_531', args: {'v0': Money.yuan(widget.amountTotal), 'v1': Money.yuan(widget.paidTotal)})
+                      : L10n.instance.t('i18n_442'),
                   prefixText: '¥ ',
                 ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               DropdownButtonFormField<PayType>(
                 initialValue: _type,
-                decoration: const InputDecoration(labelText: '收款类型'),
+                decoration: InputDecoration(labelText: L10n.instance.t('i18n_386')),
                 items: PayType.values
                     .map((e) => DropdownMenuItem(value: e, child: Text(e.label)))
                     .toList(),
                 onChanged: (v) => setState(() => _type = v!),
               ),
               if (_type == PayType.custom) ...[
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 TextField(
                   controller: _customTypeCtrl,
-                  decoration: const InputDecoration(
-                    labelText: '自定义类型名称 *',
-                    hintText: '如：首期款 / 二期款 / 质保金',
+                  decoration: InputDecoration(
+                    labelText: L10n.instance.t('i18n_545'),
+                    hintText: L10n.instance.t('payment_dialog_type_example'),
                   ),
                 ),
               ],
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               TextField(
                 controller: _noteCtrl,
-                decoration: const InputDecoration(labelText: '备注', hintText: '如：客户已扫码付款'),
+                decoration: InputDecoration(labelText: L10n.instance.t('common_note'), hintText: L10n.instance.t('show_payment_example')),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: _saving ? null : _confirm,
                   child: _saving
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('确认到账并登记'),
+                      : Text(L10n.instance.t('show_payment_confirm_record')),
                 ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
                 child: TextButton(
                   onPressed: () => Navigator.pop(context, false),
-                  child: const Text('取消'),
+                  child: Text(L10n.instance.t('common_cancel')),
                 ),
               ),
             ],

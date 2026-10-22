@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import 'package:flutter/services.dart';
 
 import '../api_client.dart';
@@ -8,7 +9,7 @@ import '../widgets/app_ui.dart';
 /// 管理后台（仅管理员角色可见）。
 /// Tab 划分：待确认 / 抽查 / 返现 / 待打款 / 收款配置 / 服务状态 / 操作日志。
 class AdminPage extends StatefulWidget {
-  const AdminPage({super.key});
+const   AdminPage({super.key});
 
   @override
   State<AdminPage> createState() => _AdminPageState();
@@ -21,22 +22,22 @@ class _AdminPageState extends State<AdminPage> {
       length: 7,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('管理后台'),
-          bottom: const TabBar(
+          title: Text(L10n.instance.t('admin_title')),
+          bottom: TabBar(
             isScrollable: true,
             tabAlignment: TabAlignment.start,
             tabs: [
-              Tab(text: '待确认'),
-              Tab(text: '抽查'),
-              Tab(text: '返现'),
-              Tab(text: '待打款'),
-              Tab(text: '收款配置'),
-              Tab(text: '服务状态'),
-              Tab(text: '操作日志'),
+              Tab(text: L10n.instance.t('admin_pending')),
+              Tab(text: L10n.instance.t('admin_spot')),
+              Tab(text: L10n.instance.t('admin_rebate_tab')),
+              Tab(text: L10n.instance.t('admin_payout_tab')),
+              Tab(text: L10n.instance.t('admin_payment_config')),
+              Tab(text: L10n.instance.t('admin_service_status')),
+              Tab(text: L10n.instance.t('admin_logs')),
             ],
           ),
         ),
-        body: const TabBarView(
+        body: TabBarView(
           children: [
             _ConfirmingTab(),
             _SpotcheckTab(),
@@ -55,7 +56,7 @@ class _AdminPageState extends State<AdminPage> {
 // ==================== 待确认订单 ====================
 
 class _ConfirmingTab extends StatefulWidget {
-  const _ConfirmingTab();
+const _ConfirmingTab();
   @override
   State<_ConfirmingTab> createState() => _ConfirmingTabState();
 }
@@ -95,28 +96,28 @@ class _ConfirmingTabState extends State<_ConfirmingTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const AppLoading();
+      return AppLoading();
     }
     if (_error != null) {
       return Center(child: Text(_error!));
     }
     if (_orders.isEmpty) {
-      return const AppEmpty(
-          icon: Icons.inbox_outlined, title: '暂无待确认订单');
+      return AppEmpty(
+          icon: Icons.inbox_outlined, title: L10n.instance.t('admin_no_pending'));
     }
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
         itemCount: _orders.length,
-        separatorBuilder: (_, _) => const AppCardDivider(),
+        separatorBuilder: (_, _) => AppCardDivider(),
         itemBuilder: (c, i) {
           final o = _orders[i];
           return ListTile(
-            title: Text('订单号 ${o['orderNo'] ?? ''}'),
+            title: Text(L10n.instance.t('admin_order_no', args: {'v0': o['orderNo'] ?? ''})),
             subtitle: Text(
-                '金额 ¥${(o['amount'] as num?)?.toStringAsFixed(2) ?? '-'} · '
+                '${L10n.instance.t('admin_amount_cn', args: {'v0': (o['amount'] as num?)?.toStringAsFixed(2) ?? '-'})}'
                 '${_uidLabel(o['userId'])}'),
-            trailing: const Text('待核实',
+            trailing: Text(L10n.instance.t('admin_to_verify'),
                 style: TextStyle(color: AppTheme.warn, fontSize: 12)),
           );
         },
@@ -124,13 +125,13 @@ class _ConfirmingTabState extends State<_ConfirmingTab> {
     );
   }
 
-  String _uidLabel(dynamic id) => '用户#$id';
+  String _uidLabel(dynamic id) => L10n.instance.t('i18n_492', args: {'v0': id});
 }
 
 // ==================== 抽查 ====================
 
 class _SpotcheckTab extends StatefulWidget {
-  const _SpotcheckTab();
+const _SpotcheckTab();
   @override
   State<_SpotcheckTab> createState() => _SpotcheckTabState();
 }
@@ -173,7 +174,7 @@ class _SpotcheckTabState extends State<_SpotcheckTab> {
           .adminSpotcheckReview((item['id'] as num).toInt(), action);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(action == 'approve' ? '已通过' : '已驳回')));
+          SnackBar(content: Text(action == 'approve' ? L10n.instance.t('admin_approved') : L10n.instance.t('admin_rejected'))));
       _load();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -185,44 +186,44 @@ class _SpotcheckTabState extends State<_SpotcheckTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const AppLoading();
+      return AppLoading();
     }
     if (_error != null) {
       return Center(child: Text(_error!));
     }
     if (_items.isEmpty) {
-      return const AppEmpty(
-          icon: Icons.fact_check_outlined, title: '暂无抽查单');
+      return AppEmpty(
+          icon: Icons.fact_check_outlined, title: L10n.instance.t('admin_no_spot'));
     }
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
         itemCount: _items.length,
-        separatorBuilder: (_, _) => const AppCardDivider(),
+        separatorBuilder: (_, _) => AppCardDivider(),
         itemBuilder: (c, i) {
           final it = _items[i];
           final order = it['order'] is Map
               ? (it['order'] as Map).cast<String, dynamic>()
               : <String, dynamic>{};
           return ListTile(
-            title: Text('抽查 #${it['id']} · '
+            title: Text(
+                '${L10n.instance.t('admin_spot_no', args: {'v0': it['id']})}'
                 '¥${(order['amount'] as num?)?.toStringAsFixed(2) ?? '-'}'),
             subtitle: Text(
-                '${it['reason'] ?? ''}\n上报金额 ${_fmt(it['reportedAmount'])} · '
-                '时间 ${_fmt(it['reportedAt'])}'),
-            isThreeLine: true,
+                L10n.instance.t('admin_report_detail', args: {'v0': it['reason'] ?? '', 'v1': _fmt(it['reportedAmount'])}) +
+                L10n.instance.t('admin_report_time', args: {'v0': _fmt(it['reportedAt'])})),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
                   icon: const Icon(Icons.check_circle,
                       color: Color(0xFF07C160)),
-                  tooltip: '通过',
+                  tooltip: L10n.instance.t('admin_approve'),
                   onPressed: () => _review(it, 'approve'),
                 ),
                 IconButton(
                   icon: const Icon(Icons.cancel, color: AppTheme.danger),
-                  tooltip: '驳回',
+                  tooltip: L10n.instance.t('admin_reject'),
                   onPressed: () => _review(it, 'reject'),
                 ),
               ],
@@ -248,14 +249,14 @@ class _SpotcheckTabState extends State<_SpotcheckTab> {
 // ==================== 返现明细 ====================
 
 class _RebateTab extends StatefulWidget {
-  const _RebateTab();
+const _RebateTab();
   @override
   State<_RebateTab> createState() => _RebateTabState();
 }
 
 class _RebateTabState extends State<_RebateTab> {
   List<Map<String, dynamic>> _details = [];
-  Map<String, dynamic> _totals = const {};
+  Map<String, dynamic> _totals = {};
   bool _loading = true;
 
   Future<void> _load() async {
@@ -290,22 +291,22 @@ class _RebateTabState extends State<_RebateTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const AppLoading();
+      return AppLoading();
     }
     return ListView(
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
-            '累计返现 ¥${_num(_totals['totalRebate']).toStringAsFixed(2)} · '
-            '待打款 ¥${_num(_totals['totalPayout']).toStringAsFixed(2)}',
-            style: const TextStyle(fontWeight: FontWeight.w600),
+            L10n.instance.t('admin_total_rebate', args: {'v0': _num(_totals['totalRebate']).toStringAsFixed(2)}) +
+            L10n.instance.t('admin_pending_payout', args: {'v0': _num(_totals['totalPayout']).toStringAsFixed(2)}),
+            style: TextStyle(fontWeight: FontWeight.w600),
           ),
         ),
         ..._details.map((d) => ListTile(
-              title: Text('返现 ¥${_num(d['rebate']).toStringAsFixed(2)}'),
+              title: Text(L10n.instance.t('admin_rebate', args: {'v0': _num(d['rebate']).toStringAsFixed(2)})),
               subtitle:
-                  Text('来自 ${d['fromNickname'] ?? d['fromPhone'] ?? '-'}'),
+                  Text(L10n.instance.t('admin_from', args: {'v0': d['fromNickname'] ?? d['fromPhone'] ?? '-'})),
             )),
       ],
     );
@@ -317,7 +318,7 @@ class _RebateTabState extends State<_RebateTab> {
 // ==================== 待打款 ====================
 
 class _PayoutTab extends StatefulWidget {
-  const _PayoutTab();
+const _PayoutTab();
   @override
   State<_PayoutTab> createState() => _PayoutTabState();
 }
@@ -361,28 +362,28 @@ class _PayoutTabState extends State<_PayoutTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const AppLoading();
+      return AppLoading();
     }
     if (_payouts.isEmpty) {
-      return const AppEmpty(
-          icon: Icons.paid_outlined, title: '暂无可打款返现');
+      return AppEmpty(
+          icon: Icons.paid_outlined, title: L10n.instance.t('admin_no_payout'));
     }
     return ListView(
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Text('待打款合计 ¥${_total.toStringAsFixed(2)}',
-              style: const TextStyle(fontWeight: FontWeight.w600)),
+          child: Text(L10n.instance.t('i18n_315', args: {'v0': _total.toStringAsFixed(2)}),
+              style: TextStyle(fontWeight: FontWeight.w600)),
         ),
         ..._payouts.map((p) => ListTile(
               title: Text(
                   '${p['nickname'] ?? p['phone'] ?? '-'} · '
                   '¥${_num(p['rebate']).toStringAsFixed(2)}'),
-              subtitle: Text('可提现 ¥${_num(p['available']).toStringAsFixed(2)}'),
+              subtitle: Text(L10n.instance.t('admin_withdrawable', args: {'v0': _num(p['available']).toStringAsFixed(2)})),
             )),
-        const Padding(
+        Padding(
           padding: EdgeInsets.all(16),
-          child: Text('返现由推广方可随时在钱包提现，此处仅作汇总参考。',
+          child: Text(L10n.instance.t('admin_rebate_note'),
               style: TextStyle(color: AppTheme.textSub, fontSize: 12)),
         ),
       ],
@@ -395,7 +396,7 @@ class _PayoutTabState extends State<_PayoutTab> {
 // ==================== 收款码配置 ====================
 
 class _QrcodeTab extends StatefulWidget {
-  const _QrcodeTab();
+const   _QrcodeTab();
   @override
   State<_QrcodeTab> createState() => _QrcodeTabState();
 }
@@ -438,7 +439,7 @@ class _QrcodeTabState extends State<_QrcodeTab> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('收款方式已更新')));
+          .showSnackBar(SnackBar(content: Text(L10n.instance.t('admin_payment_updated'))));
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -458,43 +459,43 @@ class _QrcodeTabState extends State<_QrcodeTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const AppLoading();
+      return AppLoading();
     }
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Text('收款方式链接（App 端点一下直接拉起对应支付）：',
+        Text(L10n.instance.t('admin_page_payment_links'),
             style: TextStyle(fontSize: 13, color: AppTheme.textSub)),
-        const SizedBox(height: 12),
+        SizedBox(height: 12),
         TextField(
           controller: _wechat,
-          decoration: const InputDecoration(
-            labelText: '微信收款链接',
-            hintText: '如 weixin://... 或小程序码链接',
+          decoration: InputDecoration(
+            labelText: L10n.instance.t('i18n_324'),
+            hintText: L10n.instance.t('admin_example_weixin'),
             border: OutlineInputBorder(),
           ),
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: 16),
         TextField(
           controller: _alipay,
-          decoration: const InputDecoration(
-            labelText: '支付宝收款链接',
-            hintText: '如 alipays://... 或收款页 https://...',
+          decoration: InputDecoration(
+            labelText: L10n.instance.t('i18n_375'),
+            hintText: L10n.instance.t('admin_example_alipay'),
             border: OutlineInputBorder(),
           ),
         ),
-        const SizedBox(height: 8),
-        const Text('留空表示未配置该渠道；未配置的渠道在 App 端会提示联系商家。',
+        SizedBox(height: 8),
+        Text(L10n.instance.t('admin_page_leave_blank'),
             style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
-        const SizedBox(height: 20),
+        SizedBox(height: 20),
         FilledButton(
           onPressed: _saving ? null : _save,
-          child: Text(_saving ? '保存中…' : '保存配置'),
+          child: Text(_saving ? L10n.instance.t('admin_page_saving') : L10n.instance.t('admin_save_config')),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: 12),
         OutlinedButton.icon(
-          icon: const Icon(Icons.copy, size: 16),
-          label: const Text('复制收款码链接'),
+          icon: Icon(Icons.copy, size: 16),
+          label: Text(L10n.instance.t('admin_copy_link')),
           onPressed: () async {
             final link = _wechat.text.trim().isNotEmpty
                 ? _wechat.text.trim()
@@ -503,7 +504,7 @@ class _QrcodeTabState extends State<_QrcodeTab> {
             await Clipboard.setData(ClipboardData(text: link));
             if (!mounted) return;
             ScaffoldMessenger.of(this.context).showSnackBar(
-                const SnackBar(content: Text('已复制到剪贴板')));
+                SnackBar(content: Text(L10n.instance.t('common_copied'))));
           },
         ),
       ],
@@ -514,13 +515,13 @@ class _QrcodeTabState extends State<_QrcodeTab> {
 // ==================== 服务状态 ====================
 
 class _ListenerTab extends StatefulWidget {
-  const _ListenerTab();
+const _ListenerTab();
   @override
   State<_ListenerTab> createState() => _ListenerTabState();
 }
 
 class _ListenerTabState extends State<_ListenerTab> {
-  Map<String, dynamic> _data = const {};
+  Map<String, dynamic> _data = {};
   bool _loading = true;
 
   Future<void> _load() async {
@@ -550,14 +551,14 @@ class _ListenerTabState extends State<_ListenerTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const AppLoading();
+      return AppLoading();
     }
     final items = <(String, dynamic)>[
-      ('今日上报', _data['todayReports'] ?? 0),
-      ('今日匹配成功', _data['todayMatched'] ?? 0),
-      ('今日进入抽查', _data['todaySpotcheck'] ?? 0),
-      ('收码配置', _data['qrcodeConfigured'] == true ? '已配置' : '未配置'),
-      ('累计上报', _data['totalReports'] ?? 0),
+      (L10n.instance.t('i18n_105'), _data['todayReports'] ?? 0),
+      (L10n.instance.t('i18n_106'), _data['todayMatched'] ?? 0),
+      (L10n.instance.t('i18n_107'), _data['todaySpotcheck'] ?? 0),
+      (L10n.instance.t('i18n_391'), _data['qrcodeConfigured'] == true ? L10n.instance.t('i18n_290') : L10n.instance.t('i18n_449')),
+      (L10n.instance.t('i18n_526'), _data['totalReports'] ?? 0),
     ];
     return RefreshIndicator(
       onRefresh: _load,
@@ -577,7 +578,7 @@ class _ListenerTabState extends State<_ListenerTab> {
 // ==================== 操作日志 ====================
 
 class _LogTab extends StatefulWidget {
-  const _LogTab();
+const _LogTab();
   @override
   State<_LogTab> createState() => _LogTabState();
 }
@@ -615,11 +616,11 @@ class _LogTabState extends State<_LogTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const AppLoading();
+      return AppLoading();
     }
     if (_logs.isEmpty) {
-      return const AppEmpty(
-          icon: Icons.history_outlined, title: '暂无操作日志');
+      return AppEmpty(
+          icon: Icons.history_outlined, title: L10n.instance.t('admin_no_logs'));
     }
     return RefreshIndicator(
       onRefresh: _load,
@@ -641,7 +642,7 @@ class _LogTabState extends State<_LogTab> {
     );
   }
 
-  String _uidLabel(dynamic id) => '操作人#$id';
+  String _uidLabel(dynamic id) => L10n.instance.t('i18n_373', args: {'v0': id});
   String? _time(dynamic v) {
     if (v is! num) return null;
     final dt = DateTime.fromMillisecondsSinceEpoch(v.toInt());

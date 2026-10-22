@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../l10n/l10n.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
@@ -16,7 +17,7 @@ import 'paywall_page.dart';
 import '../widgets/app_ui.dart';
 
 class CustomersPage extends StatefulWidget {
-  const CustomersPage({super.key});
+const CustomersPage({super.key});
 
   @override
   State<CustomersPage> createState() => _CustomersPageState();
@@ -100,8 +101,8 @@ class _CustomersPageState extends State<CustomersPage> {
         c == null &&
         _customers.length >= AppConfig.freeCustomerLimit) {
       _openPaywall(
-        '免费版最多管理 ${AppConfig.freeCustomerLimit} 个客户',
-        '解锁后无限客户，畅用一个客户的也够了，但多个客户更重要',
+        L10n.instance.t('i18n_124', args: {'v0':'${AppConfig.freeCustomerLimit}'}),
+        L10n.instance.t('i18n_555'),
       );
       return;
     }
@@ -159,26 +160,26 @@ class _CustomersPageState extends State<CustomersPage> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
                 child: Text(
-                  '选择$label',
-                  style: const TextStyle(
+                  L10n.instance.t('i18n_602', args: {'v0': label}),
+                  style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textMain),
                 ),
               ),
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
                 child: Text(
-                  '也可直接在输入框中手动输入自定义内容',
+                  L10n.instance.t('i18n_089'),
                   style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                 ),
               ),
               Flexible(
                 child: tags.isEmpty
-                    ? const Padding(
+                    ? Padding(
                         padding: EdgeInsets.all(24),
                         child: Text(
-                          '暂无标签，请先在「我的 - 标签维护」中添加',
+                          L10n.instance.t('i18n_424'),
                           style: TextStyle(
                               fontSize: 13, color: AppTheme.textSub),
                         ),
@@ -189,7 +190,7 @@ class _CustomersPageState extends State<CustomersPage> {
                             .map((t) => ListTile(
                                   dense: true,
                                   title: Text(t),
-                                  trailing: const Icon(Icons.chevron_right,
+                                  trailing: Icon(Icons.chevron_right,
                                       size: 18, color: AppTheme.textSub),
                                   onTap: () {
                                     ctrl.text = t;
@@ -201,7 +202,7 @@ class _CustomersPageState extends State<CustomersPage> {
                             .toList(),
                       ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
             ],
           ),
         ),
@@ -224,9 +225,9 @@ class _CustomersPageState extends State<CustomersPage> {
               _ => regionDistricts(selProvince!, selCity!),
             };
             final String headTitle = switch (level) {
-              0 => '选择省份',
-              1 => '选择城市 · $selProvince',
-              _ => '选择区县 · $selProvince $selCity',
+              0 => L10n.instance.t('i18n_614'),
+              1 => L10n.instance.t('i18n_608', args: {'v0':'$selProvince'}),
+              _ => L10n.instance.t('i18n_607', args: {'v0':'$selProvince', 'v1':'$selCity'}),
             };
             return SafeArea(
               child: Column(
@@ -237,29 +238,29 @@ class _CustomersPageState extends State<CustomersPage> {
                     children: [
                       if (level > 0)
                         IconButton(
-                          icon: const Icon(Icons.arrow_back),
-                          tooltip: '返回',
+                          icon: Icon(Icons.arrow_back),
+                          tooltip: L10n.instance.t('common_back'),
                           onPressed: () => setSheet(() => level--),
                         )
                       else
-                        const SizedBox(width: 48),
+                        SizedBox(width: 48),
                       Expanded(
                         child: Text(
                           headTitle,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: AppFont.body,
                               fontWeight: FontWeight.w600),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close),
-                        tooltip: '关闭',
+                        icon: Icon(Icons.close),
+                        tooltip: L10n.instance.t('common_close'),
                         onPressed: () => Navigator.pop(sheetCtx),
                       ),
                     ],
                   ),
-                  const Divider(height: 1),
+                  Divider(height: 1),
                   Flexible(
                     child: ListView.builder(
                       shrinkWrap: true,
@@ -297,7 +298,7 @@ class _CustomersPageState extends State<CustomersPage> {
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(c == null ? '新建客户' : '编辑客户'),
+        title: Text(c == null ? L10n.instance.t('customers_new') : L10n.instance.t('customers_edit')),
         content: SingleChildScrollView(
           child: StatefulBuilder(
             builder: (ctx, setDlgState) => Column(
@@ -305,50 +306,50 @@ class _CustomersPageState extends State<CustomersPage> {
               children: [
                 TextField(
                     controller: nameCtrl,
-                    decoration: const InputDecoration(
-                        labelText: '客户名称 *', hintText: '如：李明工作室')),
-                const SizedBox(height: 10),
+                    decoration: InputDecoration(
+                        labelText: L10n.instance.t('customers_name_label'), hintText: L10n.instance.t('customers_name_example'))),
+                SizedBox(height: 10),
                 TextField(
                     controller: contactCtrl,
-                    decoration: const InputDecoration(
-                        labelText: '联系方式', hintText: '微信 / 手机号')),
-                const SizedBox(height: 10),
+                    decoration: InputDecoration(
+                        labelText: L10n.instance.t('customers_contact_label'), hintText: L10n.instance.t('customers_contact_hint'))),
+                SizedBox(height: 10),
                 TextField(
                     controller: industryCtrl,
-                    onTap: () => pickTag(industryCtrl, 'industry', '行业标签'),
+                    onTap: () => pickTag(industryCtrl, 'industry', L10n.instance.t('i18n_552')),
                     decoration: InputDecoration(
-                        labelText: '行业',
-                        hintText: '如：餐饮、电商、装修',
-                        suffixIcon: const Icon(Icons.arrow_drop_down,
+                        labelText: L10n.instance.t('i18n_550'),
+                        hintText: L10n.instance.t('customers_industry_example'),
+                        suffixIcon: Icon(Icons.arrow_drop_down,
                             color: AppTheme.textSub))),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 TextField(
                     controller: sourceCtrl,
-                    onTap: () => pickTag(sourceCtrl, 'source', '来源标签'),
+                    onTap: () => pickTag(sourceCtrl, 'source', L10n.instance.t('i18n_459')),
                     decoration: InputDecoration(
-                        labelText: '客户来源',
-                        hintText: '如：朋友介绍、小红书、老客',
-                        suffixIcon: const Icon(Icons.arrow_drop_down,
+                        labelText: L10n.instance.t('i18n_228'),
+                        hintText: L10n.instance.t('customers_source_example'),
+                        suffixIcon: Icon(Icons.arrow_drop_down,
                             color: AppTheme.textSub))),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 TextField(
                     controller: locationCtrl,
                     onChanged: (_) => manualEdit = true,
                     onTap: manualEdit ? null : () => pickRegion(),
                     decoration: InputDecoration(
-                        labelText: '所在地',
-                        hintText: '如：浙江省 杭州市 西湖区',
+                        labelText: L10n.instance.t('i18n_338'),
+                        hintText: L10n.instance.t('customers_region_example'),
                         suffixIcon: IconButton(
-                          icon: const Icon(Icons.location_on_outlined),
-                          tooltip: '选择省市区',
+                          icon: Icon(Icons.location_on_outlined),
+                          tooltip: L10n.instance.t('customers_region_pick'),
                           onPressed: () => pickRegion(),
                         ))),
-                const SizedBox(height: 4),
-                const Text(
-                  '点击「所在地」输入框可选择省市区，也可直接手动输入',
+                SizedBox(height: 4),
+                Text(
+                  L10n.instance.t('i18n_485'),
                   style: TextStyle(fontSize: AppFont.caption, color: AppTheme.textSub),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 InkWell(
                   onTap: () async {
                     final now = DateTime.now();
@@ -369,27 +370,27 @@ class _CustomersPageState extends State<CustomersPage> {
                     }
                   },
                   child: InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: '最近联系时间',
+                    decoration: InputDecoration(
+                      labelText: L10n.instance.t('i18n_432'),
                       contentPadding: EdgeInsets.symmetric(vertical: 4),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.event_outlined,
+                        Icon(Icons.event_outlined,
                             size: 18, color: AppTheme.textSub),
-                        const SizedBox(width: 8),
+                        SizedBox(width: 8),
                         Text(newLastContactAt > 0
                             ? _fmtDate(newLastContactAt)
-                            : '未设置'),
+                            : L10n.instance.t('i18n_446')),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 4),
+                SizedBox(height: 4),
                 TextField(
                     controller: noteCtrl,
-                    decoration: const InputDecoration(
-                        labelText: '备注', hintText: '偏好、价格敏感度等')),
+                    decoration: InputDecoration(
+                        labelText: L10n.instance.t('common_note'), hintText: L10n.instance.t('customers_notes_hint'))),
               ],
             ),
           ),
@@ -397,12 +398,12 @@ class _CustomersPageState extends State<CustomersPage> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+              child: Text(L10n.instance.t('common_cancel'))),
           FilledButton(
             onPressed: () => nameCtrl.text.trim().isEmpty
                 ? null
                 : Navigator.pop(ctx, true),
-            child: const Text('保存'),
+            child: Text(L10n.instance.t('common_save')),
           ),
         ],
       ),
@@ -447,13 +448,13 @@ class _CustomersPageState extends State<CustomersPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除客户'),
+        title: Text(L10n.instance.t('customers_delete')),
         content: Text(
-            '确定删除客户「${c.name}」吗？\n其名下全部项目及收款记录将被一并删除，不可恢复。'),
+            L10n.instance.t('i18n_502', args: {'v0': c.name})),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.instance.t('common_cancel'))),
           AppButton(
-            label: '删除',
+            label: L10n.instance.t('common_delete'),
             kind: AppButtonKind.danger,
             size: AppButtonSize.medium,
             expand: false,
@@ -495,7 +496,7 @@ class _CustomersPageState extends State<CustomersPage> {
           Padding(
             padding: const EdgeInsets.only(right: 6, top: 6),
             child: ChoiceChip(
-              label: Text(_selectedTagId == null ? '全部' : '全部标签'),
+              label: Text(_selectedTagId == null ? L10n.instance.t('common_all') : L10n.instance.t('customers_all_tags')),
               selected: _selectedTagId == null,
               onSelected: (_) => setState(() => _selectedTagId = null),
               selectedColor: AppTheme.primary,
@@ -542,7 +543,7 @@ class _CustomersPageState extends State<CustomersPage> {
   Future<void> _openTagManagePage() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const _TagManagePage()),
+      MaterialPageRoute(builder: (_) => _TagManagePage()),
     );
     await _load();
   }
@@ -565,7 +566,7 @@ class _CustomersPageState extends State<CustomersPage> {
           Padding(
             padding: const EdgeInsets.only(left: 4),
             child: Text('+$remain',
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 11,
                     color: AppTheme.textSub,
                     fontWeight: FontWeight.w600)),
@@ -579,28 +580,28 @@ class _CustomersPageState extends State<CustomersPage> {
     final customers = _filtered;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('客户'),
+        title: Text(L10n.instance.t('common_customer')),
         actions: [
           IconButton(
-            tooltip: '标签池',
-            icon: const Icon(Icons.sell_outlined),
+            tooltip: L10n.instance.t('customers_tag_pool'),
+            icon: Icon(Icons.sell_outlined),
             onPressed: _openTagManagePage,
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        tooltip: '新建客户',
+        tooltip: L10n.instance.t('customers_new'),
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.white,
         onPressed: _addOrEdit,
-        child: const Icon(Icons.add),
+        child: Icon(Icons.add),
       ),
       body: _loading
-          ? const AppLoading()
+          ? AppLoading()
           : _loadFailed
               ? AppError(
-                  title: '加载失败',
-                  hint: '本地数据读取异常，请检查存储空间后重试；反复出现可到「设置-关于-错误日志」查看详情',
+                  title: L10n.instance.t('common_load_failed'),
+                  hint: L10n.instance.t('i18n_453'),
                   onRetry: () {
                     setState(() {
                       _loading = true;
@@ -617,15 +618,15 @@ class _CustomersPageState extends State<CustomersPage> {
                     onChanged: (v) {
                       // 200ms 防抖
                       _debounce?.cancel();
-                      _debounce = Timer(const Duration(milliseconds: 200), () {
+                      _debounce = Timer(Duration(milliseconds: 200), () {
                         if (mounted) setState(() => _query = v);
                       });
                     },
                     textInputAction: TextInputAction.search,
-                    style: const TextStyle(fontSize: 14),
+                    style: TextStyle(fontSize: 14),
                     decoration: InputDecoration(
-                      hintText: '搜索客户名称 / 联系方式 / 备注',
-                      prefixIcon: const Icon(Icons.search, size: 20),
+                      hintText: L10n.instance.t('customers_search_hint'),
+                      prefixIcon: Icon(Icons.search, size: 20),
                       isDense: true,
                       filled: true,
                       fillColor: AppTheme.textSub.withValues(alpha: 0.05),
@@ -640,9 +641,9 @@ class _CustomersPageState extends State<CustomersPage> {
                 _buildTagFilterBar(),
                 Expanded(
                   child: _customers.isEmpty
-                      ? const _Empty()
+                      ? _Empty()
                       : customers.isEmpty
-                          ? const Center(child: Text('没有匹配的客户', style: TextStyle(color: AppTheme.textSub)))
+                          ? Center(child: Text(L10n.instance.t('customers_no_match'), style: TextStyle(color: AppTheme.textSub)))
                           : ListView.builder(
                               padding: const EdgeInsets.only(top: 8, bottom: 80),
                               itemCount: customers.length,
@@ -654,7 +655,7 @@ class _CustomersPageState extends State<CustomersPage> {
                                   child: Slidable(
                                     key: ValueKey('cust_${c.id}'),
                                   endActionPane: ActionPane(
-                                    motion: const ScrollMotion(),
+                                    motion: ScrollMotion(),
                                     extentRatio: 0.34,
                                     children: [
                                       CustomSlidableAction(
@@ -662,14 +663,14 @@ class _CustomersPageState extends State<CustomersPage> {
                                         backgroundColor: AppTheme.primary,
                                         foregroundColor: Colors.white,
                                         borderRadius: const BorderRadius.horizontal(left: Radius.circular(AppRadius.md)),
-                                        child: const SlidableActionContent(icon: Icons.edit_outlined, label: '编辑'),
+                                        child: SlidableActionContent(icon: Icons.edit_outlined, label: L10n.instance.t('common_edit')),
                                       ),
                                       CustomSlidableAction(
                                         onPressed: (_) => _remove(c),
                                         backgroundColor: AppTheme.danger,
                                         foregroundColor: Colors.white,
                                         borderRadius: const BorderRadius.horizontal(right: Radius.circular(AppRadius.md)),
-                                        child: const SlidableActionContent(icon: Icons.delete_outline, label: '删除'),
+                                        child: SlidableActionContent(icon: Icons.delete_outline, label: L10n.instance.t('common_delete')),
                                       ),
                                     ],
                                   ),
@@ -710,7 +711,7 @@ class _CustomersPageState extends State<CustomersPage> {
                                           c.contact,
                                           c.location,
                                           if (c.lastContactAt > 0)
-                                            '最近联系 ${_fmtDate(c.lastContactAt)}',
+                                            L10n.instance.t('i18n_431', args: {'v0': _fmtDate(c.lastContactAt)}),
                                           c.note,
                                         ].where((e) => e.isNotEmpty).join(' · '),
                                         maxLines: 1,
@@ -730,18 +731,18 @@ class _CustomersPageState extends State<CustomersPage> {
 }
 
 class _Empty extends StatelessWidget {
-  const _Empty();
+const   _Empty();
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           AppEmpty(
             icon: Icons.people_outline,
-            title: '还没有客户',
-            hint: '点右下角 + 新建一个吧',
+            title: L10n.instance.t('customers_empty'),
+            hint: L10n.instance.t('i18n_487'),
           ),
         ],
       ),
@@ -751,7 +752,7 @@ class _Empty extends StatelessWidget {
 
 // ================= v1.21.0 客户详情：档案字段 + 名下项目与累计收款 =================
 class _CustomerDetailPage extends StatefulWidget {
-  const _CustomerDetailPage({required this.customer});
+const   _CustomerDetailPage({required this.customer});
 
   final Customer customer;
 
@@ -799,45 +800,45 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
     return Scaffold(
       appBar: AppBar(title: Text(c.name)),
       body: _loading
-          ? const AppLoading()
+          ? AppLoading()
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                _infoRow('行业', c.industry),
-                _infoRow('客户来源', c.source),
-                _infoRow('所在地', c.location),
-                _infoRow('联系方式', c.contact),
-                _infoRow('最近联系',
-                    c.lastContactAt > 0 ? _fmtDate(c.lastContactAt) : '未记录'),
-                _infoRow('备注', c.note),
-                const SizedBox(height: 16),
+                _infoRow(L10n.instance.t('i18n_550'), c.industry),
+                _infoRow(L10n.instance.t('i18n_228'), c.source),
+                _infoRow(L10n.instance.t('i18n_338'), c.location),
+                _infoRow(L10n.instance.t('i18n_542'), c.contact),
+                _infoRow(L10n.instance.t('i18n_430'),
+                    c.lastContactAt > 0 ? _fmtDate(c.lastContactAt) : L10n.instance.t('i18n_444')),
+                _infoRow(L10n.instance.t('common_note'), c.note),
+                SizedBox(height: 16),
                 _buildTagCard(),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 Row(
                   children: [
                     Expanded(
-                      child: _statCard('项目数', '${_projects.length}',
+                      child: _statCard(L10n.instance.t('i18n_635'), '${_projects.length}',
                           Icons.folder_outlined, AppTheme.primary),
                     ),
-                    const SizedBox(width: 12),
+                    SizedBox(width: 12),
                     Expanded(
                       child: _statCard(
-                          '累计收款',
+                          L10n.instance.t('i18n_527'),
                           '¥${_fmt.format(_paidTotal / 100)}',
                           Icons.payments_outlined,
                           Colors.green),
                     ),
                   ],
                 ),
-                const SizedBox(height: 18),
-                Text('名下项目（${_projects.length}）',
-                    style: const TextStyle(
+                SizedBox(height: 18),
+                Text(L10n.instance.t('i18n_173', args: {'v0':'${_projects.length}'}),
+                    style: TextStyle(
                         fontSize: 15, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
+                SizedBox(height: 4),
                 if (_projects.isEmpty)
-                  const AppEmpty(
+                  AppEmpty(
                     icon: Icons.folder_open_outlined,
-                    title: '暂无项目',
+                    title: L10n.instance.t('common_no_projects'),
                   )
                 else
                   for (final p in _projects)
@@ -847,10 +848,10 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
                         title: Text(p.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontWeight: FontWeight.w600)),
                         subtitle:
-                            Text('约定金额 ¥${_fmt.format(p.amountTotal / 100)}'),
+                            Text(L10n.instance.t('i18n_533', args: {'v0': _fmt.format(p.amountTotal / 100)})),
                         trailing: Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 4),
@@ -860,7 +861,7 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
                           ),
                           child: Text(
                             p.status.label,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 12,
                                 color: AppTheme.primary,
                                 fontWeight: FontWeight.w600),
@@ -881,18 +882,18 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
         padding: const EdgeInsets.all(14),
         child: Row(
           children: [
-            const Icon(Icons.sell_outlined, size: 20, color: AppTheme.primary),
-            const SizedBox(width: 10),
+            Icon(Icons.sell_outlined, size: 20, color: AppTheme.primary),
+            SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('标签',
+                  Text(L10n.instance.t('common_tag'),
                       style:
                           TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 6),
+                  SizedBox(height: 6),
                   if (_tags.isEmpty)
-                    const Text('未打标签',
+                    Text(L10n.instance.t('customers_untagged'),
                         style: TextStyle(color: AppTheme.textSub, fontSize: 13))
                   else
                     Wrap(
@@ -907,7 +908,7 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
             ),
             TextButton(
               onPressed: _editTags,
-              child: const Text('管理'),
+              child: Text(L10n.instance.t('common_manage')),
             ),
           ],
         ),
@@ -941,19 +942,19 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
                 children: [
                   Row(
                     children: [
-                      const Text('标签管理',
+                      Text(L10n.instance.t('customers_page_manage_tags'),
                           style: TextStyle(
                               fontSize: 16, fontWeight: FontWeight.w700)),
-                      const Spacer(),
-                      Text('已选 ${sel.length}',
-                          style: const TextStyle(color: AppTheme.textSub)),
+                      Spacer(),
+                      Text(L10n.instance.t('i18n_288', args: {'v0':'${sel.length}'}),
+                          style: TextStyle(color: AppTheme.textSub)),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Text('选择标签为「${widget.customer.name}」打标，可多选',
-                      style: const TextStyle(
+                  SizedBox(height: 4),
+                  Text(L10n.instance.t('i18n_613', args: {'v0': widget.customer.name}),
+                      style: TextStyle(
                           color: AppTheme.textSub, fontSize: 12)),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                   Flexible(
                     child: SingleChildScrollView(
                       child: Wrap(
@@ -988,7 +989,7 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
                                   borderRadius: BorderRadius.circular(20)),
                             ),
                           AppButton(
-                            label: '新建标签',
+                            label: L10n.instance.t('customers_new_tag'),
                             icon: Icons.add,
                             kind: AppButtonKind.secondary,
                             size: AppButtonSize.small,
@@ -1015,20 +1016,20 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
                                 Navigator.pop(ctx, true);
                               }
                             },
-                            icon: const Icon(Icons.tune, size: 16),
-                            label: const Text('标签池管理'),
+                            icon: Icon(Icons.tune, size: 16),
+                            label: Text(L10n.instance.t('customers_tag_pool_manage')),
                           ),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
                       onPressed: () => Navigator.pop(ctx, true),
-                      icon: const Icon(Icons.check, size: 18),
-                      label: const Text('完成'),
+                      icon: Icon(Icons.check, size: 18),
+                      label: Text(L10n.instance.t('common_done')),
                     ),
                   ),
                 ],
@@ -1054,7 +1055,7 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(edit == null ? '新建标签' : '编辑标签'),
+        title: Text(edit == null ? L10n.instance.t('customers_new_tag') : L10n.instance.t('customers_edit_tag')),
         content: StatefulBuilder(
           builder: (ctx, setDlg) => Column(
             mainAxisSize: MainAxisSize.min,
@@ -1064,10 +1065,10 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
                 controller: nameCtrl,
                 autofocus: true,
                 maxLength: 8,
-                decoration: const InputDecoration(
-                    labelText: '标签名称', hintText: '如：VIP 客户'),
+                decoration: InputDecoration(
+                    labelText: L10n.instance.t('customers_tag_label'), hintText: L10n.instance.t('customers_tag_example')),
               ),
-              const SizedBox(height: 4),
+              SizedBox(height: 4),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -1098,12 +1099,12 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+              child: Text(L10n.instance.t('common_cancel'))),
           FilledButton(
             onPressed: () => nameCtrl.text.trim().isEmpty
                 ? null
                 : Navigator.pop(ctx, true),
-            child: const Text('保存'),
+            child: Text(L10n.instance.t('common_save')),
           ),
         ],
       ),
@@ -1116,7 +1117,7 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
   Future<bool?> _openTagManagePage() {
     return Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => const _TagManagePage()),
+      MaterialPageRoute(builder: (_) => _TagManagePage()),
     );
   }
 
@@ -1129,7 +1130,7 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
           SizedBox(
               width: 70,
               child: Text(label,
-                  style: const TextStyle(color: AppTheme.textSub))),
+                  style: TextStyle(color: AppTheme.textSub))),
           Expanded(child: Text(value.isEmpty ? '—' : value)),
         ],
       ),
@@ -1145,16 +1146,16 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(icon, color: color, size: 22),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(title,
                 style:
-                    const TextStyle(fontSize: 12, color: AppTheme.textSub)),
-            const SizedBox(height: 4),
+                    TextStyle(fontSize: 12, color: AppTheme.textSub)),
+            SizedBox(height: 4),
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(value,
                   style:
-                      const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                      TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
             ),
           ],
         ),
@@ -1165,7 +1166,7 @@ class _CustomerDetailPageState extends State<_CustomerDetailPage> {
 
 // ================= 第19批 标签系统：彩色标签 chip（列表与详情共用）=================
 class _TagChip extends StatelessWidget {
-  const _TagChip({required this.tag});
+const _TagChip({required this.tag});
 
   final Tag tag;
 
@@ -1186,7 +1187,7 @@ class _TagChip extends StatelessWidget {
             height: 7,
             decoration: BoxDecoration(color: c, shape: BoxShape.circle),
           ),
-          const SizedBox(width: 4),
+          SizedBox(width: 4),
           Text(tag.name,
               style: TextStyle(
                   fontSize: 11, color: c, fontWeight: FontWeight.w600)),
@@ -1198,7 +1199,7 @@ class _TagChip extends StatelessWidget {
 
 // ================= 第19批 标签系统：标签池管理（含标签维度汇总）=================
 class _TagManagePage extends StatefulWidget {
-  const _TagManagePage();
+const   _TagManagePage();
 
   @override
   State<_TagManagePage> createState() => _TagManagePageState();
@@ -1236,7 +1237,7 @@ class _TagManagePageState extends State<_TagManagePage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(edit == null ? '新建标签' : '编辑标签'),
+        title: Text(edit == null ? L10n.instance.t('customers_new_tag') : L10n.instance.t('customers_edit_tag')),
         content: StatefulBuilder(
           builder: (ctx, setDlg) => Column(
             mainAxisSize: MainAxisSize.min,
@@ -1246,8 +1247,8 @@ class _TagManagePageState extends State<_TagManagePage> {
                 controller: nameCtrl,
                 autofocus: true,
                 maxLength: 8,
-                decoration: const InputDecoration(
-                    labelText: '标签名称', hintText: '如：VIP 客户'),
+                decoration: InputDecoration(
+                    labelText: L10n.instance.t('customers_tag_label'), hintText: L10n.instance.t('customers_tag_example')),
               ),
               const SizedBox(height: 4),
               Wrap(
@@ -1281,12 +1282,12 @@ class _TagManagePageState extends State<_TagManagePage> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+              child: Text(L10n.instance.t('common_cancel'))),
           FilledButton(
             onPressed: () => nameCtrl.text.trim().isEmpty
                 ? null
                 : Navigator.pop(ctx, true),
-            child: const Text('保存'),
+            child: Text(L10n.instance.t('common_save')),
           ),
         ],
       ),
@@ -1326,14 +1327,14 @@ class _TagManagePageState extends State<_TagManagePage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('删除标签'),
-        content: Text('确定删除标签「$name」吗？\n该标签与全部客户的关联将一并移除。'),
+        title: Text(L10n.instance.t('customers_delete_tag')),
+        content: Text(L10n.instance.t('i18n_503', args: {'v0': name})),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+              child: Text(L10n.instance.t('common_cancel'))),
           AppButton(
-            label: '删除',
+            label: L10n.instance.t('common_delete'),
             kind: AppButtonKind.danger,
             size: AppButtonSize.medium,
             expand: false,
@@ -1351,35 +1352,35 @@ class _TagManagePageState extends State<_TagManagePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('标签池')),
+      appBar: AppBar(title: Text(L10n.instance.t('customers_tag_pool'))),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _create,
         backgroundColor: AppTheme.primary,
         foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text('新建标签'),
+        icon: Icon(Icons.add),
+        label: Text(L10n.instance.t('customers_new_tag')),
       ),
       body: _loading
-          ? const AppLoading()
+          ? AppLoading()
           : _summaries.isEmpty
-              ? const AppEmpty(
+              ? AppEmpty(
                   icon: Icons.sell_outlined,
-                  title: '还没有标签，点右下角新建')
+                  title: L10n.instance.t('customers_no_tags'))
               : ListView(
                   padding: const EdgeInsets.only(bottom: 88),
                   children: [
                     Container(
                       color: AppTheme.primary.withValues(alpha: 0.06),
                       padding: const EdgeInsets.all(12),
-                      child: const Row(
+                      child: Row(
                         children: [
                           Icon(Icons.info_outline,
                               size: 16, color: AppTheme.primary),
                           SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              '标签维度汇总：每行显示该标签下的客户数与该批客户累计收款，'
-                              '仅做轻量统计，不联动对账流水。',
+                              L10n.instance.t('i18n_465') +
+                              L10n.instance.t('i18n_100'),
                               style: TextStyle(
                                   fontSize: 12, color: AppTheme.textSub),
                             ),
@@ -1408,8 +1409,8 @@ class _TagManagePageState extends State<_TagManagePage> {
                                 const TextStyle(fontWeight: FontWeight.w600),
                           ),
                           subtitle: Text(
-                            '${s['customer_count'] ?? 0} 位客户 · '
-                            '累计收款 ¥${_fmt.format(((s['paid_total'] as num?)?.toInt() ?? 0) / 100)}',
+                            L10n.instance.t('customers_count_suffix', args: {'v0':'${s['customer_count'] ?? 0}'}) +
+                            L10n.instance.t('customers_total_received', args: {'v0': _fmt.format(((s['paid_total'] as num?)?.toInt() ?? 0) / 100)}),
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,

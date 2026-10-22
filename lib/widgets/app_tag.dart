@@ -15,8 +15,7 @@ class AppTag extends StatelessWidget {
 
   /// 是否实心显示。
   final bool solid;
-
-  const AppTag({
+const AppTag({
     super.key,
     required this.label,
     this.color = AppTheme.primary,
@@ -60,8 +59,7 @@ class AppFilterChip extends StatelessWidget {
 
   /// 选中态填充色与未选中浅底色，默认品牌蓝，可按语义传入（如橙色未对账）。
   final Color color;
-
-  const AppFilterChip({
+const AppFilterChip({
     super.key,
     required this.label,
     required this.selected,

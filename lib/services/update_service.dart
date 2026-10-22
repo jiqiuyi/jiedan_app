@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../l10n/l10n.dart';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -16,7 +17,7 @@ class UpdateInfo {
   final String url; // 安装包地址
   final bool force; // 是否强制更新
 
-  const UpdateInfo({
+  UpdateInfo({
     required this.version,
     required this.build,
     required this.changelog,
@@ -61,7 +62,7 @@ class UpdateService {
     try {
       final resp = await http
           .get(Uri.parse(AppConfig.updateManifestUrl))
-          .timeout(const Duration(seconds: 8));
+          .timeout(Duration(seconds: 8));
       if (resp.statusCode != 200) return null;
       // 仅在成功拿到清单后才记录检查时间：请求失败不更新，下次启动可自动重试，
       // 避免一次断网把自动检查「锁」在间隔期内不再尝试。
@@ -96,7 +97,7 @@ class UpdateService {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(
+      builder: (_) => Center(
         child: Card(
           child: Padding(
             padding: EdgeInsets.all(20),
@@ -108,7 +109,7 @@ class UpdateService {
                     height: 22,
                     child: CircularProgressIndicator(strokeWidth: 2.5)),
                 SizedBox(width: 14),
-                Text('正在检查更新…'),
+                Text(L10n.instance.t('update_checking')),
               ],
             ),
           ),
@@ -121,7 +122,7 @@ class UpdateService {
 
     if (info == null) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('当前已是最新版本')),
+        SnackBar(content: Text(L10n.instance.t('update_latest'))),
       );
       return;
     }
@@ -135,16 +136,16 @@ class UpdateService {
       barrierDismissible: !info.force,
       builder: (ctx) {
         return AlertDialog(
-          title: Text('发现新版本 v${info.version}'),
+          title: Text(L10n.instance.t('update_found', args: {'info.version': info.version})),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (info.changelog.isEmpty)
-                const Text('优化了一些体验问题，建议更新。')
+                Text(L10n.instance.t('update_desc'))
               else ...[
-                const Text('更新内容：'),
-                const SizedBox(height: 6),
+                Text(L10n.instance.t('update_changelog')),
+                SizedBox(height: 6),
                 ...info.changelog.map((e) => Padding(
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Text('· $e'),
@@ -161,7 +162,7 @@ class UpdateService {
                   await prefs.setString(_skipKey, info.version);
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
-                child: const Text('以后再说'),
+                child: Text(L10n.instance.t('update_later')),
               ),
             FilledButton.icon(
               onPressed: () {
@@ -169,8 +170,8 @@ class UpdateService {
                 AppUpdater.instance.startDownload(info.url, info.version);
                 Navigator.pop(ctx);
               },
-              icon: const Icon(Icons.download_outlined, size: 18),
-              label: const Text('立即更新'),
+              icon: Icon(Icons.download_outlined, size: 18),
+              label: Text(L10n.instance.t('update_now')),
             ),
           ],
         );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import 'package:intl/intl.dart';
 
 import '../database.dart';
@@ -12,7 +13,7 @@ import '../widgets/app_ui.dart';
 /// 展示所选时间段的收入合计与该时间段收款明细。
 /// 入口：看板「本月收入」卡片点击进入。
 class IncomeHistoryPage extends StatefulWidget {
-  const IncomeHistoryPage({super.key});
+const IncomeHistoryPage({super.key});
 
   @override
   State<IncomeHistoryPage> createState() => _IncomeHistoryPageState();
@@ -64,29 +65,29 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
       case _RangeMode.month:
         final s = DateTime(_mYear, _mMonth, 1);
         final e = DateTime(_mYear, _mMonth + 1, 1);
-        return (s.millisecondsSinceEpoch, e.millisecondsSinceEpoch, '$_mYear年$_mMonth月收入');
+        return (s.millisecondsSinceEpoch, e.millisecondsSinceEpoch, L10n.instance.t('i18n_005', args: {'v0':'$_mYear', 'v1':'$_mMonth'}));
       case _RangeMode.week:
         final ws = _weekStartOf(_weekAnchor);
-        final we = ws.add(const Duration(days: 6));
+        final we = ws.add(Duration(days: 6));
         final s = ws;
-        final e = we.add(const Duration(days: 1));
+        final e = we.add(Duration(days: 1));
         return (
           s.millisecondsSinceEpoch,
           e.millisecondsSinceEpoch,
-          '${ws.month}月${ws.day}日 - ${we.month}月${we.day}日 收入',
+          L10n.instance.t('i18n_027', args: {'v0':'${ws.month}', 'v1':'${ws.day}', 'v2':'${we.month}', 'v3':'${we.day}'}),
         );
       case _RangeMode.year:
         final s = DateTime(_yYear, 1, 1);
         final e = DateTime(_yYear + 1, 1, 1);
-        return (s.millisecondsSinceEpoch, e.millisecondsSinceEpoch, '$_yYear年收入');
+        return (s.millisecondsSinceEpoch, e.millisecondsSinceEpoch, L10n.instance.t('i18n_007', args: {'v0':'$_yYear'}));
       case _RangeMode.range:
         final s = DateTime(_rStart.year, _rStart.month, _rStart.day);
         final e = DateTime(_rEnd.year, _rEnd.month, _rEnd.day)
-            .add(const Duration(days: 1));
+            .add(Duration(days: 1));
         return (
           s.millisecondsSinceEpoch,
           e.millisecondsSinceEpoch,
-          '${_rangeLabel(_rStart, _rEnd)} 收入',
+          L10n.instance.t('i18n_019', args: {'v0': _rangeLabel(_rStart, _rEnd)}),
         );
     }
   }
@@ -151,20 +152,20 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
 
   /// 当前时间范围的展示标签
   String get _navLabel => switch (_mode) {
-        _RangeMode.month => '$_mYear年 $_mMonth月',
+        _RangeMode.month => L10n.instance.t('i18n_004', args: {'v0':'$_mYear', 'v1':'$_mMonth'}),
         _RangeMode.week => _weekNavLabel,
-        _RangeMode.year => '$_yYear年',
+        _RangeMode.year => L10n.instance.t('i18n_006', args: {'v0':'$_yYear'}),
         _RangeMode.range => _rangeLabel(_rStart, _rEnd),
       };
 
   /// 起止区间文案：起止两端都带年份（同年也不省略，保证信息完整）
   String _rangeLabel(DateTime s, DateTime e) {
-    return '${s.year}年${s.month}月${s.day}日 - ${e.year}年${e.month}月${e.day}日';
+    return L10n.instance.t('i18n_025', args: {'v0':'${s.year}', 'v1':'${s.month}', 'v2':'${s.day}', 'v3':'${e.year}', 'v4':'${e.month}', 'v5':'${e.day}'});
   }
 
   String get _weekNavLabel {
     final ws = _weekStartOf(_weekAnchor);
-    final we = ws.add(const Duration(days: 6));
+    final we = ws.add(Duration(days: 6));
     return _rangeLabel(ws, we);
   }
 
@@ -204,7 +205,7 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
           initialDate: _weekAnchor,
           firstDate: DateTime(2000),
           lastDate: DateTime(now.year + 1, 12, 31),
-          helpText: '选择一周内的任意一天',
+          helpText: L10n.instance.t('i18n_603'),
         );
         if (picked == null) return;
         setState(() => _weekAnchor = picked);
@@ -215,7 +216,7 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
           firstDate: DateTime(2000),
           lastDate: DateTime(now.year + 1, 12, 31),
           initialDatePickerMode: DatePickerMode.year,
-          helpText: '选择年份',
+          helpText: L10n.instance.t('i18n_610'),
         );
         if (picked == null) return;
         setState(() => _yYear = picked.year);
@@ -227,7 +228,7 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
           end: _rEnd,
           firstDate: DateTime(2000, 1, 1),
           lastDate: DateTime(now.year + 1, 12, 31),
-          title: '选择起止日期',
+          title: L10n.instance.t('common_pick_range'),
         );
         if (picked == null) return;
         setState(() {
@@ -261,17 +262,17 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
   Widget build(BuildContext context) {
     final canGoCurrent = !_isCurrent;
     return Scaffold(
-      appBar: AppBar(title: const Text('收入记录')),
+      appBar: AppBar(title: Text(L10n.instance.t('income_history_title'))),
       body: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         children: [
           // 筛选模式切换（与收入统计页共用 RangeFilterBar：左对齐、间距一致、无图标）
           RangeFilterBar<_RangeMode>(
-            items: const [
-              RangeFilterItem(_RangeMode.week, '按周'),
-              RangeFilterItem(_RangeMode.month, '按月'),
-              RangeFilterItem(_RangeMode.year, '按年'),
-              RangeFilterItem(_RangeMode.range, '自定义'),
+            items: [
+              RangeFilterItem(_RangeMode.week, L10n.instance.t('i18n_354')),
+              RangeFilterItem(_RangeMode.month, L10n.instance.t('i18n_358')),
+              RangeFilterItem(_RangeMode.year, L10n.instance.t('i18n_356')),
+              RangeFilterItem(_RangeMode.range, L10n.instance.t('common_custom')),
             ],
             value: _mode,
             onChanged: (mode) {
@@ -287,12 +288,12 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
               children: [
                 IconButton(
                   onPressed: () => _shift(-1),
-                  icon: const Icon(Icons.chevron_left),
+                  icon: Icon(Icons.chevron_left),
                   tooltip: switch (_mode) {
-                    _RangeMode.month => '上一月',
-                    _RangeMode.week => '上一周',
-                    _RangeMode.year => '上一年',
-                    _RangeMode.range => '前7天',
+                    _RangeMode.month => L10n.instance.t('income_history_page_prev_month'),
+                    _RangeMode.week => L10n.instance.t('i18n_061'),
+                    _RangeMode.year => L10n.instance.t('i18n_062'),
+                    _RangeMode.range => L10n.instance.t('i18n_149'),
                   },
                 ),
                 Expanded(
@@ -318,24 +319,24 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
                 if (canGoCurrent)
                   IconButton(
                     onPressed: _goCurrent,
-                    icon: const Icon(Icons.today),
+                    icon: Icon(Icons.today),
                     tooltip: switch (_mode) {
-                      _RangeMode.month => '回到本月',
-                      _RangeMode.week => '回到本周',
-                      _RangeMode.year => '回到今年',
-                      _RangeMode.range => '回到本月',
+                      _RangeMode.month => L10n.instance.t('i18n_186'),
+                      _RangeMode.week => L10n.instance.t('i18n_185'),
+                      _RangeMode.year => L10n.instance.t('i18n_184'),
+                      _RangeMode.range => L10n.instance.t('i18n_186'),
                     },
                   )
                 else
-                  const SizedBox(width: 48),
+                  SizedBox(width: 48),
                 IconButton(
                   onPressed: () => _shift(1),
-                  icon: const Icon(Icons.chevron_right),
+                  icon: Icon(Icons.chevron_right),
                   tooltip: switch (_mode) {
-                    _RangeMode.month => '下一月',
-                    _RangeMode.week => '下一周',
-                    _RangeMode.year => '下一年',
-                    _RangeMode.range => '后7天',
+                    _RangeMode.month => L10n.instance.t('income_history_page_next_month'),
+                    _RangeMode.week => L10n.instance.t('i18n_072'),
+                    _RangeMode.year => L10n.instance.t('i18n_073'),
+                    _RangeMode.range => L10n.instance.t('i18n_174'),
                   },
                 ),
               ],
@@ -343,11 +344,11 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
           ),
           // 收入汇总卡
           _SummaryCard(amount: _total, title: _summaryTitle, fmt: _fmt, count: _rows.length),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
             child: Text(
-              '收款明细',
+              L10n.instance.t('i18n_385'),
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textMain),
             ),
           ),
@@ -357,10 +358,10 @@ class _IncomeHistoryPageState extends State<IncomeHistoryPage> {
               child: Center(
                 child: Text(
                   _mode == _RangeMode.month && _isCurrent
-                      ? '本月还没有收款记录\n登记收款后会显示在这里'
-                      : '该时间段没有收款记录',
+                      ? L10n.instance.t('i18n_455')
+                      : L10n.instance.t('i18n_564'),
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppTheme.textSub, height: 1.6),
+                  style: TextStyle(color: AppTheme.textSub, height: 1.6),
                 ),
               ),
             )
@@ -413,7 +414,7 @@ class _IncomeRow {
   String get displayType {
     if (type == PayType.custom) {
       final l = typeLabel.trim();
-      return l.isEmpty ? '自定义' : l;
+      return l.isEmpty ? L10n.instance.t('common_custom') : l;
     }
     return type.label;
   }
@@ -422,7 +423,7 @@ class _IncomeRow {
 class _IncomeRowTile extends StatelessWidget {
   final _IncomeRow row;
   final NumberFormat fmt;
-  const _IncomeRowTile({required this.row, required this.fmt});
+const   _IncomeRowTile({required this.row, required this.fmt});
 
   @override
   Widget build(BuildContext context) {
@@ -441,8 +442,8 @@ class _IncomeRowTile extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text('${dt.day}',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.primary)),
-              Text('${dt.month}月',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+              Text(L10n.instance.t('income_history_month', args: {'dt.month': '${dt.month}'}),
                   style: TextStyle(fontSize: 10, color: AppTheme.primary.withValues(alpha: 0.7))),
             ],
           ),
@@ -450,16 +451,16 @@ class _IncomeRowTile extends StatelessWidget {
         title: Text(row.projectTitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w600)),
+            style: TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text(
           row.note.isEmpty ? row.displayType : '${row.displayType} · ${row.note}',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: AppTheme.textSub, fontSize: 12),
+          style: TextStyle(color: AppTheme.textSub, fontSize: 12),
         ),
         trailing: Text(
           '+¥${fmt.format(row.amount / 100)}',
-          style: const TextStyle(
+          style: TextStyle(
             color: AppTheme.primary,
             fontSize: 15,
             fontWeight: FontWeight.w700,
@@ -475,7 +476,7 @@ class _SummaryCard extends StatelessWidget {
   final String title;
   final int count;
   final NumberFormat fmt;
-  const _SummaryCard({
+const _SummaryCard({
     required this.amount,
     required this.title,
     required this.count,
@@ -488,7 +489,7 @@ class _SummaryCard extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           colors: [Color(0xFF4A5AF0), Color(0xFF7C5CF0)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -500,11 +501,11 @@ class _SummaryCard extends StatelessWidget {
         children: [
           Text(title,
               style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 13)),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text('¥${fmt.format(amount / 100)}',
-              style: const TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 14),
-          Text('$count 笔收款合计', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
+              style: TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w700)),
+          SizedBox(height: 14),
+          Text(L10n.instance.t('income_history_total_line', args: {'count':'$count'}), style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12)),
         ],
       ),
     );
@@ -515,7 +516,7 @@ class _SummaryCard extends StatelessWidget {
 class _MonthPickerSheet extends StatefulWidget {
   final int year;
   final int month;
-  const _MonthPickerSheet({required this.year, required this.month});
+const _MonthPickerSheet({required this.year, required this.month});
 
   @override
   State<_MonthPickerSheet> createState() => _MonthPickerSheetState();
@@ -545,23 +546,23 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
               children: [
                 IconButton(
                   onPressed: () => _shiftYear(-1),
-                  icon: const Icon(Icons.chevron_left),
+                  icon: Icon(Icons.chevron_left),
                 ),
                 Expanded(
-                  child: Text('$_year 年',
+                  child: Text(L10n.instance.t('income_history_year', args: {'_year':'$_year'}),
                       textAlign: TextAlign.center,
                       style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
                 ),
                 IconButton(
                   onPressed: () => _shiftYear(1),
-                  icon: const Icon(Icons.chevron_right),
+                  icon: Icon(Icons.chevron_right),
                 ),
               ],
             ),
             GridView.count(
               crossAxisCount: monthColumns,
               shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
+              physics: NeverScrollableScrollPhysics(),
               mainAxisSpacing: 8,
               crossAxisSpacing: 8,
               childAspectRatio: 2.1,
@@ -583,7 +584,7 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                     ),
                     alignment: Alignment.center,
                     child: Text(
-                      '$m月',
+                      L10n.instance.t('i18n_008', args: {'v0':'$m'}),
                       style: TextStyle(
                         color: selected
                             ? Colors.white
@@ -597,12 +598,12 @@ class _MonthPickerSheetState extends State<_MonthPickerSheet> {
                 );
               }),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
                 onPressed: () => Navigator.pop(context, DateTime(_year, _month)),
-                child: const Text('确定'),
+                child: Text(L10n.instance.t('common_ok')),
               ),
             ),
           ],

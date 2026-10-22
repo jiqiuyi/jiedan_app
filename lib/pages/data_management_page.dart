@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../l10n/l10n.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -13,7 +14,7 @@ import '../theme.dart';
 /// 数据管理页：导出备份 / 导入恢复。
 /// 设计原则：业务数据只保存在手机本地，不上传服务器。
 class DataManagementPage extends StatefulWidget {
-  const DataManagementPage({super.key});
+const DataManagementPage({super.key});
 
   @override
   State<DataManagementPage> createState() => _DataManagementPageState();
@@ -25,7 +26,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
   void _toast(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
+      SnackBar(content: Text(msg), duration: Duration(seconds: 3)),
     );
   }
 
@@ -34,7 +35,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
     setState(() => _busy = true);
     try {
       final path = await BackupService.instance.exportBackup();
-      _toast('备份文件已生成（$path），正在弹出分享');
+      _toast(L10n.instance.t('i18n_194', args: {'v0': path}));
       await BackupService.instance.shareBackup(path);
     } catch (e, st) {
       ErrorReporter.instance.logError(
@@ -43,7 +44,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
         st,
         module: LogModule.db,
       );
-      _toast('导出失败：$e');
+      _toast(L10n.instance.t('i18n_242', args: {'v0':'$e'}));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -54,12 +55,12 @@ class _DataManagementPageState extends State<DataManagementPage> {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json'],
-      dialogTitle: '选择接单管家备份文件',
+      dialogTitle: L10n.instance.t('i18n_612'),
     );
     if (result == null || result.files.isEmpty) return;
     final path = result.files.single.path;
     if (path == null || !File(path).existsSync()) {
-      _toast('无法读取所选文件');
+      _toast(L10n.instance.t('i18n_413'));
       return;
     }
     if (!mounted) return;
@@ -67,19 +68,19 @@ class _DataManagementPageState extends State<DataManagementPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('确认导入恢复？'),
-        content: const Text(
-          '导入会清空当前手机上的客户、项目、收款等全部数据，'
-          '并用备份文件内容覆盖。建议先导出当前数据再导入。',
+        title: Text(L10n.instance.t('data_import_confirm')),
+        content: Text(
+          L10n.instance.t('i18n_239') +
+          L10n.instance.t('i18n_293'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            child: Text(L10n.instance.t('common_cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认导入'),
+            child: Text(L10n.instance.t('data_import_btn')),
           ),
         ],
       ),
@@ -98,21 +99,21 @@ class _DataManagementPageState extends State<DataManagementPage> {
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('导入成功'),
+          title: Text(L10n.instance.t('data_import_ok')),
           content: Text(
-            '$summary\n\n安全提示：为保护账号权益，导入后已退出登录，'
-            'VIP 状态将以云端账号为准，请重新登录。',
+            L10n.instance.t('i18n_011', args: {'v0': summary}) +
+            L10n.instance.t('i18n_040'),
           ),
           actions: [
             FilledButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('好的'),
+              child: Text(L10n.instance.t('common_ok')),
             ),
           ],
         ),
       );
     } on FormatException catch (e) {
-      _toast('导入失败：${e.message}');
+      _toast(L10n.instance.t('i18n_241', args: {'v0': e.message}));
     } catch (e, st) {
       ErrorReporter.instance.logError(
         'backup_import_failed',
@@ -120,7 +121,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
         st,
         module: LogModule.db,
       );
-      _toast('导入失败：$e');
+      _toast(L10n.instance.t('i18n_240', args: {'v0':'$e'}));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -129,7 +130,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('数据管理')),
+      appBar: AppBar(title: Text(L10n.instance.t('data_management_title'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -139,13 +140,13 @@ class _DataManagementPageState extends State<DataManagementPage> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
+                children: [
                   Row(
                     children: [
                       Icon(Icons.shield_outlined, color: AppTheme.primary),
                       SizedBox(width: 8),
                       Text(
-                        '数据安全说明',
+                        L10n.instance.t('i18n_398'),
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -155,65 +156,65 @@ class _DataManagementPageState extends State<DataManagementPage> {
                   ),
                   SizedBox(height: 12),
                   Text(
-                    '本软件不会将数据保存在服务器，所有项目、客户、收款等数据都只保存在您自己的手机里。',
+                    L10n.instance.t('i18n_458'),
                     style: TextStyle(height: 1.5),
                   ),
                   SizedBox(height: 8),
                   Text(
-                    '为防止卸载软件清空数据，请在卸载前先导出备份，并将备份文件保存到网盘、文件管理器或微信等安全位置，重装后可导入恢复。',
+                    L10n.instance.t('i18n_086'),
                     style: TextStyle(height: 1.5, color: AppTheme.textSub),
                   ),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           // ---- 导出 ----
           Card(
             child: ListTile(
-              leading: const Icon(
+              leading: Icon(
                 Icons.upload_file_outlined,
                 color: AppTheme.primary,
               ),
-              title: const Text('导出备份'),
-              subtitle: const Text('将全部数据打包成文件，可分享保存到网盘/微信'),
+              title: Text(L10n.instance.t('storage_export')),
+              subtitle: Text(L10n.instance.t('data_export_desc')),
               trailing: _busy
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.chevron_right, color: AppTheme.textSub),
+                  : Icon(Icons.chevron_right, color: AppTheme.textSub),
               onTap: _export,
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           // ---- 导入 ----
           Card(
             child: ListTile(
-              leading: const Icon(
+              leading: Icon(
                 Icons.download_outlined,
                 color: AppTheme.primary,
               ),
-              title: const Text('导入恢复'),
-              subtitle: const Text('从备份文件恢复数据（会覆盖当前数据）'),
-              trailing: const Icon(
+              title: Text(L10n.instance.t('storage_import')),
+              subtitle: Text(L10n.instance.t('data_import_desc')),
+              trailing: Icon(
                 Icons.chevron_right,
                 color: AppTheme.textSub,
               ),
               onTap: _import,
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           // ---- 数据库自检（v1.23.0）----
           Card(
             child: ListTile(
-              leading: const Icon(
+              leading: Icon(
                 Icons.health_and_safety_outlined,
                 color: AppTheme.primary,
               ),
-              title: const Text('数据库自检'),
-              subtitle: const Text('检查表结构完整性与数据可恢复性'),
+              title: Text(L10n.instance.t('storage_db_check')),
+              subtitle: Text(L10n.instance.t('data_dbcheck_desc')),
               trailing: const Icon(
                 Icons.chevron_right,
                 color: AppTheme.textSub,
@@ -237,32 +238,32 @@ class _DataManagementPageState extends State<DataManagementPage> {
       await showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text(report.healthy ? '数据库自检通过' : '数据库自检发现异常'),
+          title: Text(report.healthy ? L10n.instance.t('data_dbcheck_ok') : L10n.instance.t('data_dbcheck_fail')),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                _row('检查时间', _fmtTime(report.checkedAt)),
+                _row(L10n.instance.t('i18n_467'), _fmtTime(report.checkedAt)),
                 _row(
-                  '文件完整性',
+                  L10n.instance.t('i18n_407'),
                   report.integrityCheck == 'ok'
-                      ? '正常'
-                      : '异常：${report.integrityCheck}',
+                      ? L10n.instance.t('i18n_477')
+                      : L10n.instance.t('i18n_305', args: {'v0': report.integrityCheck}),
                 ),
                 _row(
-                  '外键引用校验',
+                  L10n.instance.t('i18n_203'),
                   report.foreignKeyIssues.isEmpty
-                      ? '正常'
-                      : '发现 ${report.foreignKeyIssues.length} 处问题',
+                      ? L10n.instance.t('i18n_477')
+                      : L10n.instance.t('i18n_157', args: {'v0':'${report.foreignKeyIssues.length}'}),
                 ),
                 _row(
-                  '表结构完整性',
+                  L10n.instance.t('i18n_553'),
                   report.tables.isEmpty
-                      ? '全部完整'
-                      : '${report.tables.length} 张表异常',
+                      ? L10n.instance.t('i18n_127')
+                      : L10n.instance.t('i18n_024', args: {'v0':'${report.tables.length}'}),
                 ),
-                _row('数据量', '共 ${report.totalRows} 条记录'),
+                _row(L10n.instance.t('i18n_406'), L10n.instance.t('i18n_130', args: {'v0':'${report.totalRows}'})),
                 if (report.tables.isNotEmpty)
                   for (final t in report.tables)
                     Padding(
@@ -275,8 +276,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                 const SizedBox(height: 12),
                 Text(
                   report.healthy
-                      ? '数据完整可正常使用。为防手机丢失 / 卸载清空，建议定期到「导出备份」将数据另存到网盘或微信。'
-                      : '检测到异常，当前不影响继续使用；为稳妥建议先「导出备份」，必要时可在本页做一次恢复演练，并联系开发者排查。',
+                      ? L10n.instance.t('i18n_399')
+                      : L10n.instance.t('i18n_469'),
                   style: const TextStyle(
                     color: AppTheme.textSub,
                     fontSize: 13,
@@ -289,13 +290,13 @@ class _DataManagementPageState extends State<DataManagementPage> {
           actions: [
             FilledButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('知道了'),
+              child: Text(L10n.instance.t('common_ok')),
             ),
           ],
         ),
       );
     } catch (e) {
-      _toast('自检失败：$e');
+      _toast(L10n.instance.t('i18n_546', args: {'v0':'$e'}));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

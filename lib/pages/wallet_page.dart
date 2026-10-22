@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import 'package:intl/intl.dart';
 
 import '../app_state.dart';
@@ -9,7 +10,7 @@ import 'payout_account_page.dart';
 /// 提现走模块 B 服务端申请打款（POST /api/payout/apply），
 /// 项目收款（payments）到账不会进入钱包余额，也不可提现。
 class WalletPage extends StatefulWidget {
-  const WalletPage({super.key});
+const   WalletPage({super.key});
 
   @override
   State<WalletPage> createState() => _WalletPageState();
@@ -48,18 +49,18 @@ class _WalletPageState extends State<WalletPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('申请打款'),
+        title: Text(L10n.instance.t('invite_apply_payout')),
         content: Text(
-          '将申请把待打款返现 ¥${_fmt.format(_balance / 100)} 打款至您配置的返现收款账户。\n\n'
-          '提交后由管理员核对打款，到账后状态更新为「已打款」。',
+          L10n.instance.t('i18n_244', args: {'v0': _fmt.format(_balance / 100)}) +
+          L10n.instance.t('i18n_368'),
         ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+              child: Text(L10n.instance.t('common_cancel'))),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确认申请')),
+              child: Text(L10n.instance.t('wallet_confirm_request'))),
         ],
       ),
     );
@@ -74,8 +75,8 @@ class _WalletPageState extends State<WalletPage> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(r.count > 0
-              ? '已提交打款申请：${r.count} 笔，合计 ¥${_fmt.format(r.amount)}'
-              : '暂无可申请的返现'),
+              ? L10n.instance.t('i18n_279', args: {'v0':r.count.toString(), 'v1':_fmt.format(r.amount)})
+              : L10n.instance.t('i18n_421')),
         ));
         await _load();
       }
@@ -89,7 +90,7 @@ class _WalletPageState extends State<WalletPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('钱包')),
+      appBar: AppBar(title: Text(L10n.instance.t('common_wallet'))),
       body: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 32),
         children: [
@@ -106,16 +107,16 @@ class _WalletPageState extends State<WalletPage> {
               width: double.infinity,
               child: FilledButton.icon(
                 onPressed: (_busy || _balance <= 0) ? null : _applyPayout,
-                icon: const Icon(Icons.account_balance_wallet_outlined),
-                label: Text(_busy ? '提交中…' : '申请打款'),
+                icon: Icon(Icons.account_balance_wallet_outlined),
+                label: Text(_busy ? L10n.instance.t('common_submitting') : L10n.instance.t('invite_apply_payout')),
               ),
             ),
           ),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.credit_card, color: AppTheme.primary),
-              title: const Text('返现收款账户'),
-              subtitle: const Text('用于接收返现打款，申请打款时使用',
+              leading: Icon(Icons.credit_card, color: AppTheme.primary),
+              title: Text(L10n.instance.t('invite_payout_account')),
+              subtitle: Text(L10n.instance.t('wallet_account_desc'),
                   style: TextStyle(fontSize: 12)),
               trailing:
                   const Icon(Icons.chevron_right, color: AppTheme.textSub),
@@ -128,8 +129,8 @@ class _WalletPageState extends State<WalletPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
             child: Text(
-              '钱包仅累计推广返利佣金（邀请好友付费后返现其付款金额的 50%）。\n'
-              '项目收款到账不会进入钱包余额，也不可提现。',
+              L10n.instance.t('i18n_624') +
+              L10n.instance.t('i18n_634'),
               style: const TextStyle(
                   color: AppTheme.textSub, fontSize: 12, height: 1.5),
             ),
@@ -147,7 +148,7 @@ class _BalanceCard extends StatelessWidget {
   final int paidRebate;
   final int pendingRebate;
   final NumberFormat fmt;
-  const _BalanceCard({
+const _BalanceCard({
     required this.balance,
     required this.totalRebate,
     required this.paidRebate,
@@ -161,7 +162,7 @@ class _BalanceCard extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           colors: [Color(0xFF4A5AF0), Color(0xFF7C5CF0)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -171,7 +172,7 @@ class _BalanceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('可提现返佣',
+          Text(L10n.instance.t('wallet_withdrawable'),
               style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.85), fontSize: 13)),
           const SizedBox(height: 8),
@@ -184,21 +185,21 @@ class _BalanceCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text('累计返现\n¥${fmt.format(totalRebate / 100)}',
+                child: Text(L10n.instance.t('i18n_530', args: {'v0': fmt.format(totalRebate / 100)}),
                     style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.75),
                         fontSize: 12,
                         height: 1.5)),
               ),
               Expanded(
-                child: Text('已打款\n¥${fmt.format(paidRebate / 100)}',
+                child: Text(L10n.instance.t('i18n_277', args: {'v0': fmt.format(paidRebate / 100)}),
                     style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.75),
                         fontSize: 12,
                         height: 1.5)),
               ),
               Expanded(
-                child: Text('待打款\n¥${fmt.format(pendingRebate / 100)}',
+                child: Text(L10n.instance.t('i18n_314', args: {'v0': fmt.format(pendingRebate / 100)}),
                     style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.75),
                         fontSize: 12,

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../l10n/l10n.dart';
 import 'dart:io';
 import 'dart:ui';
 
@@ -19,7 +20,7 @@ class QuoteWebData {
   final String signContact; // 落款联系方式
   final DateTime createdAt; // 报价创建时间
 
-  const QuoteWebData({
+  QuoteWebData({
     required this.quote,
     required this.customerName,
     this.projectName = '',
@@ -65,19 +66,19 @@ class QuoteWebService {
     if (!folder.existsSync()) folder.createSync(recursive: true);
     final date = DateFormat('yyyy-MM-dd')
         .format(DateTime.fromMillisecondsSinceEpoch(data.quote.createdAt));
-    final fileName = '报价单_${_safeFileName(data.quote.title)}_$date.html';
+    final fileName = L10n.instance.t('i18n_348', args: {'v0': _safeFileName(data.quote.title), 'v1': date});
     final file = File('${folder.path}${Platform.pathSeparator}$fileName');
     await file.writeAsString(html, flush: true);
     await Share.shareXFiles(
       [XFile(file.path, mimeType: 'text/html')],
-      subject: '报价单 · ${data.quote.title}',
-      text: '报价单 · ${data.quote.title}',
+      subject: L10n.instance.t('i18n_347', args: {'v0': data.quote.title}),
+      text: L10n.instance.t('quote_web_title', args: {'data.quote.title': data.quote.title}),
     );
   }
 
   static String _safeFileName(String s) {
     final cleaned = s.replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_');
-    return cleaned.isEmpty ? '报价' : cleaned;
+    return cleaned.isEmpty ? L10n.instance.t('common_quote') : cleaned;
   }
 
   /// ==================== 云端托管预留接口结构（未来版本） ====================
@@ -102,7 +103,7 @@ class QuoteWebService {
     final amountHtml = isSimple ? _simpleAmountHtml(data) : _amountHtml(data);
     final noteHtml = q.note.trim().isEmpty
         ? ''
-        : '<section class="note"><h3>备注</h3><p>${_esc(q.note.trim())}</p></section>';
+        : L10n.instance.t('i18n_038', args: {'v0': _esc(q.note.trim())});
     final signHtml =
         (data.signName.isEmpty && data.signContact.isEmpty)
             ? ''
@@ -122,10 +123,10 @@ class QuoteWebService {
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{background:#eef1f6;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue","Microsoft YaHei",sans-serif;color:#333;line-height:1.5}
 .page{max-width:720px;margin:16px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 14px rgba(31,45,61,.08)}
-.brand{height:4px;background:$primary}
+.brand{height:4px;background:'primary'}
 .head{padding:22px 22px 4px}
 .brand-row{display:flex;justify-content:space-between;align-items:flex-start}
-.brand-row h1{font-size:22px;font-weight:700;color:$primary}
+.brand-row h1{font-size:22px;font-weight:700;color:'primary'}
 .meta{font-size:12px;color:$textSub;text-align:right;line-height:1.7}
 .title{padding:14px 22px 0}
 .title h2{font-size:16px;font-weight:700}
@@ -134,7 +135,7 @@ body{background:#eef1f6;font-family:-apple-system,BlinkMacSystemFont,"PingFang S
 .info-table{width:100%;border-collapse:collapse;border:1px solid #e3e7ee;border-radius:6px;overflow:hidden;font-size:13px}
 .info-table th{background:$primary;color:#fff;font-weight:600;padding:7px 8px;text-align:left}
 .info-table td{padding:7px 8px;border-top:1px solid #eef1f6;color:#444}
-.info-table td.c{text-align:center;color:$textSub}
+.info-table td.c{text-align:center;color:'textSub'}
 .badge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;color:$statusColor;background:${statusColor}22;margin-left:8px;vertical-align:middle}
 .lines{padding:14px 22px 0}
 .lines h3{font-size:13px;font-weight:700;color:#555;margin-bottom:8px}
@@ -142,13 +143,13 @@ table.det{width:100%;border-collapse:collapse;font-size:13px}
 table.det th{background:#f4f6fa;color:#666;font-weight:600;padding:8px;text-align:left;border-bottom:1px solid #e3e7ee}
 table.det td{padding:8px;border-bottom:1px solid #f0f2f7}
 table.det td.num{text-align:right;font-variant-numeric:tabular-nums}
-table.det td.center{text-align:center;color:$textSub}
+table.det td.center{text-align:center;color:'textSub'}
 table.det tr:last-child td{border-bottom:none}
 .amount{padding:14px 22px 0}
 .amount-box{width:100%;max-width:380px;margin-left:auto;background:#f7f9fc;border:1px solid #e3e7ee;border-radius:6px;padding:12px 14px;font-size:13px;color:#444}
 .amount-row{display:flex;justify-content:space-between;padding:3px 0}
 .amount-row.total{border-top:1px dashed #d4dae6;margin-top:6px;padding-top:8px;font-weight:700;color:#333}
-.amount-row.total .val{font-size:18px;font-weight:700;color:$primary}
+.amount-row.total .val{font-size:18px;font-weight:700;color:'primary'}
 .amount-row .val{font-variant-numeric:tabular-nums}
 .simple-amount{max-width:380px;margin-left:auto;background:#f7f9fc;border:1px solid #e3e7ee;border-radius:6px;padding:12px 18px}
 .simple-amount .label{font-size:13px;font-weight:700;color:#555}
@@ -185,12 +186,12 @@ table.det tr:last-child td{border-bottom:none}
   <div class="head">
     <div class="brand-row">
       <h1>报价单</h1>
-      <div class="meta">编号 ${_esc(data.number)}<br>日期 ${_esc(DateFormat('yyyy-MM-dd').format(data.createdAt))}</div>
+      <div class="meta">${L10n.instance.t('quote_pdf_no')} ${_esc(data.number)}<br>${L10n.instance.t('quote_web_date')} ${_esc(DateFormat('yyyy-MM-dd').format(data.createdAt))}</div>
     </div>
   </div>
   <div class="title">
     <h2>${_esc(q.title)}<span class="badge">${_esc(q.status.label)}</span></h2>
-    <div class="sub">${isSimple ? '一口价报价' : '详细报价'}</div>
+    <div class="sub">${isSimple ? L10n.instance.t('i18n_057') : L10n.instance.t('quote_detailed')}</div>
   </div>
   <div class="info">
     <table class="info-table">
@@ -202,7 +203,7 @@ table.det tr:last-child td{border-bottom:none}
   $imageHtml
   $noteHtml
   $signHtml
-  <div class="foot">本报价单由「接单管家」生成 · 如有疑问请联系我方</div>
+  <div class="foot">${L10n.instance.t('quote_web_footer')}</div>
 </div>
 </body>
 </html>
@@ -213,7 +214,7 @@ table.det tr:last-child td{border-bottom:none}
     final rows = StringBuffer();
     var idx = 1;
     for (final l in data.quote.lines) {
-      final item = l.itemName.isEmpty ? '（未命名项目）' : _esc(l.itemName);
+      final item = l.itemName.isEmpty ? L10n.instance.t('i18n_639') : _esc(l.itemName);
       if (l.hours > 0 || l.hourRate > 0) {
         rows.write('<tr><td class="center">$idx</td><td>$item</td>'
             '<td class="num">${_num(l.hours)}</td>'
@@ -232,7 +233,7 @@ table.det tr:last-child td{border-bottom:none}
       <div class="lines">
         <h3>报价明细</h3>
         <table class="det">
-          <tr><th style="width:34px">序号</th><th>项目名称</th><th style="width:64px">工时</th><th style="width:84px">单价</th><th style="width:88px">物料费</th><th style="width:96px">小计</th></tr>
+          <tr><th style="width:34px">${L10n.instance.t('quote_web_index')}</th><th>${L10n.instance.t('quote_web_project')}</th><th style="width:64px">${L10n.instance.t('quote_web_hours')}</th><th style="width:84px">${L10n.instance.t('quote_web_unit_price')}</th><th style="width:88px">${L10n.instance.t('quote_web_material')}</th><th style="width:96px">${L10n.instance.t('quote_web_item_subtotal')}</th></tr>
           $rows
         </table>
       </div>''';
@@ -240,13 +241,13 @@ table.det tr:last-child td{border-bottom:none}
 
   static String _amountHtml(QuoteWebData data) {
     final rate =
-        data.quote.taxRate > 0 ? '税费（${data.quote.taxRate.toStringAsFixed(1)}%）' : '税费';
+        data.quote.taxRate > 0 ? L10n.instance.t('i18n_515', args: {'v0': data.quote.taxRate.toStringAsFixed(1)}) : L10n.instance.t('i18n_512');
     return '''
       <div class="amount">
         <div class="amount-box">
-          <div class="amount-row"><span>费用小计</span><span class="val">¥${_money(data.subtotal)}</span></div>
+          <div class="amount-row"><span>${L10n.instance.t('quote_web_subtotal')}</span><span class="val">¥${_money(data.subtotal)}</span></div>
           <div class="amount-row"><span>$rate</span><span class="val">¥${_money(data.tax)}</span></div>
-          <div class="amount-row total"><span>本次报价合计</span><span class="val">¥${data.currencyText}</span></div>
+          <div class="amount-row total"><span>${L10n.instance.t('quote_pdf_total')}</span><span class="val">¥${data.currencyText}</span></div>
         </div>
       </div>''';
   }
@@ -254,12 +255,12 @@ table.det tr:last-child td{border-bottom:none}
   static String _simpleAmountHtml(QuoteWebData data) {
     final taxNote =
         data.quote.taxRate > 0
-            ? '（含税，税率 ${data.quote.taxRate.toStringAsFixed(0)}%）'
+            ? L10n.instance.t('i18n_638', args: {'v0': data.quote.taxRate.toStringAsFixed(0)})
             : '';
     return '''
       <div class="amount">
         <div class="simple-amount">
-          <div class="label">报价金额</div>
+          <div class="label">${L10n.instance.t('quote_pdf_amount')}</div>
           <div class="val">¥${data.currencyText}</div>
           ${taxNote.isEmpty ? '' : '<div class="tax">$taxNote</div>'}
         </div>
@@ -275,7 +276,7 @@ table.det tr:last-child td{border-bottom:none}
       final bytes = f.readAsBytesSync();
       final mime = _mimeOf(imagePath);
       final b64 = base64Encode(bytes);
-      return '<div class="refimg"><img alt="参考图" src="data:$mime;base64,$b64"></div>';
+      return L10n.instance.t('i18n_037', args: {'v0': mime, 'v1': b64});
     } catch (_) {
       // 图片读取失败不影响报价页主体
       return '';

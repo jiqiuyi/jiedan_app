@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/l10n.dart';
 import 'package:intl/intl.dart';
 
 import '../app_state.dart';
@@ -14,7 +15,7 @@ import '../widgets/app_ui.dart';
 /// 单笔切换对账标记、展示关联报价（quote_id 精确联动）。
 /// 数据均来自本机 SQLite，不涉及云端。
 class ReconciliationPage extends StatefulWidget {
-  const ReconciliationPage({super.key});
+const   ReconciliationPage({super.key});
 
   @override
   State<ReconciliationPage> createState() => _ReconciliationPageState();
@@ -70,7 +71,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
     await _load();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(!cur ? '已标记为已对账' : '已取消对账标记')));
+        content: Text(!cur ? L10n.instance.t('reconcile_marked') : L10n.instance.t('reconcile_unmarked'))));
   }
 
   int _v(Object? v) => (v as num?)?.toInt() ?? 0;
@@ -81,9 +82,9 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
     if (!AppState.instance.isPro) {
       return _vipGate(
         context,
-        appBarTitle: '对账汇总',
-        feature: '经营对账汇总',
-        desc: '多维度经营对账报表为专业版专属权益。',
+        appBarTitle: L10n.instance.t('reconciliation_page_reconciliation'),
+        feature: L10n.instance.t('i18n_534'),
+        desc: L10n.instance.t('i18n_204'),
       );
     }
     final totalAgreed = _rows.fold<int>(0, (s, r) => s + _v(r['amount_total']));
@@ -94,9 +95,9 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
         .length;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('对账汇总')),
+      appBar: AppBar(title: Text(L10n.instance.t('reconcile_title'))),
       body: _loading
-          ? const AppLoading()
+          ? AppLoading()
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
@@ -109,12 +110,12 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
                     cleared: cleared,
                     all: _rows.length,
                   ),
-                  const SizedBox(height: 6),
+                  SizedBox(height: 6),
                   if (_rows.isEmpty)
-                    const Card(
+                    Card(
                       child: AppEmpty(
                         icon: Icons.assessment_outlined,
-                        title: '还没有项目收款数据',
+                        title: L10n.instance.t('reconcile_no_data'),
                       ),
                     )
                   else
@@ -127,7 +128,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
                         ],
                       ),
                     ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   _buildFlowsSection(),
                 ],
               ),
@@ -146,17 +147,17 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
           child: Row(
             children: [
-              const Text('收款流水',
+              Text(L10n.instance.t('reconcile_flow'),
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(
                   _flowFilter == 0
-                      ? '共 ${_flows.length} 笔，其中未对账 $unRec 笔'
+                      ? L10n.instance.t('i18n_129', args: {'v0':'${_flows.length}', 'v1':'$unRec'})
                       : (_flowFilter == 1
-                          ? '未对账 $unRec 笔'
-                          : '已对账 ${_flows.length - unRec} 笔'),
-                  style: const TextStyle(fontSize: 12, color: AppTheme.textSub),
+                          ? L10n.instance.t('i18n_438', args: {'v0':'$unRec'})
+                          : L10n.instance.t('i18n_266', args: {'v0':'${_flows.length - unRec}'})),
+                  style: TextStyle(fontSize: 12, color: AppTheme.textSub),
                 ),
               ),
             ],
@@ -167,20 +168,20 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
           child: Row(
             children: [
               _FilterChip(
-                label: '全部',
+                label: L10n.instance.t('common_all'),
                 selected: _flowFilter == 0,
                 onTap: () => _setFilter(0),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               _FilterChip(
-                label: '未对账',
+                label: L10n.instance.t('reconcile_unreconciled'),
                 selected: _flowFilter == 1,
                 color: AppTheme.warn,
                 onTap: () => _setFilter(1),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               _FilterChip(
-                label: '已对账',
+                label: L10n.instance.t('reconcile_reconciled'),
                 selected: _flowFilter == 2,
                 color: AppTheme.accent,
                 onTap: () => _setFilter(2),
@@ -188,11 +189,11 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
             ],
           ),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         if (_flows.isEmpty)
-          const AppEmpty(
+          AppEmpty(
             icon: Icons.receipt_long_outlined,
-            title: '暂无收款流水，登记收款后在此对账',
+            title: L10n.instance.t('reconcile_empty'),
           )
         else
           Card(
@@ -201,7 +202,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
               children: [
                 for (int i = 0; i < _flows.length; i++) ...[
                   if (i > 0)
-                    const AppCardDivider(),
+                    AppCardDivider(),
                   _FlowRow(
                     flow: _flows[i],
                     fmt: _fmt,
@@ -225,7 +226,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
     final customer = (r['customer_name'] as String?)?.trim() ?? '';
     return Column(
       children: [
-        if (index > 0) const AppCardDivider(),
+        if (index > 0) AppCardDivider(),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           child: Column(
@@ -235,47 +236,47 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
                 children: [
                   Expanded(
                     child: Text(
-                      title.isEmpty ? '（未命名项目）' : title,
+                      title.isEmpty ? L10n.instance.t('i18n_639') : title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontWeight: FontWeight.w600, fontSize: 14),
                     ),
                   ),
                   if (pending <= 0)
-                    const _Tag(text: '已结清', color: AppTheme.accent)
+                    _Tag(text: L10n.instance.t('reconcile_settled'), color: AppTheme.accent)
                   else
-                    _Tag(text: '待收中', color: AppTheme.warn),
+                    _Tag(text: L10n.instance.t('reconcile_pending'), color: AppTheme.warn),
                 ],
               ),
               if (customer.isNotEmpty)
                 Text(customer,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AppTheme.textSub, fontSize: 12)),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Row(
                 children: [
                   Expanded(
                     child: _Item(
-                        label: '约定',
+                        label: L10n.instance.t('reconcile_agreed'),
                         value: '¥${_fmt.format(agreed / 100)}',
                         color: AppTheme.textMain),
                   ),
                   Expanded(
                     child: _Item(
-                        label: '已收',
+                        label: L10n.instance.t('project_received'),
                         value: '¥${_fmt.format(paid / 100)}',
                         color: AppTheme.accent),
                   ),
                   Expanded(
                     child: _Item(
-                        label: '待收',
+                        label: L10n.instance.t('project_pending'),
                         value: '¥${_fmt.format(pending / 100)}',
                         color: AppTheme.warn),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               ClipRRect(
                 borderRadius: BorderRadius.circular(AppRadius.xxs),
                 child: LinearProgressIndicator(
@@ -285,9 +286,9 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
                   color: AppTheme.primary,
                 ),
               ),
-              const SizedBox(height: 4),
-              Text('收款进度 ${(ratio * 100).toStringAsFixed(0)}%',
-                  style: const TextStyle(
+              SizedBox(height: 4),
+              Text(L10n.instance.t('reconcile_progress_line', args: {'(ratio * 100).toStringAsFixed(0)': (ratio * 100).toStringAsFixed(0)}),
+                  style: TextStyle(
                       fontSize: 11, color: AppTheme.textSub)),
             ],
           ),
@@ -300,7 +301,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
 class _Tag extends StatelessWidget {
   final String text;
   final Color color;
-  const _Tag({required this.text, required this.color});
+const _Tag({required this.text, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -321,7 +322,7 @@ class _Item extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
-  const _Item({required this.label, required this.value, required this.color});
+const _Item({required this.label, required this.value, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -329,8 +330,8 @@ class _Item extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
-            style: const TextStyle(fontSize: 11, color: AppTheme.textSub)),
-        const SizedBox(height: 2),
+            style: TextStyle(fontSize: 11, color: AppTheme.textSub)),
+        SizedBox(height: 2),
         Text(value,
             style: TextStyle(
                 fontSize: 14, fontWeight: FontWeight.w700, color: color)),
@@ -345,7 +346,7 @@ class _SummaryCard extends StatelessWidget {
   final int totalPending;
   final int cleared;
   final int all;
-  const _SummaryCard({
+const _SummaryCard({
     required this.totalAgreed,
     required this.totalPaid,
     required this.totalPending,
@@ -363,33 +364,33 @@ class _SummaryCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('汇总',
+            Text(L10n.instance.t('reconcile_summary'),
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: _SumItem(
-                      label: '约定总额',
+                      label: L10n.instance.t('project_agreed_total'),
                       value: '¥${fmt.format(totalAgreed / 100)}'),
                 ),
                 Expanded(
                   child: _SumItem(
-                      label: '累计已收',
+                      label: L10n.instance.t('reconcile_total_received'),
                       value: '¥${fmt.format(totalPaid / 100)}',
                       color: AppTheme.accent),
                 ),
                 Expanded(
                   child: _SumItem(
-                      label: '待收总额',
+                      label: L10n.instance.t('reconcile_total_pending'),
                       value: '¥${fmt.format(totalPending / 100)}',
                       color: AppTheme.warn),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            Text('共 $all 个项目，已结清 $cleared 个',
-                style: const TextStyle(
+            SizedBox(height: 10),
+            Text(L10n.instance.t('reconcile_summary_line', args: {'all':'$all', 'cleared':'$cleared'}),
+                style: TextStyle(
                     fontSize: 12, color: AppTheme.textSub)),
           ],
         ),
@@ -402,7 +403,7 @@ class _SumItem extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
-  const _SumItem({required this.label, required this.value, this.color = AppTheme.textMain});
+const _SumItem({required this.label, required this.value, this.color = AppTheme.textMain});
 
   @override
   Widget build(BuildContext context) {
@@ -410,8 +411,8 @@ class _SumItem extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
-            style: const TextStyle(fontSize: 11, color: AppTheme.textSub)),
-        const SizedBox(height: 2),
+            style: TextStyle(fontSize: 11, color: AppTheme.textSub)),
+        SizedBox(height: 2),
         Text(value,
             style: TextStyle(
                 fontSize: 16, fontWeight: FontWeight.w700, color: color)),
@@ -426,7 +427,7 @@ class _FilterChip extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final Color color;
-  const _FilterChip({
+const _FilterChip({
     required this.label,
     required this.selected,
     required this.onTap,
@@ -450,7 +451,7 @@ class _FlowRow extends StatelessWidget {
   final NumberFormat fmt;
   final DateFormat dateFmt;
   final VoidCallback onToggle;
-  const _FlowRow({
+const _FlowRow({
     required this.flow,
     required this.fmt,
     required this.dateFmt,
@@ -469,14 +470,14 @@ class _FlowRow extends StatelessWidget {
         ? typeLabel
         : (t >= 0 && t < PayType.values.length
             ? PayType.values[t].label
-            : '收款');
-    final project = (flow['project_title'] as String?)?.trim() ?? '已删除项目';
+            : L10n.instance.t('reconciliation_page_collect'));
+    final project = (flow['project_title'] as String?)?.trim() ?? '';
     final quote = (flow['quote_title'] as String?)?.trim() ?? '';
     final note = (flow['note'] as String?)?.trim() ?? '';
     final paidAt = DateTime.fromMillisecondsSinceEpoch(_v(flow['paid_at']));
     final subLine = [
       dateFmt.format(paidAt),
-      if (quote.isNotEmpty) '报价·$quote',
+      if (quote.isNotEmpty) L10n.instance.t('i18n_346', args: {'v0': quote}),
       if (note.isNotEmpty) note,
     ].join(' · ');
 
@@ -491,37 +492,37 @@ class _FlowRow extends StatelessWidget {
                 Row(
                   children: [
                     Text('+${fmt.format(amount / 100)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                             color: AppTheme.accent)),
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8),
                     Text(typeName,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 12, color: AppTheme.textSub)),
                   ],
                 ),
-                const SizedBox(height: 2),
-                Text(project,
+                SizedBox(height: 2),
+                Text(project.isEmpty ? L10n.instance.t('common_deleted_project') : project,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12, color: AppTheme.textMain)),
-                const SizedBox(height: 2),
+                SizedBox(height: 2),
                 Text(subLine,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 11, color: AppTheme.textSub)),
               ],
             ),
           ),
           _Tag(
-            text: reconciled ? '已对账' : '未对账',
+            text: reconciled ? L10n.instance.t('reconcile_reconciled') : L10n.instance.t('reconcile_unreconciled'),
             color: reconciled ? AppTheme.accent : AppTheme.warn,
           ),
           IconButton(
-            tooltip: reconciled ? '取消对账标记' : '标记已对账',
+            tooltip: reconciled ? L10n.instance.t('reconcile_unmark') : L10n.instance.t('reconcile_mark'),
             visualDensity: VisualDensity.compact,
             icon: Icon(
               reconciled ? Icons.undo : Icons.check_circle_outline,
@@ -549,30 +550,30 @@ Widget _vipGate(BuildContext context,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.lock_outline, size: 64, color: AppTheme.primary),
-            const SizedBox(height: 16),
-            Text('$feature为专业版专属',
+            Icon(Icons.lock_outline, size: 64, color: AppTheme.primary),
+            SizedBox(height: 16),
+            Text(L10n.instance.t('paywall_feature_pro_only', args: {'feature':feature}),
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(desc,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                     color: AppTheme.textSub, fontSize: 13)),
-            const SizedBox(height: 24),
+            SizedBox(height: 24),
             FilledButton.icon(
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const PaywallPage(
-                    title: '升级专业版',
-                    desc: '解锁全部高级经营功能',
+                  builder: (_) => PaywallPage(
+                    title: L10n.instance.t('paywall_upgrade_pro'),
+                    desc: L10n.instance.t('i18n_554'),
                   ),
                 ),
               ),
-              icon: const Icon(Icons.workspace_premium),
-              label: const Text('升级 VIP 解锁'),
+              icon: Icon(Icons.workspace_premium),
+              label: Text(L10n.instance.t('paywall_upgrade_vip')),
             ),
           ],
         ),

@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../l10n/l10n.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -53,11 +54,11 @@ class NotifyService {
       _idBase + DateTime.now().millisecondsSinceEpoch % 1000,
       title,
       body,
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
           'collection_remind',
-          '收款提醒',
-          channelDescription: '项目待收金额到期提醒',
+          L10n.instance.t('i18n_382'),
+          channelDescription: L10n.instance.t('i18n_633'),
           importance: Importance.high,
           priority: Priority.high,
         ),
@@ -79,14 +80,14 @@ class NotifyService {
     if (!when.isAfter(now)) return;
     await _plugin.zonedSchedule(
       _idBase + projectId,
-      '待收款提醒',
-      '$projectName 还有 $amountYuan 元待收款，记得跟进~',
+      L10n.instance.t('i18n_320'),
+      L10n.instance.t('i18n_009', args: {'v0': projectName, 'v1': amountYuan}),
       tz.TZDateTime.from(when, tz.local),
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
           'collection_remind',
-          '收款提醒',
-          channelDescription: '项目待收金额到期提醒',
+          L10n.instance.t('i18n_382'),
+          channelDescription: L10n.instance.t('i18n_633'),
           importance: Importance.high,
           priority: Priority.high,
         ),
@@ -125,9 +126,9 @@ class NotifyService {
         final overdueDays =
             ((todayStart - pc.dueDate) / (24 * 3600 * 1000)).floor();
         await showReminder(
-          title: '回款到期提醒',
+          title: L10n.instance.t('notify_payment_due'),
           body:
-              '「${pc.title}」应收 ¥${(pc.amount / 100).toStringAsFixed(2)} 已${overdueDays <= 0 ? '今日到期' : '逾期 $overdueDays 天'}，请及时收款。',
+              L10n.instance.t('notify_due_remind', args: {'v0': pc.title, 'v1': (pc.amount / 100).toStringAsFixed(2), 'v2': overdueDays <= 0 ? L10n.instance.t('notify_due_today') : L10n.instance.t('notify_overdue_days', args: {'v0': '$overdueDays'})}),
         );
         await db.setSetting(key, nowMs.toString());
       }
@@ -144,8 +145,8 @@ class NotifyService {
         final key = 'remind_quote_sent_${q.id}';
         if (await db.getSetting(key) != null) continue;
         await showReminder(
-          title: '报价待客户确认',
-          body: '「${q.title}」报价已发出超 72 小时仍未确认，记得跟进客户。',
+          title: L10n.instance.t('notify_quote_confirm'),
+          body: L10n.instance.t('i18n_053', args: {'v0': q.title}),
         );
         await db.setSetting(key, nowMs.toString());
       }
