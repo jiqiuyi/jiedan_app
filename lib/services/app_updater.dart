@@ -47,6 +47,12 @@ class AppUpdater {
   /// 本次下载失败后是否已自动重试一次（防止 failed 回调死循环重试）。
   bool _retriedOnce = false;
 
+  /// P1（v1.49.1）：enqueue 后前台轮询下载状态用定时器。complete 回调丢失时
+  /// 轮询发现任务 complete 主动触发安装；_installPollingFired 用于回调路径
+  /// 与轮询路径互斥，避免重复拉起系统安装界面。
+  Timer? _completePollTimer;
+  bool _installPollingFired = false;
+
   /// 持久化最近一次下载信息：进程被杀 / complete 回调丢失后，冷启动兜底
   /// （checkPendingInstall / _offerPendingApkOnStartup）仍能拿到 URL、版本
   /// 与服务器期望大小做完整校验。
@@ -89,6 +95,10 @@ class AppUpdater {
     _lastDownloadUrl = url;
     _lastVersion = version;
     if (resetRetry) _retriedOnce = false;
+    // P1（v1.49.1）：重新下载时停止上一轮轮询，避免旧任务状态触发安装。
+    _completePollTimer?.cancel();
+    _completePollTimer = null;
+    _installPollingFired = false;
     _lastExpectedBytes = null;
     // 下载前预检「安装未知来源应用」权限（v1.47.2）：未授权时先弹引导，
     // 避免下载完成后才提示 / 无法拉起系统安装界面。
@@ -148,10 +158,13 @@ class AppUpdater {
         savedDir: dir.path,
         fileName: fileName,
         showNotification: true, // 通知栏展示下载进度
-        // 下载完成通知点击直接打开 APK 拉起系统安装界面（flutter_downloader
-        // 1.12.1 仅当此项为 true 时才会为完成通知设置 contentIntent，否则
-        // 点击通知无任何响应，App 也不会被唤起）
-        openFileFromNotification: true,
+        // P2（v1.49.1）：完成通知不再直接 ACTION_VIEW 拉起系统安装器——
+        // 该路径绕过 Dart 侧 _validateApk 完整性校验。flutter_downloader
+        // 1.12.1 在 openFileFromNotification=false 时完成通知无 contentIntent、
+        // 也不会发送 FLUTTER_NOTIFICATION_CLICK 点击广播（旧版本才有），
+        // 故通知仅作完成提示；安装统一由 complete 回调 / 前台轮询 /
+        // 启动兜底扫描链路（Dart 校验 + PackageInstaller）承接。
+        openFileFromNotification: false,
       );
       if (taskId == null || taskId.isEmpty) {
         _showSnack(L10n.instance.t('i18n_304'));
@@ -166,6 +179,10 @@ class AppUpdater {
         return;
       }
       _showSnack(L10n.instance.t('i18n_268'));
+      // P1（v1.49.1）：enqueue 成功后启动前台轮询（约 5s 间隔），下载状态
+      // complete 且尚未安装时主动触发 _installByTaskId，覆盖 complete 回调
+      // 丢失场景；回调到达或轮询命中后自动停止。
+      _startCompletePolling(taskId);
       // enqueue 成功即写待安装记录（v1.48.1）：taskId 持久化，覆盖
       // 「complete 回调丢失」场景——冷启动/回前台兜底扫描不依赖回调，
       // 只要有下载目录 APK 即可自动校验并安装。
@@ -281,6 +298,41 @@ class AppUpdater {
     send?.send([id, status, progress]);
   }
 
+  /// P1（v1.49.1）：enqueue 后前台轮询指定下载任务，约 5s 间隔。发现任务
+  /// complete 且尚未拉起安装（pending 记录仍指向该 task、且回调路径未处理）
+  /// 时主动触发 _installByTaskId，覆盖「complete 回调丢失导致无法跳转安装」。
+  /// 回调已到达或轮询命中后自动停止，避免重复拉起系统安装界面。
+  void _startCompletePolling(String taskId) {
+    _installPollingFired = false;
+    _completePollTimer?.cancel();
+    _completePollTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      try {
+        final tasks = await FlutterDownloader.loadTasks();
+        if (tasks == null) return;
+        final task = tasks.where((t) => t.taskId == taskId).firstOrNull;
+        if (task == null || task.status != DownloadTaskStatus.complete) return;
+        _completePollTimer?.cancel();
+        _completePollTimer = null;
+        if (_installPollingFired) return;
+        final prefs = await SharedPreferences.getInstance();
+        final pending = prefs.getString(_pendingTaskIdKey);
+        if (pending != taskId) return;
+        _installPollingFired = true;
+        unawaited(
+          ErrorReporter.instance.logError(
+            'updater_poll_complete',
+            StateError('poll found complete task $taskId, trigger install'),
+            StackTrace.current,
+            context: {'taskId': taskId},
+          ),
+        );
+        unawaited(_installByTaskId(taskId, expectBytes: _lastExpectedBytes));
+      } catch (_) {
+        // 轮询异常静默，下一轮继续（loadTasks 偶发失败不阻塞安装链路）
+      }
+    });
+  }
+
   void _onDownloadEvent(dynamic data) {
     if (data is! List || data.length < 2) return;
     final id = data[0] as String;
@@ -298,6 +350,11 @@ class AppUpdater {
           context: {'taskId': id, 'expectBytes': '$_lastExpectedBytes'},
         ),
       );
+      // P1（v1.49.1）：complete 回调已到达，停止前台轮询并置位防重，
+      // 避免轮询路径与回调路径重复拉起系统安装界面。
+      _completePollTimer?.cancel();
+      _completePollTimer = null;
+      _installPollingFired = true;
       unawaited(_installByTaskId(id, expectBytes: _lastExpectedBytes));
     } else if (status == DownloadTaskStatus.failed) {
       unawaited(_handleDownloadFailed(id));
@@ -492,12 +549,19 @@ class AppUpdater {
       final pending = await _installChannel.invokeMapMethod<String, dynamic>(
         'consumeNotificationInstall',
       );
-      if (pending == null || pending.isEmpty) {
+      final taskId = pending?['taskId'] as String?;
+      final path = pending?['path'] as String?;
+      // P0（v1.49.1）：无记录，或 taskId 与 path 均无效（null/空串）时，
+      // 一律进入兜底扫描。修复旧逻辑「pending 非空即短路」——原生旧实现返回
+      // {taskId:null, path:null} 非空 Map 时，下方两个安装分支均不命中、
+      // _offerPendingApkOnStartup 兜底被跳过，下载完成后无法跳转安装。
+      if (pending == null ||
+          pending.isEmpty ||
+          ((taskId == null || taskId.isEmpty) &&
+              (path == null || path.isEmpty))) {
         await _offerPendingApkOnStartup();
         return;
       }
-      final taskId = pending['taskId'] as String?;
-      final path = pending['path'] as String?;
       if (taskId != null && taskId.isNotEmpty) {
         await _installByTaskId(taskId);
       } else if (path != null && path.isNotEmpty) {
@@ -592,14 +656,57 @@ class AppUpdater {
       }
       final apkName = latest.split(Platform.pathSeparator).last;
       final apkVersion = _versionFromApkName(apkName);
-      if (apkVersion == null) return;
+      if (apkVersion == null) {
+        // P1（v1.49.1）：APK 文件名无法解析版本，静默跳过并留痕
+        unawaited(
+          ErrorReporter.instance.logError(
+            'updater_startup_scan_skipped',
+            StateError('apk name parse failed: $apkName'),
+            StackTrace.current,
+            context: {
+              'path': latest,
+              'apkName': apkName,
+              'reason': 'parse_failed',
+            },
+          ),
+        );
+        return;
+      }
       final info = await PackageInfo.fromPlatform();
       if (!_isVersionNewer(apkVersion, info.version)) {
-        // 当前版本不低于 APK：非待装包（残留旧包 / 已安装更新），跳过
+        // P1（v1.49.1）：目录有 APK 但版本不新（残留旧包 / 已安装更新），
+        // 跳过并留痕，便于远程确认兜底扫描每次均执行了版本判断。
+        unawaited(
+          ErrorReporter.instance.logError(
+            'updater_startup_scan_skipped',
+            StateError('apk $apkName v$apkVersion not newer than ${info.version}'),
+            StackTrace.current,
+            context: {
+              'path': latest,
+              'apkName': apkName,
+              'reason': 'not_newer',
+            },
+          ),
+        );
         return;
       }
       final prefs = await SharedPreferences.getInstance();
-      if (prefs.getString(_offeredApkKey) == apkName) return;
+      if (prefs.getString(_offeredApkKey) == apkName) {
+        // P1（v1.49.1）：该安装包已提交过（用户取消过系统界面），跳过并留痕
+        unawaited(
+          ErrorReporter.instance.logError(
+            'updater_startup_scan_skipped',
+            StateError('apk $apkName already offered'),
+            StackTrace.current,
+            context: {
+              'path': latest,
+              'apkName': apkName,
+              'reason': 'already_offered',
+            },
+          ),
+        );
+        return;
+      }
       // 先记录已提交文件名，再提交安装（防并发 / 重复提交）
       await prefs.setString(_offeredApkKey, apkName);
       // 扫描发现更新的 APK：自动提交安装（v1.48.1 替代原弹窗询问）

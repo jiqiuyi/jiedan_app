@@ -233,7 +233,15 @@ class MainActivity : FlutterActivity() {
                         pendingInstallTaskId = null
                         val path = pendingInstallApkPath
                         pendingInstallApkPath = null
-                        result.success(mapOf("taskId" to taskId, "path" to path))
+                        // P0（v1.49.1）：无任何通知点击 / APK 打开记录时返回空 Map，
+                        // 与 consumeInstallResult 行为一致；旧实现返回
+                        // {taskId:null, path:null} 非空 Map 会短路 Flutter 侧
+                        // checkPendingInstall 的兜底扫描，导致下载完成后无法跳转安装。
+                        if (taskId.isNullOrEmpty() && path.isNullOrEmpty()) {
+                            result.success(emptyMap<String, String>())
+                        } else {
+                            result.success(mapOf("taskId" to taskId, "path" to path))
+                        }
                     }
                     "openUnknownSourcesSettings" -> {
                         try {
