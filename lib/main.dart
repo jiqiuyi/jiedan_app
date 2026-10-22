@@ -61,6 +61,7 @@ Future<void> _initAppServices() async {
   await _safeInit('notify', () => NotifyService.instance.init());
   await _safeInit('app_updater', () => AppUpdater.instance.init());
   await _safeInit('sync', () => SyncService.instance.init());
+  await _safeInit('l10n', () => L10n.instance.init());
 }
 
 /// 单步初始化安全包装：失败记录日志并返回 false，不向启动链路抛异常。
@@ -220,21 +221,24 @@ class _JieDanAppState extends State<JieDanApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: appNavigatorKey,
-      scaffoldMessengerKey: appMessengerKey,
-      title: L10n.instance.t('app_name'),
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      // 中文本地化：让系统组件（日期选择器/时间选择器等）显示中文
-      locale: const Locale('zh', 'CN'),
-      supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      home: HomeShell(key: _homeKey),
+    return ValueListenableBuilder<Locale>(
+      valueListenable: L10n.instance.locale,
+      builder: (context, locale, _) => MaterialApp(
+        navigatorKey: appNavigatorKey,
+        scaffoldMessengerKey: appMessengerKey,
+        title: L10n.instance.t('app_name'),
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        // 本地化：locale 跟随 L10n 偏好（跟随系统/中文/English），切换后整树即时重建
+        locale: locale,
+        supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: HomeShell(key: _homeKey),
+      ),
     );
   }
 }

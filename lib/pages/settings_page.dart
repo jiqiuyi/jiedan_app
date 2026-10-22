@@ -175,6 +175,63 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  /// 语言切换：三选一底部弹窗（跟随系统 / 中文 / English）
+  Future<void> _pickLanguage() async {
+    final current = L10n.instance.pref;
+    final choice = await showModalBottomSheet<LangPref>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+              child: AppSheetHeader(
+                  title: L10n.instance.t('settings_language')),
+            ),
+            ListTile(
+              leading: Icon(Icons.settings_suggest_outlined,
+                  color: current == LangPref.system
+                      ? AppTheme.primary
+                      : AppTheme.textSub),
+              title: Text(L10n.instance.t('settings_lang_system')),
+              trailing: current == LangPref.system
+                  ? const Icon(Icons.check, color: AppTheme.primary)
+                  : null,
+              onTap: () => Navigator.pop(ctx, LangPref.system),
+            ),
+            ListTile(
+              leading: Icon(Icons.translate,
+                  color: current == LangPref.zh
+                      ? AppTheme.primary
+                      : AppTheme.textSub),
+              title: Text(L10n.instance.t('settings_lang_zh')),
+              trailing: current == LangPref.zh
+                  ? const Icon(Icons.check, color: AppTheme.primary)
+                  : null,
+              onTap: () => Navigator.pop(ctx, LangPref.zh),
+            ),
+            ListTile(
+              leading: Icon(Icons.language,
+                  color: current == LangPref.en
+                      ? AppTheme.primary
+                      : AppTheme.textSub),
+              title: Text(L10n.instance.t('settings_lang_en')),
+              trailing: current == LangPref.en
+                  ? const Icon(Icons.check, color: AppTheme.primary)
+                  : null,
+              onTap: () => Navigator.pop(ctx, LangPref.en),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (choice != null && choice != current) {
+      await L10n.instance.setPref(choice);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -244,6 +301,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   loggedIn: user != null,
                   onCheckUpdate: () =>
                       UpdateService.instance.checkManual(context),
+                  onLanguage: _pickLanguage,
                   onPrivacy: () => _push(PrivacyPolicyPage()),
                   onAdmin: () => _push(AdminPage()),
                   onPayNotice: () => _push(PayNoticeGuidePage()),
@@ -797,6 +855,7 @@ class _SettingsCard extends StatelessWidget {
   final bool isAdmin;
   final bool loggedIn;
   final VoidCallback onCheckUpdate;
+  final VoidCallback onLanguage;
   final VoidCallback onPrivacy;
   final VoidCallback onAdmin;
   final VoidCallback onPayNotice;
@@ -807,6 +866,7 @@ const
     required this.isAdmin,
     required this.loggedIn,
     required this.onCheckUpdate,
+    required this.onLanguage,
     required this.onPrivacy,
     required this.onAdmin,
     required this.onPayNotice,
@@ -831,6 +891,16 @@ const
               ],
             ),
             onTap: onCheckUpdate,
+          ),
+          _CardDivider(),
+          ListTile(
+            leading: Icon(Icons.language, color: AppTheme.primary),
+            title: Text(L10n.instance.t('settings_language')),
+            subtitle: Text(L10n.instance.t('settings_language_sub'),
+                style: TextStyle(fontSize: 12, color: AppTheme.textSub)),
+            trailing:
+                const Icon(Icons.chevron_right, color: AppTheme.textSub),
+            onTap: onLanguage,
           ),
           _CardDivider(),
           _FeedbackReportSwitch(),
