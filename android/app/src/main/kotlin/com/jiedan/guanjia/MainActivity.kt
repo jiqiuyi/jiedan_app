@@ -1,5 +1,8 @@
 package com.jiedan.guanjia
 
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
@@ -13,6 +16,7 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import androidx.annotation.NonNull
+import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -35,6 +39,14 @@ class MainActivity : FlutterActivity() {
     /// PendingIntent 指向该 action，接收系统安装器最终状态供 Flutter 侧留痕。
     private val ACTION_INSTALL_RESULT = "com.jiedan.guanjia.INSTALL_RESULT"
     private val EXTRA_SESSION_ID = "extra_session_id"
+
+    /// v1.49.4：自定义「安装就绪」通知点击 action（Flutter 侧触发安装时发送，
+    /// 点击后置位 pendingInstallTaskId 走受控校验链路）。
+    private val ACTION_INSTALL_APK = "com.jiedan.guanjia.INSTALL_APK"
+    private val EXTRA_TASK_ID = "task_id"
+    private val INSTALL_READY_CHANNEL_ID = "jiedan_install_ready"
+    private val INSTALL_READY_CHANNEL_NAME = "安装更新"
+    private val INSTALL_READY_NOTIFY_ID = 0x4A5A01
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,6 +76,9 @@ class MainActivity : FlutterActivity() {
 
     /// PackageInstaller.Session 提交后系统安装器返回的状态接收器（v1.47.2）：
     /// 保存到静态字段，由 Flutter 侧 consumeInstallResult 拉取并写入错误日志。
+    /// v1.49.6（华为兼容）：华为 EMUI/HarmonyOS 在 commit 后只回传 -1 且不会自动
+    /// 拉起安装确认界面，这里在收到 STATUS_PENDING_USER_ACTION 时主动取出广播
+    /// 携带的确认 Intent 并 startActivity，补上确认 UI。
     private val installResultReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != ACTION_INSTALL_RESULT) return
@@ -75,6 +90,45 @@ class MainActivity : FlutterActivity() {
             lastInstallResultSessionId = sessionId
             lastInstallResultStatus = status
             Log.i("JieDanUpdate", "PackageInstaller result session=$sessionId status=$status")
+            if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                launchInstallConfirmUi(context, sessionId, intent)
+            }
+        }
+    }
+
+    /// 华为兼容：主动拉起安装确认界面（v1.49.6）。
+    /// 系统在 PENDING_USER_ACTION 广播中携带 EXTRA_INTENT（确认 Activity Intent），
+    /// 标准 AOSP 会由系统自动启动；华为 EMUI/HarmonyOS 不自动启动，需 App 自行
+    /// 拉起。优先使用广播自带的 EXTRA_INTENT，缺失时兜底用 CONFIRM_INSTALL +
+    /// EXTRA_SESSION_ID 显式拉起系统安装器确认页。防重复：一次安装流程只拉一次。
+    private fun launchInstallConfirmUi(
+        context: Context?,
+        sessionId: Int,
+        resultIntent: Intent
+    ) {
+        val ctx = context ?: return
+        if (!pendingConfirmUiShown.compareAndSet(false, true)) return
+        var confirmIntent: Intent? = null
+        if (Build.VERSION.SDK_INT >= 33) {
+            confirmIntent = resultIntent.getParcelableExtra(
+                Intent.EXTRA_INTENT, Intent::class.java
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            confirmIntent = resultIntent.getParcelableExtra(Intent.EXTRA_INTENT)
+        }
+        if (confirmIntent == null) {
+            confirmIntent = Intent("android.content.pm.action.CONFIRM_INSTALL").apply {
+                setPackage("com.android.packageinstaller")
+                putExtra(PackageInstaller.EXTRA_SESSION_ID, sessionId)
+            }
+        }
+        try {
+            confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(confirmIntent)
+            Log.i("JieDanUpdate", "launch install confirm UI session=$sessionId")
+        } catch (e: Exception) {
+            Log.w("JieDanUpdate", "launch install confirm UI failed: ${e.message}")
         }
     }
 
@@ -94,6 +148,12 @@ class MainActivity : FlutterActivity() {
             LedgerWidgetProvider.ACTION_QUICK_LEDGER -> pendingQuickLedger = true
             NOTIFICATION_CLICK_ACTION -> {
                 val taskId = intent.getStringExtra("task_id")
+                if (!taskId.isNullOrEmpty()) pendingInstallTaskId = taskId
+            }
+            // v1.49.4：自定义「安装就绪」通知点击，置位待安装下载任务 ID，
+            // 由 Flutter 侧 checkPendingInstall 走受控校验 + PackageInstaller 链路。
+            ACTION_INSTALL_APK -> {
+                val taskId = intent.getStringExtra(EXTRA_TASK_ID)
                 if (!taskId.isNullOrEmpty()) pendingInstallTaskId = taskId
             }
             Intent.ACTION_VIEW -> {
@@ -190,6 +250,13 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "installApk" -> installApk(call.arguments as? String ?: "", result)
+                    // v1.49.4：Flutter 侧触发安装时发「安装就绪」通知，点击走
+                    // ACTION_INSTALL_APK 自定义 action 回传 taskId 置位。
+                    "postInstallNotification" ->
+                        postInstallNotification(
+                            call.arguments as? String ?: "",
+                            result
+                        )
                     "canRequestPackageInstalls" -> {
                         // 下载前权限预检（v1.47.2）：Android O+ 才需要未知来源授权
                         result.success(
@@ -261,6 +328,54 @@ class MainActivity : FlutterActivity() {
             }
     }
 
+    /// v1.49.4：发送「安装就绪」自定义通知（Flutter 侧触发安装时调用）。
+    /// contentIntent 指向本 Activity 的自定义 action [ACTION_INSTALL_APK]，
+    /// 点击后 handleIncomingIntent 置位 pendingInstallTaskId，Flutter 侧
+    /// checkPendingInstall 走受控校验 + PackageInstaller 链路；不使用
+    /// flutter_downloader 的 openFileFromNotification=true（ACTION_VIEW 会绕过
+    /// Dart 完整性校验且无日志）。Android 13+ 未授予通知权限时静默跳过。
+    private fun postInstallNotification(taskId: String, result: MethodChannel.Result) {
+        try {
+            if (Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                result.success(false)
+                return
+            }
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    INSTALL_READY_CHANNEL_ID,
+                    INSTALL_READY_CHANNEL_NAME,
+                    NotificationManager.IMPORTANCE_HIGH
+                )
+                nm.createNotificationChannel(channel)
+            }
+            val contentIntent = PendingIntent.getActivity(
+                this,
+                INSTALL_READY_NOTIFY_ID,
+                Intent(ACTION_INSTALL_APK).apply {
+                    putExtra(EXTRA_TASK_ID, taskId)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val notification = NotificationCompat.Builder(this, INSTALL_READY_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setContentTitle("安装就绪")
+                .setContentText("新版接单管家已下载完成，点击开始安装")
+                .setAutoCancel(true)
+                .setContentIntent(contentIntent)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .build()
+            nm.notify(INSTALL_READY_NOTIFY_ID, notification)
+            result.success(true)
+        } catch (e: Exception) {
+            result.success(false)
+        }
+    }
+
     companion object {
         @Volatile
         private var pendingQuickLedger = false
@@ -274,6 +389,9 @@ class MainActivity : FlutterActivity() {
         private var lastInstallResultSessionId: Int = -2
         @Volatile
         private var lastInstallResultStatus: Int = -2
+        /// 华为兼容：安装确认 UI 防重复拉起标记（v1.49.6）。
+        /// commit 前复位；收到 PENDING_USER_ACTION 时 CAS 置位，保证只拉一次。
+        private val pendingConfirmUiShown = java.util.concurrent.atomic.AtomicBoolean(false)
     }
 
     /// 拉起系统安装界面安装 APK（v1.47.2 缺陷1修复）：
@@ -339,6 +457,9 @@ class MainActivity : FlutterActivity() {
                 senderIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             ).intentSender
+            // v1.49.6（华为兼容）：提交前复位确认 UI 防重复标记，保证本次
+            // PENDING_USER_ACTION 回传时只拉起一次确认界面。
+            pendingConfirmUiShown.set(false)
             session.commit(sender)
             result.success(true)
         } catch (e: SecurityException) {

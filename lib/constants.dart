@@ -6,7 +6,7 @@ import '../l10n/l10n.dart';
 class AppConfig {
   // ---- 应用基础 ----
   static String get appName => L10n.instance.t('app_name');
-  static const String version = '1.49.2+101';
+  static const String version = '1.49.6+105';
   // 工信部 ICP 备案号（Android 合规要求：App 内显著位置可查，展示于「我的」页底部）
   static String get icpCode => L10n.instance.t('app_icp');
 
