@@ -71,3 +71,11 @@ android/key.properties
 数据存储方式改造说明.md
 v1.*.md
 docs/
+
+# 临时工作文件（扫描日志 / 网盘传输残留 / 排查输出，不入库）
+temp/
+*.baiduyun.uploading.cfg
+*_out.txt
+
+# Flutter 本机 SDK 路径（每台机器不同，勿入库）
+android/local.properties
