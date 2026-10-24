@@ -1250,7 +1250,7 @@ const Map<String, String> zhCN = {
   'ledger_cat_project': '项目支出',
   'ledger_cat_social': '人情',
   'ledger_cat_transport': '交通',
-  'sync_failed_retry_in_settings': '云端数据同步失败，请稍后在设置中重试',
+  'sync_failed_retry_in_settings': '网络连接不稳定，同步未完成，稍后自动重试',
 
   'admin_amount_cn': '金额 ¥{v0} · ',
   'admin_example_alipay': '如 alipays',

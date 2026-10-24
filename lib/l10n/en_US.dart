@@ -1250,7 +1250,7 @@ const Map<String, String> enUS = {
   'ledger_cat_project': 'Project Expenses',
   'ledger_cat_social': 'Social & Gifts',
   'ledger_cat_transport': 'Transport',
-  'sync_failed_retry_in_settings': 'Cloud sync failed. Please retry later in Settings.',
+  'sync_failed_retry_in_settings': 'Unstable network. Sync not finished, will retry automatically.',
 
   'admin_amount_cn': 'Amount ¥{v0} · ',
   'admin_example_alipay': 'e.g. alipays',

@@ -156,6 +156,13 @@ class SyncService extends ChangeNotifier {
   // v1.47.0：回前台自动同步的防抖时间戳（10 秒内不重复触发）。
   DateTime? _lastResumeSyncAt;
 
+  // v1.49.3：同步连续失败计数（成功时重置），用于失败降噪——前 1 次失败
+  // 静默自动重试，连续失败 >= 2 次才向用户弹提示。
+  int _consecutiveSyncFailures = 0;
+
+  // v1.49.3：失败后静默重试的延迟定时器（3~5s 随机）。
+  Timer? _retryTimer;
+
   /// 应用启动时调用：读取持久化存储方式并立即执行一次首次合并（仅含服务器模式）。
   /// 必须在 AppDb 可用后调用。
   Future<void> init() async {
@@ -635,6 +642,11 @@ class SyncService extends ChangeNotifier {
     notifyListeners();
     try {
       await fn();
+      // v1.49.3：同步成功重置连续失败计数（供失败降噪判定），并清理
+      // 未触发的重试定时器（若重试已入队则 _syncing 锁会拦截重复执行）。
+      _consecutiveSyncFailures = 0;
+      _retryTimer?.cancel();
+      _retryTimer = null;
     } catch (e, st) {
       // 同步失败落盘（异常类型 + 具体信息 + 来源模块 + 关键 context），
       // 替换原「仅内存态 + SnackBar」的静默路径，开发者可复制完整堆栈。
@@ -647,18 +659,38 @@ class SyncService extends ChangeNotifier {
           'stage': stage ?? 'unknown',
           'mode': _mode.name,
           'canSync': canSync,
+          'consecutiveFailures': _consecutiveSyncFailures + 1,
         },
       );
       // token 失效独立分支：不是普通网络错误，标记鉴权失效供页面跳转登录。
       if (e is TokenInvalidException) {
         _authExpired = true;
         _lastError = L10n.instance.t('common_session_expired');
+        notifyListeners();
       } else {
-        _lastError = L10n.instance.t('i18n_171', args: {'v0':'$e'});
-        // 全局友好提示（错误文本变化时才提示一次，避免刷屏）：指向页面重试。
-        ErrorReporter.instance.notify(L10n.instance.t('sync_failed_retry_in_settings'));
+        _consecutiveSyncFailures++;
+        if (_consecutiveSyncFailures < 2) {
+          // v1.49.3：网络类失败后静默自动重试（3~5s，重试 1 次），
+          // 不设置 _lastError、不弹提示，避免瞬时抖动打扰用户。
+          _retryTimer?.cancel();
+          _retryTimer = Timer(
+            Duration(seconds: 3 + math.Random().nextInt(3)),
+            () {
+              if (_mode.involvesServer && canSync) {
+                unawaited(_runMutex(() => syncOnStart(), stage: 'retry'));
+              }
+            },
+          );
+        } else {
+          // v1.49.3：连续失败 >= 2 次才提示，文案引导「稍后自动重试」。
+          _lastError = L10n.instance.t('i18n_171', args: {'v0': '$e'});
+          // 全局友好提示（错误文本变化时才提示一次，避免刷屏）。
+          ErrorReporter.instance.notify(
+            L10n.instance.t('sync_failed_retry_in_settings'),
+          );
+          notifyListeners();
+        }
       }
-      notifyListeners();
     } finally {
       _syncing = false;
       notifyListeners();
