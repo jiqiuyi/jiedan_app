@@ -12,6 +12,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'download_callback.dart';
+
 import 'error_reporter.dart';
 
 /// App 内更新下载与安装（v1.46.2 新增）。
@@ -26,7 +28,6 @@ class AppUpdater {
   static final AppUpdater instance = AppUpdater._();
 
   static const String _installChannelName = 'com.jiedan.guanjia/apk_install';
-  static const String _portName = 'app_updater_download_port';
 
   final MethodChannel _installChannel = MethodChannel(
     _installChannelName,
@@ -74,10 +75,13 @@ class AppUpdater {
       _port = ReceivePort();
       // 防热重启/重复注册：先移除旧 port（旧 isolate 已销毁时 lookup 会拿到
       // 死 port 导致回调丢失），再注册当前 port。
-      IsolateNameServer.removePortNameMapping(_portName);
-      IsolateNameServer.registerPortWithName(_port!.sendPort, _portName);
+      IsolateNameServer.removePortNameMapping(appUpdaterDownloadPortName);
+      IsolateNameServer.registerPortWithName(
+        _port!.sendPort,
+        appUpdaterDownloadPortName,
+      );
       _port!.listen(_onDownloadEvent);
-      await FlutterDownloader.registerCallback(_downloadCallback);
+      await FlutterDownloader.registerCallback(downloadCallback);
     } catch (e) {
       debugPrint('AppUpdater init failed: $e');
     }
@@ -291,13 +295,10 @@ class AppUpdater {
     }
   }
 
-  /// 后台 isolate 下载回调（必须 @pragma 防 release 模式树摇）。
-  @pragma('vm:entry-point')
-  static void _downloadCallback(String id, int status, int progress) {
-    final send = IsolateNameServer.lookupPortByName(_portName);
-    send?.send([id, status, progress]);
-  }
-
+  /// 后台 isolate 下载回调（v1.49.4）：已改为顶层函数 downloadCallback
+  /// （lib/services/download_callback.dart）——release AOT 下静态方法经
+  /// CallbackHandle 恢复时需类本身带注解，顶层函数可避免
+  /// 「AppUpdater must be annotated」报错。见 download_callback.dart 注释。
   /// P1（v1.49.1）：enqueue 后前台轮询指定下载任务，约 5s 间隔。发现任务
   /// complete 且尚未拉起安装（pending 记录仍指向该 task、且回调路径未处理）
   /// 时主动触发 _installByTaskId，覆盖「complete 回调丢失导致无法跳转安装」。
@@ -317,7 +318,23 @@ class AppUpdater {
         final prefs = await SharedPreferences.getInstance();
         final pending = prefs.getString(_pendingTaskIdKey);
         if (pending != taskId) return;
+        // v1.49.4：轮询命中触发安装前，同时比对 _offeredApkKey 与
+        // task.filename——若该包已被冷启动兜底扫描 offer 过（已提交安装），
+        // 直接跳过，避免轮询路径与兜底路径重复提交系统安装界面。
+        if (task.filename != null &&
+            task.filename!.isNotEmpty &&
+            prefs.getString(_offeredApkKey) == task.filename) {
+          _completePollTimer?.cancel();
+          _completePollTimer = null;
+          return;
+        }
         _installPollingFired = true;
+        // v1.49.3：poll 命中触发安装时同步写入 _offeredApkKey（与
+        // _installByTaskId 记录 _lastVersion 的方式一致，取 task.filename），
+        // 消除 8s 后 _offerPendingApkOnStartup 兜底扫描的重复提交。
+        if (task.filename != null && task.filename!.isNotEmpty) {
+          await prefs.setString(_offeredApkKey, task.filename!);
+        }
         unawaited(
           ErrorReporter.instance.logError(
             'updater_poll_complete',
@@ -326,6 +343,9 @@ class AppUpdater {
             context: {'taskId': taskId},
           ),
         );
+        // v1.49.4：轮询路径触发安装时发自定义「安装就绪」通知（contentIntent
+        // 指向 MainActivity 自定义 action，点击后回传 taskId 走受控校验链路）。
+        unawaited(_notifyInstallReady(taskId));
         unawaited(_installByTaskId(taskId, expectBytes: _lastExpectedBytes));
       } catch (_) {
         // 轮询异常静默，下一轮继续（loadTasks 偶发失败不阻塞安装链路）
@@ -338,6 +358,9 @@ class AppUpdater {
     final id = data[0] as String;
     final status = DownloadTaskStatus.fromInt(data[1] as int? ?? -1);
     if (status == DownloadTaskStatus.complete) {
+      // v1.49.4：与轮询路径对称互斥——轮询已触发安装时，重复到达的
+      // complete 回调直接忽略，保证兜底扫描、轮询、回调三路径只提交一次。
+      if (_installPollingFired) return;
       // 下载完成即拉起安装（前台 complete 回调路径）。带 Content-Length
       // 大小校验，坏文件直接删除并提示，不进入安装流程。
       // 回调留痕（v1.47.2）：记录收到 complete 时的期望大小，便于远程核对
@@ -355,11 +378,28 @@ class AppUpdater {
       _completePollTimer?.cancel();
       _completePollTimer = null;
       _installPollingFired = true;
+      // v1.49.4：回调路径触发安装时同样发「安装就绪」通知，修复完成通知
+      // 不可点击问题（flutter_downloader 1.12.1 false 时无 contentIntent）。
+      unawaited(_notifyInstallReady(id));
       unawaited(_installByTaskId(id, expectBytes: _lastExpectedBytes));
     } else if (status == DownloadTaskStatus.failed) {
       unawaited(_handleDownloadFailed(id));
     } else if (status == DownloadTaskStatus.canceled) {
       _showSnack(L10n.instance.t('i18n_265'));
+    }
+  }
+
+  /// v1.49.4：触发安装时发自定义「安装就绪」通知。contentIntent 指向
+  /// MainActivity 自定义 action（com.jiedan.guanjia.INSTALL_APK），点击后
+  /// MainActivity 置位 pendingInstallTaskId，Flutter 侧 checkPendingInstall
+  /// 走受控校验 + PackageInstaller 链路（不开 openFileFromNotification=true，
+  /// 避免 ACTION_VIEW 绕过完整性校验且无日志）。通知仅作提示，安装已由
+  /// 轮询/回调当前路径提交；通知发送失败不影响安装。
+  Future<void> _notifyInstallReady(String taskId) async {
+    try {
+      await _installChannel.invokeMethod('postInstallNotification', taskId);
+    } catch (_) {
+      // 通知发送失败不影响安装（轮询/回调路径已提交）
     }
   }
 
