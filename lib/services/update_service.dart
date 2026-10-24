@@ -146,10 +146,22 @@ class UpdateService {
               else ...[
                 Text(L10n.instance.t('update_changelog')),
                 SizedBox(height: 6),
-                ...info.changelog.map((e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text('· $e'),
-                    )),
+                // 内容过多时限制高度并可滚动，避免正文溢出弹窗区域
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 320),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ...info.changelog.map((e) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text('· $e'),
+                            )),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ],
           ),
